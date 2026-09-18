@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">简账</string>
+
+    <!-- 底部导航 -->
+    <string name="nav_ledger">明细</string>
+    <string name="nav_stats">统计</string>
+    <string name="nav_manage">管理</string>
+
+    <!-- 通用 -->
+    <string name="expense">支出</string>
+    <string name="income">收入</string>
+    <string name="all">全部</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="today">今天</string>
+    <string name="confirm">确认</string>
+
+    <!-- 记一笔 -->
+    <string name="add_entry">记一笔</string>
+    <string name="edit_entry">编辑账目</string>
+    <string name="amount">金额</string>
+    <string name="category">分类</string>
+    <string name="section">分区</string>
+    <string name="note_hint">备注（仅本笔可见）</string>
+    <string name="pick_date">日期</string>
+    <string name="pick_time">时间</string>
+    <string name="add_photo">添加图片</string>
+    <string name="amount_required">请输入有效金额</string>
+
+    <!-- 分区 / 分类 -->
+    <string name="sections_title">分区管理</string>
+    <string name="categories_title">分类管理</string>
+    <string name="new_section">新建分区</string>
+    <string name="edit_section">编辑分区</string>
+    <string name="new_category">新建分类</string>
+    <string name="edit_category">编辑分类</string>
+    <string name="section_note_hint">分区备注（如：装修预算 26 万）</string>
+    <string name="section_name_hint">分区名称</string>
+    <string name="category_name_hint">分类名称</string>
+    <string name="delete_section_confirm">删除该分区后，其中账目将移入「%1$s」，确定删除吗？</string>
+    <string name="delete_category_confirm">删除该分类后，相关账目将移入「%1$s」，确定删除吗？</string>
+
+    <!-- 统计 -->
+    <string name="stats_month_expense">本月支出</string>
+    <string name="stats_month_income">本月收入</string>
+    <string name="stats_balance">结余</string>
+    <string name="stats_by_category">分类占比</string>
+    <string name="stats_by_day">每日支出</string>
+    <string name="stats_by_section">分区汇总</string>
+    <string name="stats_empty">这个月还没有账目，记一笔吧</string>
+
+    <!-- 明细 -->
+    <string name="ledger_empty">本月暂无账目</string>
+    <string name="filter_category">分类</string>
+    <string name="entry_count">%1$d 笔</string>
+</resources>

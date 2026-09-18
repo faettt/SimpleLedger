@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 账目数据库与图片全部参与备份 -->
+    <include domain="database" path="." />
+    <include domain="file" path="images/" />
+</full-backup-content>
