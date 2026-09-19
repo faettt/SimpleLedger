@@ -11,6 +11,20 @@
 - **时间管理**：明细按天分组展示每日小计，支持月份切换、按分区 / 分类 / 类型筛选
 - 隐私优先：0 权限申请，无网络，无追踪；数据跟随系统备份（云备份 / 换机迁移）
 
+## 界面预览
+
+| 明细（按天分组 + 筛选） | 记一笔（贴图 / 备注 / 时间） |
+|---|---|
+| ![明细](docs/screenshots/ledger.png) | ![记一笔](docs/screenshots/add-entry.png) |
+
+| 统计（占比环形图） | 分区汇总（含分区备注） |
+|---|---|
+| ![统计](docs/screenshots/stats.png) | ![分区汇总](docs/screenshots/stats-by-section.png) |
+
+| 分区管理 | 新建分区（emoji + 备注） |
+|---|---|
+| ![管理](docs/screenshots/manage.png) | ![新建分区](docs/screenshots/new-section-dialog.png) |
+
 ## 技术栈
 
 | 维度 | 选型 |
