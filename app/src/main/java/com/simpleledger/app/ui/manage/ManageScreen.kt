@@ -64,6 +64,7 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.ui.components.ConfirmDialog
 import com.simpleledger.app.util.EmojiChoices
+import com.simpleledger.app.util.Money
 
 private enum class ManageTab { SECTIONS, CATEGORIES }
 
@@ -108,6 +109,12 @@ fun ManageScreen(viewModel: ManageViewModel = viewModel(factory = ManageViewMode
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            Text(
+                text = "分区与分类",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 10.dp),
+            )
             PrimaryTabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("分区") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("分类") })
@@ -149,8 +156,8 @@ fun ManageScreen(viewModel: ManageViewModel = viewModel(factory = ManageViewMode
         SectionDialog(
             initial = sectionDialogTarget,
             onDismiss = { showSectionDialog = false },
-            onSave = { id, name, emoji, note ->
-                viewModel.saveSection(id, name, emoji, note)
+            onSave = { id, name, emoji, note, budgetCents ->
+                viewModel.saveSection(id, name, emoji, note, budgetCents)
                 showSectionDialog = false
             },
         )
@@ -204,15 +211,20 @@ private fun SectionList(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (section.note.isNotBlank()) {
-                            Text(
-                                section.note,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                        Text(
+                            text = buildString {
+                                if (section.budgetCents > 0) {
+                                    append("月度预算 ${Money.formatWithSymbol(section.budgetCents)}")
+                                } else {
+                                    append("未设预算")
+                                }
+                                if (section.note.isNotBlank()) append(" · ${section.note}")
+                            },
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     IconActionButton(
                         Icons.Filled.KeyboardArrowUp,
@@ -361,16 +373,21 @@ private fun IconActionButton(
 
 // ---------------------------------------------------------------- 弹窗
 
-/** 分区新建 / 编辑弹窗：名称 + emoji + 分区备注 */
+/** 分区新建 / 编辑弹窗：名称 + emoji + 月度预算 + 分区备注 */
 @Composable
 private fun SectionDialog(
     initial: SectionEntity?,
     onDismiss: () -> Unit,
-    onSave: (id: Long?, name: String, emoji: String, note: String) -> Unit,
+    onSave: (id: Long?, name: String, emoji: String, note: String, budgetCents: Long) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var emoji by remember { mutableStateOf(initial?.emoji ?: "📌") }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    var budgetText by remember {
+        mutableStateOf(
+            initial?.budgetCents?.takeIf { it > 0 }?.let { Money.formatCents(it).replace(",", "") } ?: ""
+        )
+    }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf(false) }
 
@@ -414,11 +431,34 @@ private fun SectionDialog(
                         showEmojiPicker = false
                     })
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = budgetText,
+                    onValueChange = { input ->
+                        val cleaned = input.filter { it.isDigit() || it == '.' }
+                        val valid = cleaned.contains('.').let { hasDot ->
+                            if (hasDot) {
+                                val parts = cleaned.split('.')
+                                parts.size <= 2 && (parts.getOrNull(1)?.length ?: 0) <= 2
+                            } else {
+                                true
+                            }
+                        }
+                        if (valid && cleaned.length <= 12) budgetText = cleaned
+                    },
+                    placeholder = { Text("月度预算（可留空）") },
+                    prefix = { Text("¥") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
-                    placeholder = { Text("分区备注（如：预算多少、给谁用）") },
+                    placeholder = { Text("分区备注（如：主材与人工，控制在 26 万内）") },
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -430,7 +470,13 @@ private fun SectionDialog(
                     // 校验失败时保持弹窗与已填内容，就地提示
                     nameError = true
                 } else {
-                    onSave(initial?.id, name.trim(), emoji, note)
+                    onSave(
+                        initial?.id,
+                        name.trim(),
+                        emoji,
+                        note,
+                        Money.parseToCents(budgetText) ?: 0L,
+                    )
                 }
             }) { Text("保存") }
         },

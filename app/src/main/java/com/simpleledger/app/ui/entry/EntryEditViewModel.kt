@@ -45,6 +45,8 @@ data class EntryEditUiState(
     val images: List<PendingImage> = emptyList(),
     val loading: Boolean = true,
     val saved: Boolean = false,
+    /** 保存成功后回传给明细页的账目 id（用于「已记入…撤销」提示） */
+    val savedEntryId: Long? = null,
     val error: String? = null,
 )
 
@@ -190,8 +192,8 @@ class EntryEditViewModel(
                         pendingImagePaths = current.images.mapNotNull { it.pendingPath },
                     )
                 )
-            }.onSuccess {
-                _state.update { it.copy(saved = true, error = null) }
+            }.onSuccess { savedId ->
+                _state.update { it.copy(saved = true, savedEntryId = savedId, error = null) }
             }.onFailure { e ->
                 _state.update { it.copy(error = e.message ?: "保存失败") }
             }

@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.logic.CategoryShare
+import com.simpleledger.app.ui.theme.chartPalette
 import com.simpleledger.app.util.Money
 
 /**
@@ -33,7 +34,7 @@ fun CategoryPieChart(
     totalCents: Long,
     modifier: Modifier = Modifier,
 ) {
-    val chartColors = ChartColors
+    val chartColors = chartPalette()
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val holeColor = MaterialTheme.colorScheme.surface
 

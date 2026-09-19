@@ -42,14 +42,23 @@ class ManageViewModel(private val repo: LedgerRepository) : ViewModel() {
 
     // ---------- 分区 ----------
 
-    fun saveSection(id: Long?, name: String, emoji: String, note: String) {
+    fun saveSection(id: Long?, name: String, emoji: String, note: String, budgetCents: Long) {
         if (name.isBlank()) {
             _error.value = "分区名称不能为空"
             return
         }
         viewModelScope.launch {
-            runCatching { repo.saveSection(SectionEntity(id = id ?: 0, name = name.trim(), emoji = emoji, note = note.trim())) }
-                .onFailure { e -> _error.value = e.message ?: "保存失败" }
+            runCatching {
+                repo.saveSection(
+                    SectionEntity(
+                        id = id ?: 0,
+                        name = name.trim(),
+                        emoji = emoji,
+                        note = note.trim(),
+                        budgetCents = budgetCents,
+                    )
+                )
+            }.onFailure { e -> _error.value = e.message ?: "保存失败" }
         }
     }
 

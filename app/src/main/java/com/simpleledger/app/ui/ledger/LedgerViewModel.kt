@@ -11,12 +11,14 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.util.DateTimes
+import com.simpleledger.app.util.Money
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.LocalDate
@@ -102,6 +104,19 @@ class LedgerViewModel(private val repo: LedgerRepository) : ViewModel() {
     fun nextMonth() = month.update { it.plusMonths(1) }
     fun goToday() = month.update { YearMonth.now() }
 
+    /* ---------- 大屏列表–详情双栏 ---------- */
+
+    private val selectedEntryId = MutableStateFlow<Long?>(null)
+
+    /** 右侧详情面板当前选中的账目；编辑后自动刷新 */
+    val selectedEntry: StateFlow<EntryFull?> = selectedEntryId
+        .flatMapLatest { id -> if (id == null) flowOf(null) else repo.observeEntryFull(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun selectEntry(id: Long?) {
+        selectedEntryId.value = id
+    }
+
     fun filterSection(sectionId: Long?) =
         filters.update { it.copy(sectionId = if (it.sectionId == sectionId) null else sectionId) }
 
@@ -110,6 +125,31 @@ class LedgerViewModel(private val repo: LedgerRepository) : ViewModel() {
 
     fun filterCategory(categoryId: Long?) =
         filters.update { it.copy(categoryId = if (it.categoryId == categoryId) null else categoryId) }
+
+    /** 一键清除全部筛选（空态里也提供这个入口） */
+    fun clearFilters() = filters.update { LedgerFilters() }
+
+    /**
+     * 生成保存成功的提示文案，如「🔨 装修 · ¥2,000.00」。
+     * 返回 null 表示条目不存在（例如刚被撤销删除）。
+     */
+    suspend fun describeEntry(entryId: Long): String? {
+        val full = repo.getEntryFull(entryId) ?: return null
+        val amount = Money.formatWithSymbol(full.entry.amountCents)
+        val section = full.section
+        return if (section != null) "${section.emoji} ${section.name} · $amount" else amount
+    }
+
+    /** 撤销删除：把刚保存的账目删掉（提示条里的「撤销」） */
+    suspend fun undoDelete(entryId: Long) {
+        runCatching { repo.deleteEntry(entryId) }
+    }
+
+    /** 大屏详情栏里确认删除：删除后清空选中，避免详情栏指向已不存在的账目 */
+    suspend fun deleteEntryNow(entryId: Long) {
+        runCatching { repo.deleteEntry(entryId) }
+        selectedEntryId.value = null
+    }
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

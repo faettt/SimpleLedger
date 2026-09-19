@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.simpleledger.app.data.local.dao.CategoryDao
 import com.simpleledger.app.data.local.dao.EntryDao
@@ -20,7 +21,7 @@ import com.simpleledger.app.data.local.entity.SectionEntity
         EntryEntity::class,
         EntryImageEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,8 +33,18 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         private const val DB_NAME = "simple_ledger.db"
 
+        /** v1 → v2：分区增加月度预算字段（默认 0 = 未设预算） */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE sections ADD COLUMN budgetCents INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
+                .addMigrations(MIGRATION_1_2)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -45,11 +56,12 @@ abstract class AppDatabase : RoomDatabase() {
         /** 首次启动时预置常用分区与分类，用户可随意增删改 */
         private fun seed(db: SupportSQLiteDatabase) {
             val now = System.currentTimeMillis()
+            // 预算示例：日常开支 5000 元 / 装修 26 万元 / 旅行未设预算
             db.execSQL(
-                "INSERT INTO sections (name, emoji, note, sortOrder, createdAt) VALUES " +
-                    "('日常开支', '📌', '日常生活开销', 0, $now), " +
-                    "('装修', '🔨', '预算 26 万，红线 30 万', 1, $now), " +
-                    "('旅行', '✈️', '出发前把大头订完', 2, $now)"
+                "INSERT INTO sections (name, emoji, note, budgetCents, sortOrder, createdAt) VALUES " +
+                    "('日常开支', '📌', '日常生活开销', 500000, 0, $now), " +
+                    "('装修', '🔨', '主材与人工，控制在 26 万内', 26000000, 1, $now), " +
+                    "('旅行', '✈️', '出发前把大头订完', 0, 2, $now)"
             )
             db.execSQL(
                 "INSERT INTO categories (name, emoji, type, sortOrder) VALUES " +

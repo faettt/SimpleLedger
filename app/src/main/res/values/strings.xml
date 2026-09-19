@@ -2,10 +2,12 @@
 <resources>
     <string name="app_name">简账</string>
 
-    <!-- 底部导航 -->
+    <!-- 一级导航：明细 · 统计 · 记一笔 · 分区 · 我的 -->
     <string name="nav_ledger">明细</string>
     <string name="nav_stats">统计</string>
-    <string name="nav_manage">管理</string>
+    <string name="nav_sections">分区</string>
+    <string name="nav_mine">我的</string>
+    <string name="nav_record">记一笔</string>
 
     <!-- 通用 -->
     <string name="expense">支出</string>
@@ -55,5 +57,50 @@
     <!-- 明细 -->
     <string name="ledger_empty">本月暂无账目</string>
     <string name="filter_category">分类</string>
+    <string name="filter_clear_all">清除全部筛选</string>
     <string name="entry_count">%1$d 笔</string>
+
+    <!-- 保存反馈 -->
+    <string name="saved_toast">已记入 %1$s</string>
+    <string name="updated_toast">已更新 %1$s</string>
+    <string name="undo">撤销</string>
+    <string name="entry_deleted">已删除这笔账目</string>
+
+    <!-- 分区预算 -->
+    <string name="budget_title">月度预算</string>
+    <string name="budget_hint">月度预算（可留空）</string>
+    <string name="budget_progress">%1$s / %2$s</string>
+    <string name="budget_remaining">剩余 %1$s</string>
+    <string name="budget_over">⚠ 已超支 %1$s</string>
+    <string name="budget_none">未设预算</string>
+    <string name="stats_budget">分区预算</string>
+
+    <!-- 我的 / 设置 -->
+    <string name="mine_privacy_title">数据只在这台手机上</string>
+    <string name="mine_privacy_desc">未申请任何权限 · 不联网 · 不收集任何信息</string>
+    <string name="mine_group_appearance">外观</string>
+    <string name="mine_theme">主题</string>
+    <string name="mine_dynamic_color">动态取色</string>
+    <string name="mine_dynamic_color_desc">跟随壁纸配色（Material You）</string>
+    <string name="mine_group_data">数据</string>
+    <string name="mine_export_csv">导出 CSV</string>
+    <string name="mine_export_csv_desc">含全部账目，可用 Excel 打开</string>
+    <string name="mine_backup">完整备份</string>
+    <string name="mine_backup_desc">数据库 + 全部贴图，打包为一个文件</string>
+    <string name="mine_restore">从备份恢复</string>
+    <string name="mine_restore_desc">选择备份文件覆盖当前数据</string>
+    <string name="mine_group_security">安全</string>
+    <string name="mine_hide_amounts">隐藏金额</string>
+    <string name="mine_hide_amounts_desc">金额显示为 ••••</string>
+    <string name="mine_group_about">关于</string>
+    <string name="mine_version">版本</string>
+    <string name="mine_entry_total">共 %1$d 笔账目 · %2$d 个分区 · %3$d 个分类</string>
+    <string name="mine_working">正在生成…</string>
+    <string name="mine_export_done">已导出：%1$s</string>
+    <string name="mine_export_failed">导出失败，请重试</string>
+    <string name="mine_backup_done">备份已生成</string>
+    <string name="mine_restore_confirm">恢复会覆盖当前全部数据，且无法撤销。确定继续吗？</string>
+    <string name="mine_restore_done">恢复完成，请重新打开应用</string>
+    <string name="mine_restore_failed">恢复失败，已保留原有数据</string>
+    <string name="mine_share">分享 / 保存到其它应用</string>
 </resources>

@@ -1,14 +1,18 @@
 package com.simpleledger.app.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,13 +32,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.time.YearMonth
 
-/** 月份切换头部：‹ 2026年9月 ›  今天 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 月份切换头部：‹ 2026年9月 ›  今天  [尾部插槽] */
 @Composable
 fun MonthHeader(
     month: YearMonth,
@@ -42,6 +47,7 @@ fun MonthHeader(
     onNext: () -> Unit,
     onToday: () -> Unit,
     modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -62,9 +68,13 @@ fun MonthHeader(
         IconButton(onClick = onNext) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
         }
-        TextButton(onClick = onToday) {
-            Text("今天")
+        TextButton(
+            onClick = onToday,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+        ) {
+            Text("今天", fontSize = 13.sp)
         }
+        trailing?.invoke()
     }
 }
 
@@ -76,30 +86,52 @@ fun MoneyText(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 16.sp,
 ) {
+    val hidden = LocalHideAmounts.current
     val color = if (isIncome) incomeColor() else MaterialTheme.colorScheme.onSurface
     val sign = if (isIncome) "+" else "-"
     Text(
-        text = sign + Money.formatWithSymbol(kotlin.math.abs(amountCents)),
+        text = if (hidden) "$sign••••" else sign + Money.formatWithSymbol(kotlin.math.abs(amountCents)),
         color = color,
         fontSize = fontSize,
         fontWeight = FontWeight.Medium,
+        style = TabularNums,
         modifier = modifier,
     )
 }
 
-/** 空状态提示 */
+/** 空状态提示：可附带一个明确的下一步动作 */
 @Composable
-fun EmptyHint(text: String, modifier: Modifier = Modifier) {
+fun EmptyHint(
+    text: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🗒️", fontSize = 42.sp)
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("🗒️", fontSize = 28.sp)
+            }
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 14.dp, start = 32.dp, end = 32.dp),
                 textAlign = TextAlign.Center,
             )
+            if (actionLabel != null && onAction != null) {
+                Button(
+                    onClick = onAction,
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
+                    Text(actionLabel)
+                }
+            }
         }
     }
 }
@@ -128,9 +160,14 @@ fun ConfirmDialog(
     )
 }
 
-/** 饼图配色循环 */
-val ChartColors = listOf(
-    Color(0xFF0F766E), Color(0xFF0E7490), Color(0xFF7C3AED), Color(0xFFDB2777),
-    Color(0xFFEA580C), Color(0xFF16A34A), Color(0xFF2563EB), Color(0xFFCA8A04),
-    Color(0xFF9333EA), Color(0xFFDC2626),
-)
+/** 分组标题（设置类页面） */
+@Composable
+fun GroupLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        fontSize = 12.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+    )
+}

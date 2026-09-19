@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅暴露导出目录（cacheDir/exports），其余应用私有数据一律不可共享。
+  这样既能让用户把 CSV / 备份发给其它应用，又不需要申请任何存储权限。
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

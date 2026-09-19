@@ -73,6 +73,7 @@ import coil3.compose.AsyncImage
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
+import com.simpleledger.app.util.Money
 import java.io.File
 import java.time.LocalTime
 import java.time.ZoneId
@@ -82,7 +83,7 @@ import java.time.ZoneOffset
 @Composable
 fun EntryEditScreen(
     entryId: Long,
-    onDone: () -> Unit,
+    onDone: (Long?) -> Unit,
     viewModel: EntryEditViewModel = viewModel(
         key = "entry_$entryId",
         factory = EntryEditViewModel.factory(entryId),
@@ -101,7 +102,7 @@ fun EntryEditScreen(
     }
 
     LaunchedEffect(state.saved) {
-        if (state.saved) onDone()
+        if (state.saved) onDone(state.savedEntryId)
     }
     LaunchedEffect(state.error) {
         state.error?.let { message ->
@@ -117,7 +118,7 @@ fun EntryEditScreen(
             TopAppBar(
                 title = { Text(if (state.isEdit) "编辑账目" else "记一笔") },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = { onDone(null) }) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "返回")
                     }
                 },
@@ -209,13 +210,21 @@ fun EntryEditScreen(
                 }
             }
             val currentSection = state.sections.firstOrNull { it.id == state.selectedSectionId }
-            if (currentSection != null && currentSection.note.isNotBlank()) {
-                Text(
-                    "📌 ${currentSection.note}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+            if (currentSection != null) {
+                val hints = buildList {
+                    if (currentSection.note.isNotBlank()) add("📌 ${currentSection.note}")
+                    if (currentSection.budgetCents > 0) {
+                        add("月度预算 ${Money.formatWithSymbol(currentSection.budgetCents)}")
+                    }
+                }
+                if (hints.isNotEmpty()) {
+                    Text(
+                        text = hints.joinToString(" · "),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

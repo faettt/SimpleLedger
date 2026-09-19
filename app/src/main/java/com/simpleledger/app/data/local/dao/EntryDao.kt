@@ -73,10 +73,11 @@ interface EntryDao {
         sectionId: Long?,
     ): Flow<List<CategoryTotal>>
 
-    /** 按分区汇总（含分区备注） */
+    /** 按分区汇总（含分区备注与月度预算） */
     @Query(
         """
         SELECT e.sectionId AS sectionId, s.name AS name, s.emoji AS emoji, s.note AS note,
+               s.budgetCents AS budgetCents,
                COALESCE(SUM(CASE WHEN e.type = 0 THEN e.amountCents ELSE 0 END), 0) AS expense,
                COALESCE(SUM(CASE WHEN e.type = 1 THEN e.amountCents ELSE 0 END), 0) AS income,
                COUNT(*) AS count
@@ -90,6 +91,16 @@ interface EntryDao {
     @Transaction
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getEntryFull(id: Long): EntryFull?
+
+    /** 大屏列表–详情：选中账目的实时数据（编辑后自动刷新） */
+    @Transaction
+    @Query("SELECT * FROM entries WHERE id = :id")
+    fun observeEntryFull(id: Long): Flow<EntryFull?>
+
+    /** 导出用：全部账目（按时间正序），带分类 / 分区 / 贴图 */
+    @Transaction
+    @Query("SELECT * FROM entries ORDER BY entryTime ASC, id ASC")
+    suspend fun allEntriesFull(): List<EntryFull>
 
     @Query("SELECT * FROM entry_images WHERE entryId = :entryId ORDER BY sortOrder, id")
     suspend fun imagesOf(entryId: Long): List<EntryImageEntity>
@@ -121,4 +132,14 @@ interface EntryDao {
 
     @Query("SELECT COUNT(*) FROM entries WHERE sectionId = :sectionId")
     suspend fun countBySection(sectionId: Long): Int
+
+    // 「我的」页概览统计
+    @Query("SELECT COUNT(*) FROM entries")
+    suspend fun countAllEntries(): Int
+
+    @Query("SELECT COUNT(*) FROM sections")
+    suspend fun countAllSections(): Int
+
+    @Query("SELECT COUNT(*) FROM categories")
+    suspend fun countAllCategories(): Int
 }

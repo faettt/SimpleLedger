@@ -15,7 +15,7 @@ object EntryType {
 
 /**
  * 分区：账目的一级分组（如「日常开支」「装修」「旅行」）。
- * 每个分区可以有自己的备注（分区备注），会展示在管理与统计页面。
+ * 每个分区可以有自己的备注（分区备注）与月度预算，会展示在管理与统计页面。
  */
 @Entity(tableName = "sections")
 data class SectionEntity(
@@ -23,6 +23,8 @@ data class SectionEntity(
     val name: String,
     val emoji: String = "📌",
     val note: String = "",
+    /** 月度预算，单位：分；0 表示未设置预算 */
+    val budgetCents: Long = 0,
     val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
 )
@@ -125,12 +127,13 @@ data class CategoryTotal(
     val count: Int,
 )
 
-/** 按分区汇总（含分区备注，供统计页展示） */
+/** 按分区汇总（含分区备注与月度预算，供统计页展示） */
 data class SectionTotal(
     val sectionId: Long,
     val name: String,
     val emoji: String,
     val note: String,
+    val budgetCents: Long = 0,
     val expense: Long,
     val income: Long,
     val count: Int,

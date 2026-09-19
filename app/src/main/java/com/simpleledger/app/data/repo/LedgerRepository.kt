@@ -2,15 +2,19 @@ package com.simpleledger.app.data.repo
 
 import android.net.Uri
 import androidx.room.withTransaction
+import com.simpleledger.app.data.export.ExportRow
 import com.simpleledger.app.data.local.AppDatabase
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.CategoryTotal
 import com.simpleledger.app.data.local.entity.EntryEntity
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryImageEntity
+import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.local.entity.TypeTotal
+import com.simpleledger.app.util.DateTimes
+import com.simpleledger.app.util.Money
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -156,6 +160,32 @@ class LedgerRepository(
     // ---------- 账目 ----------
 
     suspend fun getEntryFull(id: Long): EntryFull? = entryDao.getEntryFull(id)
+
+    /** 大屏详情面板用：观察单条账目（编辑后自动刷新） */
+    fun observeEntryFull(id: Long): Flow<EntryFull?> = entryDao.observeEntryFull(id)
+
+    /** 「我的」页概览：账目 / 分区 / 分类 数量 */
+    suspend fun counts(): Triple<Int, Int, Int> = Triple(
+        entryDao.countAllEntries(),
+        entryDao.countAllSections(),
+        entryDao.countAllCategories(),
+    )
+
+    /** 导出用：把全部账目拍平成可写入 CSV 的行 */
+    suspend fun allEntriesForExport(): List<ExportRow> =
+        entryDao.allEntriesFull().map { full ->
+            ExportRow(
+                date = DateTimes.toLocalDate(full.entry.entryTime).toString(),
+                time = DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)),
+                typeLabel = if (full.entry.type == EntryType.EXPENSE) "支出" else "收入",
+                amountYuan = Money.formatCents(full.entry.amountCents).replace(",", ""),
+                category = full.category?.name ?: "未分类",
+                section = full.section?.name ?: "未分区",
+                sectionNote = full.section?.note ?: "",
+                note = full.entry.note,
+                imageCount = full.images.size,
+            )
+        }
 
     /**
      * 选图回调时立即调用：把系统相册返回的 Uri 读入缓存待入库目录。
