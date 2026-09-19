@@ -154,7 +154,12 @@ fun LedgerScreen(
             }
 
             if (state.isEmpty) {
-                EmptyHint("本月暂无账目，点右下角记一笔吧")
+                val hasFilter = state.filters.sectionId != null ||
+                    state.filters.categoryId != null ||
+                    state.filters.type != null
+                EmptyHint(
+                    if (hasFilter) "当前筛选条件下没有账目，换个条件试试" else "本月暂无账目，点右下角记一笔吧"
+                )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     state.groups.forEach { group ->

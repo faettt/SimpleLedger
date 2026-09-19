@@ -25,7 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -118,7 +118,7 @@ fun EntryEditScreen(
                 title = { Text(if (state.isEdit) "编辑账目" else "记一笔") },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "返回")
                     }
                 },
                 actions = {
@@ -254,7 +254,7 @@ fun EntryEditScreen(
                 items(state.images, key = { it.key }) { image ->
                     Box(modifier = Modifier.size(84.dp)) {
                         AsyncImage(
-                            model = image.existingPath?.let { File(it) } ?: image.newUri,
+                            model = image.localPath?.let { File(it) },
                             contentDescription = "贴图",
                             modifier = Modifier
                                 .fillMaxSize()

@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -50,7 +50,7 @@ fun MonthHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onPrev) {
-            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "上个月")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上个月")
         }
         Text(
             text = DateTimes.monthLabel(month),
@@ -60,7 +60,7 @@ fun MonthHeader(
             textAlign = TextAlign.Center,
         )
         IconButton(onClick = onNext) {
-            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "下个月")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
         }
         TextButton(onClick = onToday) {
             Text("今天")

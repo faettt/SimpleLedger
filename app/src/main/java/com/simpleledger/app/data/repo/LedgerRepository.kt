@@ -26,8 +26,8 @@ data class EntryDraft(
     val note: String,
     /** 编辑后仍然保留的既有图片路径（顺序即展示顺序） */
     val keptImagePaths: List<String> = emptyList(),
-    /** 新增图片的来源 Uri */
-    val newImageUris: List<Uri> = emptyList(),
+    /** 已读入 cache、等待入库的新图片路径 */
+    val pendingImagePaths: List<String> = emptyList(),
 )
 
 class LedgerRepository(
@@ -157,42 +157,81 @@ class LedgerRepository(
 
     suspend fun getEntryFull(id: Long): EntryFull? = entryDao.getEntryFull(id)
 
+    /**
+     * 选图回调时立即调用：把系统相册返回的 Uri 读入缓存待入库目录。
+     * 必须在这一刻读取——Photo Picker 授予的 Uri 读权限是短时效的。
+     */
+    suspend fun importPendingImage(uri: Uri): String? = imageStorage.importToPending(uri)
+
     /** 新建 / 编辑并保存（含贴图同步），返回条目 id */
-    suspend fun saveEntry(draft: EntryDraft): Long = db.withTransaction {
-        val now = System.currentTimeMillis()
-        val entry = EntryEntity(
-            id = draft.id ?: 0L,
-            type = draft.type,
-            amountCents = draft.amountCents,
-            categoryId = draft.categoryId,
-            sectionId = draft.sectionId,
-            entryTime = draft.entryTime,
-            note = draft.note.trim(),
-            createdAt = if (draft.id == null) now else entryDao.getEntryFull(draft.id)?.entry?.createdAt ?: now,
-            updatedAt = now,
-        )
-        val entryId = if (draft.id == null) {
-            entryDao.insertEntry(entry)
-        } else {
-            entryDao.updateEntry(entry)
-            draft.id
-        }
-
-        // 同步贴图：新图入库，取消选择的旧图删除（文件 + 记录）
-        val importedPaths = draft.newImageUris.mapNotNull { imageStorage.import(it) }
-        val currentImages = entryDao.imagesOf(entryId)
+    suspend fun saveEntry(draft: EntryDraft): Long {
+        // 1) 事务外先把待入库图片移入正式目录（文件操作，不占用数据库事务）
+        val promoted = draft.pendingImagePaths.map { path -> path to imageStorage.promoteToStorage(path) }
+        val importedPaths = promoted.mapNotNull { it.second }
+        val failedPendingPaths = promoted.filter { it.second == null }.map { it.first }
         val keptSet = (draft.keptImagePaths + importedPaths).toSet()
-        val removedPaths = currentImages.map { it.filePath }.filter { it !in keptSet }
-        entryDao.removeImagesNotIn(entryId, keptSet.toList())
-        imageStorage.deleteFiles(removedPaths)
 
-        val keptCount = draft.keptImagePaths.size
-        entryDao.insertImages(
-            importedPaths.mapIndexed { index, path ->
-                EntryImageEntity(entryId = entryId, filePath = path, sortOrder = keptCount + index)
+        return try {
+            // 2) 事务内写库，保证账目与贴图记录一致
+            val (entryId, removedPaths) = db.withTransaction {
+                val now = System.currentTimeMillis()
+                val entry = EntryEntity(
+                    id = draft.id ?: 0L,
+                    type = draft.type,
+                    amountCents = draft.amountCents,
+                    categoryId = draft.categoryId,
+                    sectionId = draft.sectionId,
+                    entryTime = draft.entryTime,
+                    note = draft.note.trim(),
+                    createdAt = if (draft.id == null) {
+                        now
+                    } else {
+                        entryDao.getEntryFull(draft.id)?.entry?.createdAt ?: now
+                    },
+                    updatedAt = now,
+                )
+                val savedId = if (draft.id == null) {
+                    entryDao.insertEntry(entry)
+                } else {
+                    entryDao.updateEntry(entry)
+                    draft.id
+                }
+
+                // 同步贴图：保留用户留下的 + 新入库的，其余记录删除
+                val removed = entryDao.imagesOf(savedId)
+                    .map { it.filePath }
+                    .filter { it !in keptSet }
+                if (keptSet.isEmpty()) {
+                    // NOT IN () 在 SQLite 中是非法语法，空集合必须走单独分支
+                    entryDao.deleteImagesOf(savedId)
+                } else {
+                    entryDao.removeImagesNotIn(savedId, keptSet.toList())
+                }
+
+                val keptCount = draft.keptImagePaths.size
+                entryDao.insertImages(
+                    importedPaths.mapIndexed { index, path ->
+                        EntryImageEntity(entryId = savedId, filePath = path, sortOrder = keptCount + index)
+                    }
+                )
+                savedId to removed
             }
-        )
-        entryId
+
+            // 3) 事务提交后再做文件清理，保证回滚时不会提前丢文件
+            if (removedPaths.isNotEmpty()) {
+                imageStorage.deleteFiles(removedPaths)
+            }
+            if (failedPendingPaths.isNotEmpty()) {
+                imageStorage.deleteFiles(failedPendingPaths)
+            }
+            entryId
+        } catch (throwable: Throwable) {
+            // 事务回滚时回收已入库的图片文件，避免留下孤儿文件
+            if (importedPaths.isNotEmpty()) {
+                imageStorage.deleteFiles(importedPaths)
+            }
+            throw throwable
+        }
     }
 
     suspend fun deleteEntry(id: Long) {

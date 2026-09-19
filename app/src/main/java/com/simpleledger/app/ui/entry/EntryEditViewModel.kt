@@ -23,12 +23,13 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 
-/** 一张贴图：既有图（已存储路径）或新图（待导入 Uri） */
+/** 一张贴图：已入库的既有图，或刚选好待在缓存中入库的新图 */
 data class PendingImage(
     val existingPath: String? = null,
-    val newUri: Uri? = null,
+    val pendingPath: String? = null,
 ) {
-    val key: String get() = existingPath ?: newUri.toString()
+    val key: String get() = existingPath ?: pendingPath ?: ""
+    val localPath: String? get() = existingPath ?: pendingPath
 }
 
 data class EntryEditUiState(
@@ -139,8 +140,20 @@ class EntryEditViewModel(
         setDate(date)
     }
 
-    fun addImages(uris: List<Uri>) = _state.update {
-        it.copy(images = it.images + uris.map { uri -> PendingImage(newUri = uri) })
+    /** 选好图片后立即读入缓存（此时 Uri 读权限有效），失败会提示用户 */
+    fun addImages(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val imported = uris.map { uri -> repo.importPendingImage(uri) }
+            val success = imported.filterNotNull()
+            val failedCount = imported.size - success.size
+            _state.update { old ->
+                old.copy(
+                    images = old.images + success.map { PendingImage(pendingPath = it) },
+                    error = if (failedCount > 0) "有 $failedCount 张图片读取失败，请换一张试试" else old.error,
+                )
+            }
+        }
     }
 
     fun removeImage(index: Int) = _state.update {
@@ -174,7 +187,7 @@ class EntryEditViewModel(
                         entryTime = current.entryTime,
                         note = current.note,
                         keptImagePaths = current.images.mapNotNull { it.existingPath },
-                        newImageUris = current.images.mapNotNull { it.newUri },
+                        pendingImagePaths = current.images.mapNotNull { it.pendingPath },
                     )
                 )
             }.onSuccess {

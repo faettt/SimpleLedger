@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -40,7 +41,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -107,7 +108,7 @@ fun ManageScreen(viewModel: ManageViewModel = viewModel(factory = ManageViewMode
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = tab) {
+            PrimaryTabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("分区") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("分类") })
             }
@@ -180,7 +181,7 @@ private fun SectionList(
 ) {
     var deleteTarget by remember { mutableStateOf<SectionEntity?>(null) }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(sections, key = { it.id }) { section ->
+        itemsIndexed(sections, key = { _, section -> section.id }) { index, section ->
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -200,17 +201,29 @@ private fun SectionList(
                             section.name,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         if (section.note.isNotBlank()) {
                             Text(
                                 section.note,
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
-                    IconActionButton(Icons.Filled.KeyboardArrowUp, "上移") { onMove(section.id, -1) }
-                    IconActionButton(Icons.Filled.KeyboardArrowDown, "下移") { onMove(section.id, +1) }
+                    IconActionButton(
+                        Icons.Filled.KeyboardArrowUp,
+                        "上移",
+                        enabled = index > 0,
+                    ) { onMove(section.id, -1) }
+                    IconActionButton(
+                        Icons.Filled.KeyboardArrowDown,
+                        "下移",
+                        enabled = index < sections.lastIndex,
+                    ) { onMove(section.id, +1) }
                     IconActionButton(Icons.Filled.Edit, "编辑") { onEdit(section) }
                     IconActionButton(Icons.Filled.Delete, "删除", tint = MaterialTheme.colorScheme.error) {
                         deleteTarget = section
@@ -270,7 +283,7 @@ private fun CategoryList(
         }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(categories, key = { it.id }) { category ->
+            itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -291,8 +304,16 @@ private fun CategoryList(
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f),
                         )
-                        IconActionButton(Icons.Filled.KeyboardArrowUp, "上移") { onMove(category.id, -1) }
-                        IconActionButton(Icons.Filled.KeyboardArrowDown, "下移") { onMove(category.id, +1) }
+                        IconActionButton(
+                            Icons.Filled.KeyboardArrowUp,
+                            "上移",
+                            enabled = index > 0,
+                        ) { onMove(category.id, -1) }
+                        IconActionButton(
+                            Icons.Filled.KeyboardArrowDown,
+                            "下移",
+                            enabled = index < categories.lastIndex,
+                        ) { onMove(category.id, +1) }
                         IconActionButton(Icons.Filled.Edit, "编辑") { onEdit(category) }
                         IconActionButton(Icons.Filled.Delete, "删除", tint = MaterialTheme.colorScheme.error) {
                             deleteTarget = category
@@ -324,11 +345,17 @@ private fun CategoryList(
 private fun IconActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
+    enabled: Boolean = true,
     tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(19.dp))
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) tint else tint.copy(alpha = 0.28f),
+            modifier = Modifier.size(19.dp),
+        )
     }
 }
 
@@ -345,6 +372,7 @@ private fun SectionDialog(
     var emoji by remember { mutableStateOf(initial?.emoji ?: "📌") }
     var note by remember { mutableStateOf(initial?.note ?: "") }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var nameError by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -364,9 +392,18 @@ private fun SectionDialog(
                     Spacer(modifier = Modifier.width(10.dp))
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
+                        onValueChange = {
+                            name = it
+                            if (nameError && it.isNotBlank()) nameError = false
+                        },
                         placeholder = { Text("分区名称") },
                         singleLine = true,
+                        isError = nameError,
+                        supportingText = if (nameError) {
+                            { Text("分区名称不能为空") }
+                        } else {
+                            null
+                        },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -388,7 +425,14 @@ private fun SectionDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(initial?.id, name, emoji, note) }) { Text("保存") }
+            TextButton(onClick = {
+                if (name.isBlank()) {
+                    // 校验失败时保持弹窗与已填内容，就地提示
+                    nameError = true
+                } else {
+                    onSave(initial?.id, name.trim(), emoji, note)
+                }
+            }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
@@ -406,6 +450,7 @@ private fun CategoryDialog(
     var emoji by remember { mutableStateOf(initial?.emoji ?: "🏷️") }
     var type by remember { mutableStateOf(initial?.type ?: defaultType) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var nameError by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -425,9 +470,18 @@ private fun CategoryDialog(
                     Spacer(modifier = Modifier.width(10.dp))
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
+                        onValueChange = {
+                            name = it
+                            if (nameError && it.isNotBlank()) nameError = false
+                        },
                         placeholder = { Text("分类名称") },
                         singleLine = true,
+                        isError = nameError,
+                        supportingText = if (nameError) {
+                            { Text("分类名称不能为空") }
+                        } else {
+                            null
+                        },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -454,7 +508,13 @@ private fun CategoryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(initial?.id, name, emoji, type) }) { Text("保存") }
+            TextButton(onClick = {
+                if (name.isBlank()) {
+                    nameError = true
+                } else {
+                    onSave(initial?.id, name.trim(), emoji, type)
+                }
+            }) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )

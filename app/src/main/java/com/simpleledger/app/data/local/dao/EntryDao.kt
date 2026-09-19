@@ -112,6 +112,10 @@ interface EntryDao {
     )
     suspend fun removeImagesNotIn(entryId: Long, keptPaths: List<String>)
 
+    /** 保留列表为空时使用，等价于清空该账目的全部贴图记录 */
+    @Query("DELETE FROM entry_images WHERE entryId = :entryId")
+    suspend fun deleteImagesOf(entryId: Long)
+
     @Query("SELECT COUNT(*) FROM entries WHERE categoryId = :categoryId")
     suspend fun countByCategory(categoryId: Long): Int
 
