@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 隐私优先：本应用不需要任何权限，数据全部保存在本机 -->
+    <!--
+        隐私优先：本应用不需要任何**运行时**权限，数据全部保存在本机。
+        USE_BIOMETRIC 是 normal 权限，安装即授予、不会向用户弹框；仅用于「应用锁」调用
+        BiometricPrompt。截屏保护（FLAG_SECURE）与导出（FileProvider 临时授权）均无需存储权限。
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:name=".LedgerApp"
@@ -15,9 +20,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SimpleLedger">
 
+        <!--
+            configChanges：折叠屏展开/折叠、旋转都是高频且连续的动作（用户展开就是为了继续
+            当前操作），默认重建会丢掉输入内容。这些配置项变更时窗口尺寸会变化，Compose 会
+            重新计算 BoxWithConstraints 的 maxWidth/maxHeight 并自动重组，深色模式由
+            isSystemInDarkTheme() 监听 Configuration 自然生效，无需手工刷新。
+            另：editingEntryId 已用 rememberSaveable，即使仍有未覆盖的配置项导致重建，也能恢复。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.SimpleLedger">
             <intent-filter>

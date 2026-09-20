@@ -39,7 +39,12 @@ import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.time.YearMonth
 
-/** 月份切换头部：‹ 2026年9月 ›  今天  [尾部插槽] */
+/**
+ * 月份切换头部：‹ 2026年9月 ›  今天  [尾部插槽]
+ *
+ * [todayVisible] 由调用方决定：「今天」只在非当前月时才有意义。明细页尾部还要放
+ * 「搜索」「筛选」，四个控件挤在一行会互相压迫，所以回到本月时把「今天」收起来。
+ */
 @Composable
 fun MonthHeader(
     month: YearMonth,
@@ -47,6 +52,7 @@ fun MonthHeader(
     onNext: () -> Unit,
     onToday: () -> Unit,
     modifier: Modifier = Modifier,
+    todayVisible: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -68,11 +74,13 @@ fun MonthHeader(
         IconButton(onClick = onNext) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
         }
-        TextButton(
-            onClick = onToday,
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-        ) {
-            Text("今天", fontSize = 13.sp)
+        if (todayVisible) {
+            TextButton(
+                onClick = onToday,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("今天", fontSize = 13.sp)
+            }
         }
         trailing?.invoke()
     }

@@ -75,6 +75,34 @@ class ImageStorage(private val context: Context) {
     }
 
     /**
+     * 删除账目时把贴图「暂存」而非直接销毁，让 4 秒撤销窗口内可以完整恢复。
+     * 返回暂存后的新路径（顺序与入参一致，失败的项被丢弃）。
+     */
+    suspend fun parkFiles(paths: List<String>): List<String> = withContext(Dispatchers.IO) {
+        paths.mapNotNull { path ->
+            runCatching {
+                val source = File(path)
+                if (!source.exists()) return@runCatching null
+                val target = File(parkedDir, "${UUID.randomUUID()}_${source.name}")
+                if (!source.renameTo(target)) {
+                    source.copyTo(target, overwrite = true)
+                    source.delete()
+                }
+                target.absolutePath
+            }.onFailure { Log.e(TAG, "暂存贴图失败: $path", it) }.getOrNull()
+        }
+    }
+
+    /** 暂存目录：撤销窗口过后（或下次启动时）统一清理 */
+    suspend fun cleanParkedFiles() = withContext(Dispatchers.IO) {
+        runCatching { parkedDir.listFiles()?.forEach { it.delete() } }
+        Unit
+    }
+
+    private val parkedDir: File
+        get() = File(context.cacheDir, "parked_images").apply { mkdirs() }
+
+    /**
      * 只打开一次输入流读取全部字节，再从字节数组解码两次（探尺寸 + 实际解码）。
      *
      * 不能对同一个 content Uri 反复 openInputStream：Photo Picker 授予的临时读权限

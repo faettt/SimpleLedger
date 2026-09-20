@@ -47,7 +47,7 @@ class DataExporter(
                             row.sectionNote,
                             row.note,
                             row.imageCount.toString(),
-                        ).joinToString(",") { escape(it) }
+                        ).joinToString(",") { CsvFormat.escape(it) }
                     )
                     writer.write("\n")
                 }
@@ -141,13 +141,6 @@ class DataExporter(
         runCatching { File(context.cacheDir, "exports").listFiles()?.forEach { it.delete() } }
         Unit
     }
-
-    private fun escape(value: String): String =
-        if (value.contains(',') || value.contains('"') || value.contains('\n')) {
-            "\"" + value.replace("\"", "\"\"") + "\""
-        } else {
-            value
-        }
 
     private fun timestamp(): String =
         LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))

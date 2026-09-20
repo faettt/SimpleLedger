@@ -10,3 +10,8 @@
 local.properties
 /app/build
 .kotlin
+
+# 发布签名：私钥与口令绝不可入库（缺失时构建自动退回 debug 签名）
+keystore.properties
+*.jks
+*.keystore

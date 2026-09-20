@@ -23,7 +23,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -43,6 +48,7 @@ import androidx.navigation.compose.rememberNavController
 import com.simpleledger.app.R
 import com.simpleledger.app.ui.entry.EntryEditScreen
 import com.simpleledger.app.ui.ledger.LedgerScreen
+import com.simpleledger.app.ui.ledger.NEW_ENTRY_ID
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
 import com.simpleledger.app.ui.manage.ManageScreen
 import com.simpleledger.app.ui.mine.MineScreen
@@ -76,9 +82,21 @@ private val navItems = listOf(
     NavItem(Routes.MINE, R.string.nav_mine, "👤"),
 )
 
-/** 窗口尺寸类阈值（dp）：<600 手机 · 600–840 折叠屏/小平板 · ≥840 大屏 */
+/** 窗口尺寸类：基于**窗口宽度**判定（内容区会被 Navigation Rail 占宽，不能用作判据） */
+enum class WindowLayout { Compact, Medium, Expanded }
+
+/** 窗口尺寸类阈值（dp）：<600 手机 · 600–840 折叠屏 / 小平板 · ≥840 大屏 */
 private val RAIL_THRESHOLD = 600.dp
 private val EXPANDED_THRESHOLD = 840.dp
+
+/**
+ * 矮窗口阈值（dp）：低于此高度视为「紧凑高度」。
+ *
+ * 宽度决定**布局形态**（单栏 / Rail+单栏 / 列表–详情双栏），高度决定**信息密度**——
+ * 两者正交。手机横屏（如 891×412dp）宽度足以触发 Rail，但可用高度只有 412dp，
+ * 再用大屏的宽松尺寸会横向挤占本就稀缺的内容宽度，故此处单独收紧。
+ */
+private val DENSE_HEIGHT_THRESHOLD = 480.dp
 
 @Composable
 fun AppRoot() {
@@ -87,33 +105,72 @@ fun AppRoot() {
     val currentRoute = backStackEntry?.destination?.route
     val showNavigation = currentRoute in Routes.topLevel
 
+    // 编辑态上提到这里：大屏的「记一笔」应打开列表页内的面板，而不是跳转路由。
+    // 用 rememberSaveable 而非 remember：折叠屏展开/折叠、旋转都会触发配置变更，
+    // 若 Activity 因故重建（例如系统回收或未覆盖的配置项），remember 会丢掉正在编辑的账目。
+    var editingEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    // 折叠态：真读 FoldingFeature（非分隔铰链已被过滤），带铰链矩形供明细页做避让计算
+    val foldInfo = rememberFoldInfo()
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val useRail = maxWidth >= RAIL_THRESHOLD
-        val railExpanded = maxWidth >= EXPANDED_THRESHOLD
+        val layout = when {
+            maxWidth >= EXPANDED_THRESHOLD -> WindowLayout.Expanded
+            maxWidth >= RAIL_THRESHOLD -> WindowLayout.Medium
+            else -> WindowLayout.Compact
+        }
+        // 只影响尺寸参数，不翻转上面按宽度做的形态判定
+        val dense = maxHeight < DENSE_HEIGHT_THRESHOLD
+        // 水平铰链（上下分屏 / 桌面姿态）下左右双栏没有意义，降级为「Rail + 单栏」
+        val effectiveLayout =
+            if (foldInfo.state == FoldState.HorizontalFold && layout == WindowLayout.Expanded) {
+                WindowLayout.Medium
+            } else {
+                layout
+            }
+
+        // 离开明细页时收起编辑面板，避免切回来时它又冒出来
+        LaunchedEffect(currentRoute) {
+            if (currentRoute != Routes.LEDGER) editingEntryId = null
+        }
+
+        val startCreate: () -> Unit = {
+            if (effectiveLayout == WindowLayout.Compact) {
+                navController.navigate(Routes.entryEdit(NEW_ENTRY_ID))
+            } else {
+                editingEntryId = NEW_ENTRY_ID
+            }
+        }
 
         Scaffold(
             bottomBar = {
-                if (!useRail && showNavigation) {
+                if (effectiveLayout == WindowLayout.Compact && showNavigation) {
                     LedgerBottomBar(
                         currentRoute = currentRoute,
                         onNavigate = navController::navigateTopLevel,
-                        onRecord = { navController.navigate(Routes.entryEdit(-1L)) },
+                        onRecord = startCreate,
                     )
                 }
             },
         ) { innerPadding ->
             Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                if (useRail && showNavigation) {
+                if (effectiveLayout != WindowLayout.Compact && showNavigation) {
                     LedgerNavRail(
                         currentRoute = currentRoute,
-                        expanded = railExpanded,
+                        expanded = effectiveLayout == WindowLayout.Expanded,
+                        dense = dense,
                         onNavigate = navController::navigateTopLevel,
-                        onRecord = { navController.navigate(Routes.entryEdit(-1L)) },
+                        onRecord = startCreate,
                     )
                 }
                 AppNavHost(
                     navController = navController,
-                    twoPane = railExpanded,
+                    layout = effectiveLayout,
+                    dense = dense,
+                    foldInfo = foldInfo,
+                    editingEntryId = editingEntryId,
+                    onStartEdit = { id -> editingEntryId = id },
+                    onStopEdit = { editingEntryId = null },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -133,7 +190,12 @@ private fun NavHostController.navigateTopLevel(route: String) {
 @Composable
 private fun AppNavHost(
     navController: NavHostController,
-    twoPane: Boolean,
+    layout: WindowLayout,
+    dense: Boolean,
+    foldInfo: FoldInfo,
+    editingEntryId: Long?,
+    onStartEdit: (Long) -> Unit,
+    onStopEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -145,12 +207,20 @@ private fun AppNavHost(
             LedgerScreen(
                 resultHandle = entry.savedStateHandle,
                 onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
-                twoPane = twoPane,
+                layout = layout,
+                dense = dense,
+                foldInfo = foldInfo,
+                editingEntryId = editingEntryId,
+                onStartEdit = onStartEdit,
+                onStopEdit = onStopEdit,
             )
         }
-        composable(Routes.STATS) { StatsScreen() }
-        composable(Routes.MANAGE) { ManageScreen() }
-        composable(Routes.MINE) { MineScreen() }
+        // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
+        // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这三页，
+        // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
+        composable(Routes.STATS) { StatsScreen(layout = layout) }
+        composable(Routes.MANAGE) { ManageScreen(layout = layout) }
+        composable(Routes.MINE) { MineScreen(layout = layout) }
         composable(Routes.ENTRY_EDIT) { entry ->
             val entryId = entry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
             EntryEditScreen(
@@ -278,12 +348,15 @@ private fun BottomBarSlot(
 private fun LedgerNavRail(
     currentRoute: String?,
     expanded: Boolean,
+    dense: Boolean,
     onNavigate: (String) -> Unit,
     onRecord: () -> Unit,
 ) {
     NavigationRail(
         containerColor = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.width(if (expanded) 108.dp else 84.dp),
+        // 矮窗口（手机横屏 / 折叠半折）退回 84dp：加宽 Rail 换来的文字标签，
+        // 抵不上它横向吃掉的账目内容宽度
+        modifier = Modifier.width(if (expanded && !dense) 108.dp else 84.dp),
     ) {
         Spacer(modifier = Modifier.height(8.dp))
         navItems.forEachIndexed { index, item ->

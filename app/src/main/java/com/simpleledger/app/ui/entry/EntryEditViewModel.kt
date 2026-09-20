@@ -10,6 +10,7 @@ import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.repo.EntryDraft
 import com.simpleledger.app.data.repo.LedgerRepository
+import com.simpleledger.app.data.settings.AppSettings
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,14 +45,18 @@ data class EntryEditUiState(
     val note: String = "",
     val images: List<PendingImage> = emptyList(),
     val loading: Boolean = true,
+    val saving: Boolean = false,
     val saved: Boolean = false,
     /** 保存成功后回传给明细页的账目 id（用于「已记入…撤销」提示） */
     val savedEntryId: Long? = null,
+    /** 「保存并再记」后的轻提示（不退出表单，所以本地消化） */
+    val notice: String? = null,
     val error: String? = null,
 )
 
 class EntryEditViewModel(
     private val repo: LedgerRepository,
+    private val settings: AppSettings,
     private val entryId: Long,
 ) : ViewModel() {
 
@@ -162,8 +167,23 @@ class EntryEditViewModel(
         it.copy(images = it.images.filterIndexed { i, _ -> i != index })
     }
 
-    fun save() {
+    /** 快捷金额：点一下直接填入（覆盖当前值），不做累加 —— 填入后光标仍在金额框，继续输入即可 */
+    fun fillAmount(cents: Long) {
+        _state.update { it.copy(amountText = Money.formatCents(cents).replace(",", "")) }
+    }
+
+    fun save() = doSave(continueAfter = false)
+
+    /**
+     * 保存并再记一笔：保留类型 / 分类 / 分区 / 时间（连续记账通常发生在同一场景、同一分区），
+     * 只清空金额、备注与贴图，光标回到金额输入。
+     */
+    fun saveAndContinue() = doSave(continueAfter = true)
+
+    private fun doSave(continueAfter: Boolean) {
         val current = _state.value
+        if (current.saving) return
+
         val cents = Money.parseToCents(current.amountText)
         if (cents == null) {
             _state.update { it.copy(error = "请输入有效金额") }
@@ -177,6 +197,8 @@ class EntryEditViewModel(
             _state.update { it.copy(error = "请选择分区") }
             return
         }
+
+        _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             runCatching {
                 repo.saveEntry(
@@ -193,12 +215,38 @@ class EntryEditViewModel(
                     )
                 )
             }.onSuccess { savedId ->
-                _state.update { it.copy(saved = true, savedEntryId = savedId, error = null) }
+                if (continueAfter) {
+                    val section = current.sections.firstOrNull { it.id == sectionId }
+                    // 隐私模式：与 useLedger 的提示条一致，金额位替换为「金额已隐藏」
+                    val amountLabel =
+                        if (settings.hideAmounts.value) "金额已隐藏" else Money.formatWithSymbol(cents)
+                    val label = buildString {
+                        if (section != null) append("${section.emoji} ${section.name} · ")
+                        append(amountLabel)
+                    }
+                    _state.update {
+                        it.copy(
+                            saving = false,
+                            amountText = "",
+                            note = "",
+                            images = emptyList(),
+                            savedEntryId = savedId,
+                            notice = "已记入 $label",
+                            error = null,
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(saving = false, saved = true, savedEntryId = savedId, error = null)
+                    }
+                }
             }.onFailure { e ->
-                _state.update { it.copy(error = e.message ?: "保存失败") }
+                _state.update { it.copy(saving = false, error = e.message ?: "保存失败") }
             }
         }
     }
+
+    fun clearNotice() = _state.update { it.copy(notice = null) }
 
     fun deleteEntry() {
         if (entryId <= 0) return
@@ -215,7 +263,7 @@ class EntryEditViewModel(
         fun factory(entryId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as com.simpleledger.app.LedgerApp
-                EntryEditViewModel(app.container.repository, entryId)
+                EntryEditViewModel(app.container.repository, app.container.settings, entryId)
             }
         }
     }

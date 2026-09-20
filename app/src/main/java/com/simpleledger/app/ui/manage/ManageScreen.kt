@@ -62,14 +62,26 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
+import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.components.ConfirmDialog
+import com.simpleledger.app.ui.components.ContentMaxWidth
+import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.util.EmojiChoices
 import com.simpleledger.app.util.Money
 
 private enum class ManageTab { SECTIONS, CATEGORIES }
 
+/**
+ * 分区与分类管理页。
+ *
+ * [layout] 只在 Expanded 下用于居中限宽（列表/表单类舒适阅读宽度 720dp）；
+ * Compact / Medium 不做任何包装，与改动前逐像素一致。
+ */
 @Composable
-fun ManageScreen(viewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory)) {
+fun ManageScreen(
+    layout: WindowLayout = WindowLayout.Compact,
+    viewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory),
+) {
     val state by viewModel.state.collectAsState()
     val error by viewModel.error.collectAsState()
     var tab by remember { mutableIntStateOf(ManageTab.SECTIONS.ordinal) }
@@ -108,47 +120,56 @@ fun ManageScreen(viewModel: ManageViewModel = viewModel(factory = ManageViewMode
             }
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text(
-                text = "分区与分类",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 10.dp),
-            )
-            PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("分区") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("分类") })
-            }
+        val content: @Composable () -> Unit = {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Text(
+                    text = "分区与分类",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 10.dp),
+                )
+                PrimaryTabRow(selectedTabIndex = tab) {
+                    Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("分区") })
+                    Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("分类") })
+                }
 
-            if (tab == ManageTab.SECTIONS.ordinal) {
-                SectionList(
-                    sections = state.sections,
-                    onEdit = {
-                        sectionDialogTarget = it
-                        showSectionDialog = true
-                    },
-                    onDelete = viewModel::deleteSection,
-                    onMove = viewModel::moveSection,
-                    bottomPadding = 96.dp,
-                )
-            } else {
-                CategoryList(
-                    categories = if (categoryTypeFilter == EntryType.EXPENSE) {
-                        state.expenseCategories
-                    } else {
-                        state.incomeCategories
-                    },
-                    typeFilter = categoryTypeFilter,
-                    onTypeFilterChange = { categoryTypeFilter = it },
-                    onEdit = {
-                        categoryDialogTarget = it
-                        showCategoryDialog = true
-                    },
-                    onDelete = viewModel::deleteCategory,
-                    onMove = { id, dir -> viewModel.moveCategory(id, categoryTypeFilter, dir) },
-                    bottomPadding = 96.dp,
-                )
+                if (tab == ManageTab.SECTIONS.ordinal) {
+                    SectionList(
+                        sections = state.sections,
+                        onEdit = {
+                            sectionDialogTarget = it
+                            showSectionDialog = true
+                        },
+                        onDelete = viewModel::deleteSection,
+                        onMove = viewModel::moveSection,
+                        bottomPadding = 96.dp,
+                    )
+                } else {
+                    CategoryList(
+                        categories = if (categoryTypeFilter == EntryType.EXPENSE) {
+                            state.expenseCategories
+                        } else {
+                            state.incomeCategories
+                        },
+                        typeFilter = categoryTypeFilter,
+                        onTypeFilterChange = { categoryTypeFilter = it },
+                        onEdit = {
+                            categoryDialogTarget = it
+                            showCategoryDialog = true
+                        },
+                        onDelete = viewModel::deleteCategory,
+                        onMove = { id, dir -> viewModel.moveCategory(id, categoryTypeFilter, dir) },
+                        bottomPadding = 96.dp,
+                    )
+                }
             }
+        }
+
+        if (layout == WindowLayout.Expanded) {
+            // 让「名称 ←→ 上移/下移/编辑/删除」的行内元素保持邻近，避免被拉到 1200dp 两端
+            ContentWidth(maxWidth = ContentMaxWidth.Standard) { content() }
+        } else {
+            content()
         }
     }
 

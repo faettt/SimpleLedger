@@ -36,9 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
         /** v1 → v2：分区增加月度预算字段（默认 0 = 未设预算） */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    "ALTER TABLE sections ADD COLUMN budgetCents INTEGER NOT NULL DEFAULT 0"
-                )
+                db.execSQL(MigrationSql.ADD_SECTION_BUDGET_CENTS)
             }
         }
 

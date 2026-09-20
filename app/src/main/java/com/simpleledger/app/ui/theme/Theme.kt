@@ -10,10 +10,12 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import com.simpleledger.app.ui.LocalReduceMotion
 
 /* ============================================================
    设计令牌 —— 温和人文派
@@ -188,6 +190,8 @@ fun SimpleLedgerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     /** 默认使用设计系统固定色；「我的 → 外观」开启动态取色时才跟随壁纸 */
     dynamicColor: Boolean = false,
+    /** 是否「跟随系统减少动效」；由 MainActivity 读取系统设置后下发，默认 false 不影响现有行为 */
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
@@ -199,9 +203,14 @@ fun SimpleLedgerTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        shapes = LedgerShapes,
-        content = content,
-    )
+    // 动效偏好必须在 MaterialTheme 之外下发：Material3 的内置动画走的是 Compose 内部的
+    // MotionDurationScale（已自动跟随系统 ANIMATOR_DURATION_SCALE），与本 local 是两条并行通道，
+    // 本 local 只服务应用自研动效；放在外层保证主题内外都能读到同一个值。
+    CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            shapes = LedgerShapes,
+            content = content,
+        )
+    }
 }

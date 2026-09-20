@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -37,7 +39,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -45,22 +51,44 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.AppSettings
+import com.simpleledger.app.ui.WindowLayout
+import com.simpleledger.app.ui.components.ContentMaxWidth
+import com.simpleledger.app.ui.components.ContentWidth
+import com.simpleledger.app.ui.security.canAuthenticate
+import com.simpleledger.app.util.Money
+import kotlinx.coroutines.launch
 import java.io.File
 
+/**
+ * 「我的」页。
+ *
+ * [layout] 只在 Expanded 下用于居中限宽（设置/说明类内容舒适宽度 640dp，比列表类更紧）；
+ * Compact / Medium 不做任何包装，与改动前逐像素一致。
+ * 注意限宽只套在可滚动的设置列表上，页面中央的「处理中」遮罩仍铺满整屏。
+ */
 @Composable
-fun MineScreen(viewModel: MineViewModel = viewModel(factory = MineViewModel.Factory)) {
+fun MineScreen(
+    layout: WindowLayout = WindowLayout.Compact,
+    viewModel: MineViewModel = viewModel(factory = MineViewModel.Factory),
+) {
     val state by viewModel.state.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val dynamicColor by viewModel.dynamicColor.collectAsState()
+    val quickAmounts by viewModel.quickAmounts.collectAsState()
+    var showQuickAmounts by remember { mutableStateOf(false) }
     val hideAmounts by viewModel.hideAmounts.collectAsState()
+    val appLock by viewModel.appLock.collectAsState()
+    val secureScreen by viewModel.secureScreen.collectAsState()
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val versionName = remember {
         runCatching {
@@ -92,99 +120,141 @@ fun MineScreen(viewModel: MineViewModel = viewModel(factory = MineViewModel.Fact
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.nav_mine),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
-                )
+            // 可滚动的设置列表单独抽出：限宽外壳只切换包装，列表本体只有一份，避免两套代码走样
+            val settings: @Composable () -> Unit = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.nav_mine),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
+                    )
 
-                PrivacyCard(
-                    countsText = stringResource(
-                        R.string.mine_entry_total,
-                        state.entryCount,
-                        state.sectionCount,
-                        state.categoryCount,
-                    ),
-                )
+                    PrivacyCard(
+                        countsText = stringResource(
+                            R.string.mine_entry_total,
+                            state.entryCount,
+                            state.sectionCount,
+                            state.categoryCount,
+                        ),
+                    )
 
-                GroupTitle(stringResource(R.string.mine_group_appearance))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            stringResource(R.string.mine_theme),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            AppSettings.ThemeMode.all.forEachIndexed { index, mode ->
-                                SegmentedButton(
-                                    selected = themeMode == mode,
-                                    onClick = { viewModel.setThemeMode(mode) },
-                                    shape = SegmentedButtonDefaults.itemShape(
-                                        index = index,
-                                        count = AppSettings.ThemeMode.all.size,
-                                    ),
-                                ) {
-                                    Text(AppSettings.ThemeMode.label(mode), fontSize = 13.sp)
+                    GroupTitle(stringResource(R.string.mine_group_appearance))
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                stringResource(R.string.mine_theme),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                AppSettings.ThemeMode.all.forEachIndexed { index, mode ->
+                                    SegmentedButton(
+                                        selected = themeMode == mode,
+                                        onClick = { viewModel.setThemeMode(mode) },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                            index = index,
+                                            count = AppSettings.ThemeMode.all.size,
+                                        ),
+                                    ) {
+                                        Text(AppSettings.ThemeMode.label(mode), fontSize = 13.sp)
+                                    }
                                 }
                             }
                         }
                     }
+                    SwitchRow(
+                        title = stringResource(R.string.mine_dynamic_color),
+                        desc = stringResource(R.string.mine_dynamic_color_desc),
+                        checked = dynamicColor,
+                        onCheckedChange = viewModel::setDynamicColor,
+                    )
+
+                    GroupTitle("记账")
+                    ActionRow(
+                        title = "快捷金额",
+                        desc = quickAmounts.filter { it > 0 }
+                            .joinToString(" · ") { Money.formatWithSymbol(it) }
+                            .ifBlank { "未设置" },
+                        enabled = true,
+                        onClick = { showQuickAmounts = true },
+                    )
+
+                    GroupTitle(stringResource(R.string.mine_group_data))
+                    ActionRow(                    title = stringResource(R.string.mine_export_csv),
+                        desc = stringResource(R.string.mine_export_csv_desc),
+                        enabled = !state.busy,
+                        onClick = viewModel::exportCsv,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.mine_backup),
+                        desc = stringResource(R.string.mine_backup_desc),
+                        enabled = !state.busy,
+                        onClick = viewModel::createBackup,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.mine_restore),
+                        desc = stringResource(R.string.mine_restore_desc),
+                        enabled = !state.busy,
+                        onClick = {
+                            restorePicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                        },
+                    )
+
+                    GroupTitle(stringResource(R.string.mine_group_security))
+                    SwitchRow(
+                        title = stringResource(R.string.mine_hide_amounts),
+                        desc = stringResource(R.string.mine_hide_amounts_desc),
+                        checked = hideAmounts,
+                        onCheckedChange = viewModel::setHideAmounts,
+                    )
+                    SwitchRow(
+                        title = stringResource(R.string.mine_app_lock),
+                        desc = stringResource(R.string.mine_app_lock_desc),
+                        checked = appLock,
+                        // 设备无任何可用认证方式时**阻止开启**，否则开完就把自己锁在应用外面，且无路可退。
+                        // 这是必须处理的失败路径：提示原因并保持开关为「关」。
+                        onCheckedChange = { enable ->
+                            if (!enable || canAuthenticate(context)) {
+                                viewModel.setAppLock(enable)
+                            } else {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        context.getString(R.string.mine_app_lock_unavailable)
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    SwitchRow(
+                        title = stringResource(R.string.mine_secure_screen),
+                        desc = stringResource(R.string.mine_secure_screen_desc),
+                        checked = secureScreen,
+                        onCheckedChange = viewModel::setSecureScreen,
+                    )
+
+                    GroupTitle(stringResource(R.string.mine_group_about))
+                    ActionRow(
+                        title = stringResource(R.string.mine_version),
+                        desc = versionName,
+                        enabled = false,
+                        onClick = {},
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
-                SwitchRow(
-                    title = stringResource(R.string.mine_dynamic_color),
-                    desc = stringResource(R.string.mine_dynamic_color_desc),
-                    checked = dynamicColor,
-                    onCheckedChange = viewModel::setDynamicColor,
-                )
+            }
 
-                GroupTitle(stringResource(R.string.mine_group_data))
-                ActionRow(
-                    title = stringResource(R.string.mine_export_csv),
-                    desc = stringResource(R.string.mine_export_csv_desc),
-                    enabled = !state.busy,
-                    onClick = viewModel::exportCsv,
-                )
-                ActionRow(
-                    title = stringResource(R.string.mine_backup),
-                    desc = stringResource(R.string.mine_backup_desc),
-                    enabled = !state.busy,
-                    onClick = viewModel::createBackup,
-                )
-                ActionRow(
-                    title = stringResource(R.string.mine_restore),
-                    desc = stringResource(R.string.mine_restore_desc),
-                    enabled = !state.busy,
-                    onClick = {
-                        restorePicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
-                    },
-                )
-
-                GroupTitle(stringResource(R.string.mine_group_security))
-                SwitchRow(
-                    title = stringResource(R.string.mine_hide_amounts),
-                    desc = stringResource(R.string.mine_hide_amounts_desc),
-                    checked = hideAmounts,
-                    onCheckedChange = viewModel::setHideAmounts,
-                )
-
-                GroupTitle(stringResource(R.string.mine_group_about))
-                ActionRow(
-                    title = stringResource(R.string.mine_version),
-                    desc = versionName,
-                    enabled = false,
-                    onClick = {},
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
+            if (layout == WindowLayout.Expanded) {
+                ContentWidth(maxWidth = ContentMaxWidth.Narrow) { settings() }
+            } else {
+                settings()
             }
 
             if (state.busy) {
@@ -215,6 +285,79 @@ fun MineScreen(viewModel: MineViewModel = viewModel(factory = MineViewModel.Fact
             },
         )
     }
+
+    if (showQuickAmounts) {
+        QuickAmountsDialog(
+            initial = quickAmounts,
+            onDismiss = { showQuickAmounts = false },
+            onSave = { values ->
+                viewModel.setQuickAmounts(values)
+                showQuickAmounts = false
+            },
+        )
+    }
+}
+
+/** 快捷金额档位设置：固定 3 个槽位，留空表示不在「记一笔」里显示该档 */
+@Composable
+private fun QuickAmountsDialog(
+    initial: List<Long>,
+    onDismiss: () -> Unit,
+    onSave: (List<Long>) -> Unit,
+) {
+    val texts = remember {
+        mutableStateListOf<String>().apply {
+            repeat(3) { index ->
+                val cents = initial.getOrNull(index) ?: 0L
+                add(if (cents > 0) Money.formatCents(cents).replace(",", "") else "")
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("快捷金额") },
+        text = {
+            Column {
+                Text(
+                    text = "在「记一笔」里显示为可一键填入的金额。留空表示不显示该档位。",
+                    fontSize = 12.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                texts.forEachIndexed { index, value ->
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { input ->
+                            val cleaned = input.filter { it.isDigit() || it == '.' }
+                            val valid = cleaned.contains('.').let { hasDot ->
+                                if (hasDot) {
+                                    val parts = cleaned.split('.')
+                                    parts.size <= 2 && (parts.getOrNull(1)?.length ?: 0) <= 2
+                                } else {
+                                    true
+                                }
+                            }
+                            if (valid && cleaned.length <= 10) texts[index] = cleaned
+                        },
+                        prefix = { Text("¥") },
+                        placeholder = { Text("档位 ${index + 1}") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(texts.map { Money.parseToCents(it) ?: 0L }) }) {
+                Text("保存")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 /** 隐私承诺卡：本地优先产品的信任基石，放在第一屏 */

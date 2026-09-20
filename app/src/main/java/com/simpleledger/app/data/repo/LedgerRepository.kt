@@ -73,6 +73,15 @@ class LedgerRepository(
     fun observeSectionTotals(start: Long, end: Long): Flow<List<SectionTotal>> =
         entryDao.observeSectionTotals(start, end)
 
+    /** 全局搜索（跨全部时间，四类匹配）；调用方负责转义 LIKE 通配符 */
+    fun observeSearch(keyword: String, type: Int?): Flow<List<EntryFull>> {
+        val escaped = keyword
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        return entryDao.observeSearch("%$escaped%", type)
+    }
+
     // ---------- 分区 ----------
 
     fun observeSections(): Flow<List<SectionEntity>> = sectionDao.observeAll()
@@ -173,19 +182,7 @@ class LedgerRepository(
 
     /** 导出用：把全部账目拍平成可写入 CSV 的行 */
     suspend fun allEntriesForExport(): List<ExportRow> =
-        entryDao.allEntriesFull().map { full ->
-            ExportRow(
-                date = DateTimes.toLocalDate(full.entry.entryTime).toString(),
-                time = DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)),
-                typeLabel = if (full.entry.type == EntryType.EXPENSE) "支出" else "收入",
-                amountYuan = Money.formatCents(full.entry.amountCents).replace(",", ""),
-                category = full.category?.name ?: "未分类",
-                section = full.section?.name ?: "未分区",
-                sectionNote = full.section?.note ?: "",
-                note = full.entry.note,
-                imageCount = full.images.size,
-            )
-        }
+        entryDao.allEntriesFull().map { full -> entryToExportRow(full) }
 
     /**
      * 选图回调时立即调用：把系统相册返回的 Uri 读入缓存待入库目录。
@@ -269,4 +266,75 @@ class LedgerRepository(
         entryDao.deleteEntry(id) // 图片记录级联删除
         imageStorage.deleteFiles(paths)
     }
+
+    /**
+     * 删除账目并返回可恢复的快照（贴图文件先移入暂存区，不直接销毁）。
+     * 长按删除按设计规格是「不弹确认 + 4 秒撤销」，所以必须留得住这份数据。
+     */
+    suspend fun deleteEntryWithSnapshot(id: Long): DeletedEntrySnapshot? {
+        val full = entryDao.getEntryFull(id) ?: return null
+        val parked = imageStorage.parkFiles(full.images.map { it.filePath })
+        entryDao.deleteEntry(id)
+        return DeletedEntrySnapshot(
+            type = full.entry.type,
+            amountCents = full.entry.amountCents,
+            categoryId = full.entry.categoryId,
+            sectionId = full.entry.sectionId,
+            entryTime = full.entry.entryTime,
+            note = full.entry.note,
+            parkedImagePaths = parked,
+        )
+    }
+
+    /** 撤销删除：用暂存的贴图重新入库，账目 id 会变，其余字段保持不变 */
+    suspend fun restoreEntry(snapshot: DeletedEntrySnapshot): Long? = runCatching {
+        saveEntry(
+            EntryDraft(
+                id = null,
+                type = snapshot.type,
+                amountCents = snapshot.amountCents,
+                categoryId = snapshot.categoryId,
+                sectionId = snapshot.sectionId,
+                entryTime = snapshot.entryTime,
+                note = snapshot.note,
+                pendingImagePaths = snapshot.parkedImagePaths,
+            )
+        )
+    }.getOrNull()
+
+    /** 撤销窗口过期后清理暂存文件 */
+    suspend fun discardParkedImages() = imageStorage.cleanParkedFiles()
 }
+
+/** 删除账目时留下的快照，用于撤销窗口内完整恢复 */
+data class DeletedEntrySnapshot(
+    val type: Int,
+    val amountCents: Long,
+    val categoryId: Long,
+    val sectionId: Long,
+    val entryTime: Long,
+    val note: String,
+    val parkedImagePaths: List<String>,
+)
+
+/**
+ * 把一条账目映射成 CSV 导出的一行（**纯函数**，便于单测这条不可动摇的隐私边界）。
+ *
+ * ⚠️ 硬性约束：`amountYuan` 必须**始终写真实金额**。
+ * 「隐藏金额」只是显示层偏好（`LocalHideAmounts` / `AppSettings.hideAmounts`），
+ * 让用户自己看不清数字，而**不**改变数据本身；导出的文件是用户的备份，必须完整。
+ * 若让导出跟随隐私开关，用户会在毫不知情下得到一份缺金额的备份——这是数据丢失级事故。
+ * 本函数刻意不接收任何 hidden 参数，从签名上就杜绝后人「顺手」让它跟随隐藏开关。
+ * 对应的回归断言见 `ExportPrivacyTest`。
+ */
+internal fun entryToExportRow(full: EntryFull): ExportRow = ExportRow(
+    date = DateTimes.toLocalDate(full.entry.entryTime).toString(),
+    time = DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)),
+    typeLabel = if (full.entry.type == EntryType.EXPENSE) "支出" else "收入",
+    amountYuan = Money.formatCents(full.entry.amountCents).replace(",", ""),
+    category = full.category?.name ?: "未分类",
+    section = full.section?.name ?: "未分区",
+    sectionNote = full.section?.note ?: "",
+    note = full.entry.note,
+    imageCount = full.images.size,
+)

@@ -15,7 +15,11 @@ class LedgerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 清理上次会话中选了图但未保存的缓存文件，避免垃圾累积
-        applicationScope.launch { container.imageStorage.cleanPendingImages() }
+        applicationScope.launch {
+            // 上次会话中选了图但没保存的缓存
+            container.imageStorage.cleanPendingImages()
+            // 上次会话中删除账目、但撤销窗口还没结束就被杀进程留下的暂存贴图
+            container.imageStorage.cleanParkedFiles()
+        }
     }
 }

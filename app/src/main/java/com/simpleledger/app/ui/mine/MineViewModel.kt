@@ -42,6 +42,8 @@ class MineViewModel(
     val dynamicColor: StateFlow<Boolean> = settings.dynamicColor
     val hideAmounts: StateFlow<Boolean> = settings.hideAmounts
     val appLock: StateFlow<Boolean> = settings.appLock
+    val secureScreen: StateFlow<Boolean> = settings.secureScreen
+    val quickAmounts: StateFlow<List<Long>> = settings.quickAmounts
 
     private val _state = MutableStateFlow(MineUiState())
     val state: StateFlow<MineUiState> = _state.asStateFlow()
@@ -102,6 +104,10 @@ class MineViewModel(
     fun setHideAmounts(enabled: Boolean) = settings.setHideAmounts(enabled)
 
     fun setAppLock(enabled: Boolean) = settings.setAppLock(enabled)
+
+    fun setSecureScreen(enabled: Boolean) = settings.setSecureScreen(enabled)
+
+    fun setQuickAmounts(values: List<Long>) = settings.setQuickAmounts(values)
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

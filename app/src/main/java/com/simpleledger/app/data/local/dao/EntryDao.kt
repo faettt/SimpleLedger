@@ -88,6 +88,32 @@ interface EntryDao {
     )
     fun observeSectionTotals(start: Long, end: Long): Flow<List<SectionTotal>>
 
+    /**
+     * 全局搜索：跨全部时间，四类匹配 —— 账目备注、分类名、分区名 / 分区备注、金额数字。
+     * 金额用「分的字符串包含关键词」实现（搜 2000 既命中 ¥2,000.00 也命中 ¥20.00 的分值，
+     * 符合"我记过一笔 2000 的"这类模糊回忆）。上限 200 条防止极端关键词拖慢 UI。
+     *
+     * ⚠️ `LIMIT` 与 `LedgerViewModel.SEARCH_RESULT_LIMIT` 必须保持一致：UI 依赖该上限
+     * 判断结果是否被截断，不一致会让「仅显示前 N 条」的提示漏报或误报。
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM entries e
+        WHERE (:type IS NULL OR e.type = :type)
+          AND (
+            e.note LIKE :like ESCAPE '\'
+            OR EXISTS (SELECT 1 FROM categories c WHERE c.id = e.categoryId AND c.name LIKE :like ESCAPE '\')
+            OR EXISTS (SELECT 1 FROM sections s WHERE s.id = e.sectionId
+                       AND (s.name LIKE :like ESCAPE '\' OR s.note LIKE :like ESCAPE '\'))
+            OR CAST(e.amountCents AS TEXT) LIKE :like ESCAPE '\'
+          )
+        ORDER BY e.entryTime DESC, e.id DESC
+        LIMIT 200
+        """
+    )
+    fun observeSearch(like: String, type: Int?): Flow<List<EntryFull>>
+
     @Transaction
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getEntryFull(id: Long): EntryFull?

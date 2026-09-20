@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,13 +26,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.logic.BudgetCalculator
+import com.simpleledger.app.logic.CategoryShare
+import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.components.CategoryPieChart
+import com.simpleledger.app.ui.components.ContentMaxWidth
+import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.components.DailyBarChart
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
@@ -45,130 +50,234 @@ import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
 
+/**
+ * 统计页。
+ *
+ * [layout] 只用来决定「是否启用大屏两栏 / 整页限宽」：只有 Expanded 才两栏。
+ * Compact / Medium 走与改动前**完全一致**的单列分支（回归底线）。
+ */
 @Composable
-fun StatsScreen(viewModel: StatsViewModel = viewModel(factory = StatsViewModel.Factory)) {
+fun StatsScreen(
+    layout: WindowLayout = WindowLayout.Compact,
+    viewModel: StatsViewModel = viewModel(factory = StatsViewModel.Factory),
+) {
     val state by viewModel.state.collectAsState()
     val hidden = LocalHideAmounts.current
+    val twoColumn = layout == WindowLayout.Expanded
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            MonthHeader(
-                month = state.month,
-                onPrev = viewModel::prevMonth,
-                onNext = viewModel::nextMonth,
-                onToday = viewModel::goToday,
-            )
-        }
-
-        if (state.isEmpty) {
-            item { EmptyHint("这个月还没有账目，去记一笔吧") }
-        } else {
-            // 总览：支出 / 收入 / 结余
+    // 把滚动主体抽成一个 lambda：限宽与否只切换外壳，主体只有一份，避免两套代码走样
+    val body: @Composable () -> Unit = {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StatCell(
-                            label = "本月支出",
-                            value = if (hidden) "••••" else Money.formatWithSymbol(state.expenseCents),
-                            color = expenseColor(),
-                            modifier = Modifier.weight(1f),
-                        )
-                        CellDivider()
-                        StatCell(
-                            label = "本月收入",
-                            value = if (hidden) "••••" else Money.formatWithSymbol(state.incomeCents),
-                            color = incomeColor(),
-                            modifier = Modifier.weight(1f),
-                        )
-                        CellDivider()
-                        StatCell(
-                            label = "结余",
-                            value = if (hidden) {
-                                "••••"
-                            } else {
-                                Money.formatWithSymbol(state.incomeCents - state.expenseCents)
-                            },
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
+                MonthHeader(
+                    month = state.month,
+                    onPrev = viewModel::prevMonth,
+                    onNext = viewModel::nextMonth,
+                    onToday = viewModel::goToday,
+                )
             }
 
-            // 分类占比
-            item {
-                SectionTitle("分类占比")
-                Card(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        CategoryPieChart(shares = state.shares, totalCents = state.expenseCents)
-                        Spacer(modifier = Modifier.height(14.dp))
-                        val palette = chartPalette()
-                        state.shares.forEachIndexed { index, share ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(9.dp)
-                                        .background(palette[index % palette.size], RoundedCornerShape(3.dp)),
+            if (state.isEmpty) {
+                item { EmptyHint("这个月还没有账目，去记一笔吧") }
+            } else {
+                // 总览：支出 / 收入 / 结余，跨满宽（双栏下也独占整行）
+                item { OverviewCard(state = state, hidden = hidden) }
+
+                if (twoColumn) {
+                    // 环图（钱花在哪类）与柱状图（什么时候花的）是天然对照关系，并排可一眼互看
+                    item {
+                        Row(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                CategoryShareSection(
+                                    shares = state.shares,
+                                    totalCents = state.expenseCents,
+                                    hidden = hidden,
                                 )
-                                Spacer(modifier = Modifier.width(9.dp))
-                                Text(
-                                    "${share.total.emoji} ${share.total.name}",
-                                    fontSize = 13.5.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    text = if (hidden) {
-                                        "${(share.fraction * 100).toInt()}%"
-                                    } else {
-                                        "${(share.fraction * 100).toInt()}% · ${Money.formatCents(share.total.total)}"
-                                    },
-                                    fontSize = 12.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = TabularNums,
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                DailyExpenseSection(
+                                    daily = state.daily,
+                                    daysInMonth = state.daysInMonth,
+                                    hidden = hidden,
                                 )
                             }
                         }
                     }
-                }
-            }
-
-            // 每日支出
-            item {
-                SectionTitle("每日支出")
-                Card(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        DailyBarChart(daily = state.daily, daysInMonth = state.daysInMonth)
+                } else {
+                    item {
+                        CategoryShareSection(
+                            shares = state.shares,
+                            totalCents = state.expenseCents,
+                            hidden = hidden,
+                        )
+                    }
+                    item {
+                        DailyExpenseSection(
+                            daily = state.daily,
+                            daysInMonth = state.daysInMonth,
+                            hidden = hidden,
+                        )
                     }
                 }
-            }
 
-            // 分区预算进度（含超支预警）
-            if (state.sectionTotals.isNotEmpty()) {
-                item {
-                    SectionTitle("分区预算")
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                // 分区预算进度（含超支预警）
+                if (state.sectionTotals.isNotEmpty()) {
+                    item {
+                        SectionTitle("分区预算")
+                        SectionBudgetGrid(sections = state.sectionTotals, twoColumn = twoColumn)
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(28.dp)) }
+            }
+        }
+    }
+
+    if (twoColumn) {
+        // 图表类越宽越能表达趋势，只做 1200dp 的极端宽屏兜底
+        ContentWidth(maxWidth = ContentMaxWidth.Wide) { body() }
+    } else {
+        body()
+    }
+}
+
+/** 总览三格：支出 / 收入 / 结余 */
+@Composable
+private fun OverviewCard(state: StatsUiState, hidden: Boolean) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatCell(
+                label = "本月支出",
+                value = if (hidden) "••••" else Money.formatWithSymbol(state.expenseCents),
+                color = expenseColor(),
+                modifier = Modifier.weight(1f),
+            )
+            CellDivider()
+            StatCell(
+                label = "本月收入",
+                value = if (hidden) "••••" else Money.formatWithSymbol(state.incomeCents),
+                color = incomeColor(),
+                modifier = Modifier.weight(1f),
+            )
+            CellDivider()
+            StatCell(
+                label = "结余",
+                value = if (hidden) {
+                    "••••"
+                } else {
+                    Money.formatWithSymbol(state.incomeCents - state.expenseCents)
+                },
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/** 分类占比：环图 + 图例 */
+@Composable
+private fun CategoryShareSection(
+    shares: List<CategoryShare>,
+    totalCents: Long,
+    hidden: Boolean,
+) {
+    SectionTitle("分类占比")
+    Card(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            CategoryPieChart(shares = shares, totalCents = totalCents, hidden = hidden)
+            Spacer(modifier = Modifier.height(14.dp))
+            val palette = chartPalette()
+            // 图例逐项列出分类占比，与环图摘要内容完全重复；对读屏静音，避免听完摘要再逐行重念一遍
+            Column(modifier = Modifier.clearAndSetSemantics {}) {
+                shares.forEachIndexed { index, share ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        state.sectionTotals.forEach { section ->
-                            SectionBudgetCard(section = section)
-                        }
+                        Box(
+                            modifier = Modifier
+                                .size(9.dp)
+                                .background(palette[index % palette.size], RoundedCornerShape(3.dp)),
+                        )
+                        Spacer(modifier = Modifier.width(9.dp))
+                        Text(
+                            "${share.total.emoji} ${share.total.name}",
+                            fontSize = 13.5.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = if (hidden) {
+                                "${(share.fraction * 100).toInt()}%"
+                            } else {
+                                "${(share.fraction * 100).toInt()}% · ${Money.formatCents(share.total.total)}"
+                            },
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = TabularNums,
+                        )
                     }
                 }
             }
+        }
+    }
+}
 
-            item { Spacer(modifier = Modifier.height(28.dp)) }
+/** 每日支出：柱状图 */
+@Composable
+private fun DailyExpenseSection(daily: List<Pair<Int, Long>>, daysInMonth: Int, hidden: Boolean) {
+    SectionTitle("每日支出")
+    Card(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            DailyBarChart(daily = daily, daysInMonth = daysInMonth, hidden = hidden)
+        }
+    }
+}
+
+/**
+ * 分区预算排布。
+ *
+ * 双栏时按 2 个一组分行；**奇数个分区时最后一行用等宽 Spacer 占位**，
+ * 而不是让最后一张卡拉成整行——否则网格会突然出现一张明显更宽、内容却更少的卡，
+ * 破坏「同类信息等宽」的视觉节奏。
+ *
+ * 选型说明：这里沿用 `LazyColumn` + 行内 `Row(weight(1f))` 组合，而非 `LazyVerticalGrid`。
+ * 原因：整页只有一个滚动容器（LazyColumn），不会出现嵌套滚动；每张卡自身高度由内容决定、
+ * Row 取二者最大值，测量路径是确定的，没有「wrap-content 高度需要反推父高」的循环依赖。
+ */
+@Composable
+private fun SectionBudgetGrid(sections: List<SectionTotal>, twoColumn: Boolean) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (twoColumn) {
+            sections.chunked(2).forEach { rowSections ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    SectionBudgetCard(section = rowSections[0], modifier = Modifier.weight(1f))
+                    if (rowSections.size == 2) {
+                        SectionBudgetCard(section = rowSections[1], modifier = Modifier.weight(1f))
+                    } else {
+                        // 奇数尾行：留空位不拉伸
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        } else {
+            sections.forEach { section -> SectionBudgetCard(section = section) }
         }
     }
 }
@@ -207,15 +316,18 @@ private fun StatCell(
 /**
  * 分区预算卡：预算有值才显示进度条；未设预算时只显示支出金额。
  * 颜色按用量分级（正常 / 接近上限 / 超支），但那只是加速识别——结论始终由文字给出。
+ *
+ * [modifier] 由调用方注入：单列时保持默认（自身 `fillMaxWidth`，与改动前一致）；
+ * 双栏时传入 `Modifier.weight(1f)`，由父 `Row` 均分宽度。
  */
 @Composable
-private fun SectionBudgetCard(section: SectionTotal) {
+private fun SectionBudgetCard(section: SectionTotal, modifier: Modifier = Modifier) {
     val hidden = LocalHideAmounts.current
     val budget = section.budgetCents
     val hasBudget = budget > 0
-    val ratio = if (hasBudget) (section.expense.toFloat() / budget).coerceIn(0f, 1f) else 0f
-    val overspent = hasBudget && section.expense > budget
-    val nearLimit = hasBudget && !overspent && section.expense.toFloat() / budget >= 0.9f
+    val ratio = BudgetCalculator.budgetRatio(section.expense, budget)
+    val overspent = BudgetCalculator.isOverspent(section.expense, budget)
+    val nearLimit = BudgetCalculator.isNearLimit(section.expense, budget)
 
     val barColor = when {
         overspent -> expenseColor()
@@ -224,7 +336,7 @@ private fun SectionBudgetCard(section: SectionTotal) {
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
