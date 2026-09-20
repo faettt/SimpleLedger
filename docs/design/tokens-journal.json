@@ -176,7 +176,7 @@
     "grid": { "full": 24, "inline": 24, "xs": 24, "lg": 32 },
     "stroke": { "full": 1.5, "inline": 1.7, "xs": 2.0, "lg": 1.6, "status": 1.8 },
     "caps": "linecap=round, linejoin=round",
-    "fill": "none（唯一例外：status-cleared 为语义实心圆）",
+    "fill": "以描边为主；仅「语义实心点」使用填充 —— 共 4 枚图标 7 条填充路径：status-cleared(1)、gamepad 按键(2)、pet 眼睛(2)、teddy 眼睛(2)",
     "color": "单色 ink。颜色语义已被「分区身份」独占，分类图标若也上色会出现两套色彩语义",
     "exception": "分区卡片上的图标可用该分区的胶带色（那里颜色语义就是分区自己）",
     "opticalSizes": {

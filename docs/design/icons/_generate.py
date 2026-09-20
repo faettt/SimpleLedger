@@ -155,7 +155,7 @@ CATEGORY = [
 
     (22, "gamepad", "🎮", "娱乐 / 游戏",
      [rp(3.5, 8.5, 17.0, 8.0, 3.6, 3.4, 3.7, 3.5),
-      "M8 11.5v3M6.5 13h3", ci(16, 12, 1.0), ci(18, 14, 1.0)]),
+      "M8 11.5v3M6.5 13h3", fi(16, 12, 1.0), fi(18, 14, 1.0)]),
 
     (23, "film", "🎬", "娱乐 / 影音",
      [rp(4.2, 5.6, 15.6, 12.8, 1.6),
@@ -187,7 +187,7 @@ CATEGORY = [
     (30, "pet", "🐱", "宠物",
      ["M6.2 10.5L5.1 5.4l4.2 1.9h5.4l4.2-1.9-1.1 5.1",
       "M6.2 10.5c-.2 3.8 2.4 6.3 5.8 6.3s6-2.5 5.8-6.3",
-      ci(9.9, 11.6, 0.8), ci(14.1, 11.6, 0.8)]),
+      fi(9.9, 11.6, 0.8), fi(14.1, 11.6, 0.8)]),
 
     (31, "gift", "🎁", "礼物 / 人情",
      [rp(3.9, 8.6, 16.2, 10.6, 1.6, 1.4, 1.7, 1.5),
@@ -233,7 +233,7 @@ CATEGORY = [
 
     (40, "teddy", "🧸", "玩具",
      [ci(12, 12.8, 5.6), ci(7.5, 7.6, 2.2), ci(16.5, 7.6, 2.2),
-      ci(10.3, 11.6, 0.8), ci(13.7, 11.6, 0.8),
+      fi(10.3, 11.6, 0.8), fi(13.7, 11.6, 0.8),
       "M10.6 14.8c.9.9 2.2.9 3.1 0"]),
 
     (41, "sparkle", "✨", "其他收入",
@@ -401,6 +401,23 @@ def render(elements, size, stroke):
     )
 
 
+
+def validate_dots() -> list[str]:
+    """自检：半径为 r、描边宽为 w 的圆，若 r - w/2 <= 0.3 则内孔不可见，
+    必须用 fi() 显式填充。靠「描边糊满」得到的实心是巧合——描边一调整就会露出空心环。"""
+    import pathlib as _pl
+    bad: list[str] = []
+    for f in sorted(_pl.Path(__file__).resolve().parent.glob("*.svg")):
+        src = f.read_text(encoding="utf-8")
+        sw = float(re.search(r'stroke-width="([\d.]+)"', src).group(1))
+        for r, extra in re.findall(
+                r'<circle cx="[\d.]+" cy="[\d.]+" r="([\d.]+)"([^/]*)/>', src):
+            explicit = "fill=" in extra and 'fill="none"' not in extra
+            if not explicit and float(r) - sw / 2 <= 0.3:
+                bad.append(f.stem)
+    return sorted(set(bad))
+
+
 def main():
     manifest = {"meta": {
         "name": "简账 SimpleLedger · 手账风格图标集",
@@ -457,6 +474,13 @@ def main():
     for group, items, _ in groups:
         print(f"   {group:14} {len(items):>3} 枚")
     print(f"\n  分类图标 iconId 范围：1–{len(CATEGORY)}（写入数据库的唯一一套）")
+
+    # 自检：不应再有「靠描边糊满」的小圆
+    dots = validate_dots()
+    if dots:
+        print(f"\n  ⚠️ 以下图标仍靠描边糊满实心，请改用 fi() 显式填充：{dots}")
+    else:
+        print("\n  ✅ 自检通过：无「靠描边糊满」的小圆")
 
 
 if __name__ == "__main__":
