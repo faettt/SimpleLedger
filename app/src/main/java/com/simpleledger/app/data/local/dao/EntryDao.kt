@@ -56,12 +56,15 @@ interface EntryDao {
 
     /**
      * 分类占比：**按分类 id 聚合** + `LEFT JOIN sections` 带出归属字段（Q-09 消歧）。
-     * 专属分类会带出所属分区名 / emoji；全局分类两列为 NULL。
+     * 专属分类会带出所属分区名 / 图标 / 胶带色；全局分类三列为 NULL。
+     *
+     * v4：图标与颜色都是索引（`iconId` 1–50 / `colorIndex` 0–7），不再是 emoji 字符串。
      */
     @Query(
         """
-        SELECT e.categoryId AS categoryId, c.name AS name, c.emoji AS emoji,
-               c.sectionId AS sectionId, s.name AS sectionName, s.emoji AS sectionEmoji,
+        SELECT e.categoryId AS categoryId, c.name AS name, c.iconId AS iconId,
+               c.sectionId AS sectionId, s.name AS sectionName,
+               s.iconId AS sectionIconId, s.colorIndex AS sectionColorIndex,
                COALESCE(SUM(e.amountCents), 0) AS total, COUNT(*) AS count
         FROM entries e
         JOIN categories c ON c.id = e.categoryId
@@ -88,8 +91,8 @@ interface EntryDao {
      */
     @Query(
         """
-        SELECT s.id AS sectionId, s.name AS name, s.emoji AS emoji, s.note AS note,
-               s.budgetCents AS budgetCents,
+        SELECT s.id AS sectionId, s.name AS name, s.iconId AS iconId, s.colorIndex AS colorIndex,
+               s.note AS note, s.budgetCents AS budgetCents,
                COALESCE(SUM(CASE WHEN e.type = 0 THEN e.amountCents ELSE 0 END), 0) AS expense,
                COALESCE(SUM(CASE WHEN e.type = 1 THEN e.amountCents ELSE 0 END), 0) AS income,
                COUNT(e.id) AS count

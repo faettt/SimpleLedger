@@ -58,4 +58,116 @@ object MigrationSql {
      * 但主理人裁定 **不执行账目重定向**——保守、不改写历史账目语义、结果可预测。
      * 因此本对象**不提供**该 UPDATE 常量，`MIGRATION_2_3` 也不执行任何 `UPDATE entries`。
      */
+
+    // ==================================================================================
+    // v3 → v4：图标从 emoji 字符串改为 iconId，并引入分区胶带色与账目双维度状态
+    //
+    // ⚠️ 上面 MIGRATION_2_3 用到的 [INSERT_SECTION_FIRST_CATEGORIES] **必须保持冻结**：
+    //    它执行在 v3 schema 上，那时 `categories.emoji` 还存在。改它会让升级路径崩。
+    //
+    // ⚠️ 为什么 categories / sections 要「重建」而不是 `DROP COLUMN`：
+    //    SQLite 的 `ALTER TABLE ... DROP COLUMN` 需要 3.35+（Android 14 / API 34 起），
+    //    本项目 minSdk 26，在旧设备上会直接抛错。所以走
+    //    「建新表 → 拷数据（顺带翻译）→ DROP 旧表 → RENAME」这个跨版本安全的模式。
+    //
+    // ⚠️ 为什么 DROP TABLE 不会撞上 `entries` 的 `ForeignKey.RESTRICT`：
+    //    Room 2.8.5 **从不设置 `PRAGMA foreign_keys`**（已反汇编 `RoomOpenHelper` 确认，
+    //    其常量池中无任何外键 / PRAGMA 字符串），本项目也未调用
+    //    `setForeignKeyConstraintsEnabled` → 取 SQLite 默认值 **OFF** → RESTRICT 不生效。
+    //
+    // ⚠️ 这是本迁移唯一的**隐式前提**，所以做了两件事把它显式化：
+    //    ① `AppDatabase.MIGRATION_3_4` 开头有 `requireForeignKeyDisabled(db)` 运行时守卫；
+    //    ② `tools/verify_migration_v4.py` 会在 foreign_keys=ON / OFF 两种模式下各跑一遍。
+    //
+    // ⚠️ 已实测：**外键开启时 SQL 层面无解**，不要试图「修好」它。RESTRICT 是立即检查的，
+    //    以下两种常见绕法都试过且都失败（报 `FOREIGN KEY constraint failed`）：
+    //      · 建新表 → 拷数据 → DROP 旧表 → RENAME（就是下面这套）
+    //      · `PRAGMA legacy_alter_table=ON` + 先把旧表改名 → 建正式名新表 → 拷数据 → DROP 旧名
+    //    `PRAGMA defer_foreign_keys` 同样无效（RESTRICT 不参与延迟）。
+    // ==================================================================================
+
+    /** v3 → v4 ①：建 categories 新表（`emoji` → `iconId`） */
+    const val CREATE_CATEGORIES_V4 =
+        "CREATE TABLE IF NOT EXISTS `categories_new` (" +
+            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`name` TEXT NOT NULL, " +
+            "`iconId` INTEGER NOT NULL, " +
+            "`type` INTEGER NOT NULL, " +
+            "`sectionId` INTEGER, " +
+            "`sortOrder` INTEGER NOT NULL)"
+
+    /**
+     * v3 → v4 ②：拷数据并**翻译** emoji → iconId。
+     *
+     * 左侧先 `REPLACE(emoji, char(65039), '')` 剥掉变体选择符（U+FE0F）：
+     * 有 6 个 emoji 在旧源码里带 VS16，而数据库中的实际字形可能不带，剥掉后两种写法都能命中。
+     * 映射表本体见 [IconMapping]（50 条，与设计图标集一一对应）。
+     */
+    val COPY_CATEGORIES_V4: String =
+        "INSERT INTO `categories_new` (`id`, `name`, `iconId`, `type`, `sectionId`, `sortOrder`) " +
+            "SELECT `id`, `name`, " +
+            "CASE REPLACE(`emoji`, char(65039), '') ${IconMapping.sqlCaseWhen()} " +
+            "ELSE ${IconMapping.DEFAULT_CATEGORY_ICON_ID} END, " +
+            "`type`, `sectionId`, `sortOrder` FROM `categories`"
+
+    /** v3 → v4 ③：删旧表并改名。索引随旧表一起被删，需在后面重建。 */
+    const val DROP_CATEGORIES_OLD = "DROP TABLE `categories`"
+
+    const val RENAME_CATEGORIES_V4 =
+        "ALTER TABLE `categories_new` RENAME TO `categories`"
+
+    /** v3 → v4 ④：重建索引。索引名必须与 Room 生成名一致，否则 schema 校验失败。 */
+    const val RECREATE_CATEGORY_TYPE_INDEX =
+        "CREATE INDEX IF NOT EXISTS `index_categories_type` ON `categories` (`type`)"
+
+    const val RECREATE_CATEGORY_SECTION_INDEX =
+        "CREATE INDEX IF NOT EXISTS `index_categories_sectionId` ON `categories` (`sectionId`)"
+
+    /** v3 → v4 ⑤：sections 新表（`emoji` → `iconId`，并新增 `colorIndex` 胶带色） */
+    const val CREATE_SECTIONS_V4 =
+        "CREATE TABLE IF NOT EXISTS `sections_new` (" +
+            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`name` TEXT NOT NULL, " +
+            "`iconId` INTEGER NOT NULL, " +
+            "`note` TEXT NOT NULL, " +
+            "`budgetCents` INTEGER NOT NULL, " +
+            "`colorIndex` INTEGER NOT NULL, " +
+            "`sortOrder` INTEGER NOT NULL, " +
+            "`createdAt` INTEGER NOT NULL)"
+
+    /** v3 → v4 ⑥：拷分区并翻译图标；`colorIndex` 先统一给 0（青绿） */
+    val COPY_SECTIONS_V4: String =
+        "INSERT INTO `sections_new` " +
+            "(`id`, `name`, `iconId`, `note`, `budgetCents`, `colorIndex`, `sortOrder`, `createdAt`) " +
+            "SELECT `id`, `name`, " +
+            "CASE REPLACE(`emoji`, char(65039), '') ${IconMapping.sqlCaseWhen()} " +
+            "ELSE ${IconMapping.DEFAULT_SECTION_ICON_ID} END, " +
+            "`note`, `budgetCents`, 0, `sortOrder`, `createdAt` FROM `sections`"
+
+    const val DROP_SECTIONS_OLD = "DROP TABLE `sections`"
+
+    const val RENAME_SECTIONS_V4 =
+        "ALTER TABLE `sections_new` RENAME TO `sections`"
+
+    /**
+     * v3 → v4 ⑦：把 3 个初始分区的胶带色对齐到 [SectionFirstSeed] 的定义
+     * （日常开支=青绿 0 / 装修=赭黄 2 / 旅行=灰蓝 1）。
+     *
+     * 目的与 `MIGRATION_2_3` 补装修分类一致：**让「升级」与「全新安装」两条路径的初始态一致**。
+     * 用户自建的分区不在 CASE 内 → 落 ELSE 0，不猜测、不覆盖。
+     */
+    const val ALIGN_SECTION_COLOR_INDEX =
+        "UPDATE sections SET colorIndex = CASE name " +
+            "WHEN '装修' THEN ${SectionFirstSeed.TapeColor.ZHE_HUANG} " +
+            "WHEN '旅行' THEN ${SectionFirstSeed.TapeColor.HUI_LAN} " +
+            "WHEN '日常开支' THEN ${SectionFirstSeed.TapeColor.QING_LV} " +
+            "ELSE 0 END"
+
+    /** v3 → v4 ⑧：账目新增「核对」维度（双维度之一，见 D4 裁定） */
+    const val ADD_ENTRY_RECONCILED =
+        "ALTER TABLE entries ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0"
+
+    /** v3 → v4 ⑨：账目新增「报销」维度（与核对正交，可叠加） */
+    const val ADD_ENTRY_REIMBURSE_STATE =
+        "ALTER TABLE entries ADD COLUMN reimburseState INTEGER NOT NULL DEFAULT 0"
 }
