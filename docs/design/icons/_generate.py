@@ -29,6 +29,11 @@ import re
 INK = "#17403A"
 OUT = pathlib.Path(__file__).resolve().parent
 
+# 光学居中修正量（由 tools/audit_icons.py --emit-centering 生成）
+_cent_file = OUT / "_centering.json"
+CENTERING = (json.loads(_cent_file.read_text(encoding="utf-8"))["offsets"]
+             if _cent_file.exists() else {})
+
 
 def rp(x, y, w, h, r=2.0, r2=None, r3=None, r4=None):
     """带手工感的不等角圆角矩形（一张纸片的轮廓）。四角半径刻意略有差异，
@@ -157,10 +162,12 @@ CATEGORY = [
      [rp(3.5, 8.5, 17.0, 8.0, 3.6, 3.4, 3.7, 3.5),
       "M8 11.5v3M6.5 13h3", fi(16, 12, 1.0), fi(18, 14, 1.0)]),
 
+    # 影音：原版是「外框 + 2 条通栏横线 + 4 条竖齿」，墨长 141 —— 是分类组内中位数（57）
+    # 的 2.5 倍，24dp 下会糊成一块深色方块。改为「外框 + 4 段齿孔短竖线」，
+    # 既保住胶片辨识度又把墨长压到 ~72（与 receipt 同量级）。
     (23, "film", "🎬", "娱乐 / 影音",
      [rp(4.2, 5.6, 15.6, 12.8, 1.6),
-      "M4.2 9.4h15.6M4.2 14.6h15.6",
-      "M8.6 5.6v3.8M15.4 5.6v3.8M8.6 14.6v3.8M15.4 14.6v3.8"]),
+      "M8.6 5.6v3.4M15.4 5.6v3.4M8.6 15v3.4M15.4 15v3.4"]),
 
     (24, "ball", "⚽", "运动",
      [ci(12, 12, 7.5),
@@ -388,11 +395,18 @@ SPEC = {
 }
 
 
-def render(elements, size, stroke):
+def render(name, elements, size, stroke):
     body = "\n  ".join(
         e if e.lstrip().startswith("<") else f'<path d="{e}"/>'
         for e in elements
     )
+    # 光学居中：把整个字形平移到画布中心。修正量由 tools/audit_icons.py --emit-centering 生成，
+    # 只平移不缩放（生成器已夹紧保证安全边 >= 2dp）。
+    off = CENTERING.get(name)
+    if off:
+        indented = body.replace("\n", "\n    ")
+        body = (f'<g transform="translate({off[0]} {off[1]})">\n    '
+                f'{indented}\n  </g>')
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
         f'viewBox="0 0 {size} {size}" fill="none" stroke="{INK}" '
@@ -452,7 +466,7 @@ def main():
                 icon_id = None
                 etype = "material" if source.startswith("Icons.") else "emoji"
             (OUT / f"{name}.svg").write_text(
-                render(elements, grid, stroke), encoding="utf-8")
+                render(name, elements, grid, stroke), encoding="utf-8")
             manifest["icons"].append({
                 "name": name,
                 "group": group,

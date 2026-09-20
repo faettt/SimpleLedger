@@ -33,6 +33,10 @@ ICON_DIR = ROOT / "docs/design/icons"
 OUT_DIR = ROOT / "app/src/main/java/com/simpleledger/app/ui/icon"
 
 ELEMENT = re.compile(r"<(path|circle)\b([^>]*?)/?>", re.S)
+
+_cent = ICON_DIR / "_centering.json"
+CENTERING = (json.loads(_cent.read_text(encoding="utf-8"))["offsets"]
+             if _cent.exists() else {})
 ATTR = re.compile(r'([a-zA-Z-]+)="([^"]*)"')
 
 
@@ -76,6 +80,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
 /*
@@ -109,6 +114,8 @@ internal fun buildIcon(
     name: String,
     size: Int,
     strokeWidth: Float,
+    translationX: Float = 0f,
+    translationY: Float = 0f,
     vararg paths: IconPath,
 ): ImageVector = ImageVector.Builder(
     name = name,
@@ -117,6 +124,8 @@ internal fun buildIcon(
     viewportWidth = size.toFloat(),
     viewportHeight = size.toFloat(),
 ).apply {
+    // 光学居中：把字形平移到画布中心（修正量由 tools/audit_icons.py --emit-centering 生成）
+    group(translationX = translationX, translationY = translationY) {
     paths.forEach { path ->
         if (path.filled) {
             addPath(pathData = addPathNodes(path.d), fill = SolidColor(Color.Black))
@@ -130,6 +139,7 @@ internal fun buildIcon(
                 strokeLineJoin = StrokeJoin.Round,
             )
         }
+    }
     }
 }.build()
 
@@ -171,11 +181,14 @@ object SlCategoryIcons {
 def emit_icon(name: str, size: int, stroke: float, paths: "list[tuple[str, bool]]",
               indent: str) -> list[str]:
     """生成一个 `val X: ImageVector by lazy { buildIcon(...) }`"""
+    off = CENTERING.get(name, [0, 0])
     lines = [f"{indent}val {pascal(name)}: ImageVector by lazy {{",
              f"{indent}    buildIcon(",
              f'{indent}        "{name}",',
              f"{indent}        size = {size},",
-             f"{indent}        strokeWidth = {stroke}f,"]
+             f"{indent}        strokeWidth = {stroke}f,",
+             f"{indent}        translationX = {off[0]}f,",
+             f"{indent}        translationY = {off[1]}f,"]
     for d, filled in paths:
         lines.append(f"{indent}        {'pf' if filled else 'p'}({kotlin_str(d)}),")
     lines += [f"{indent}    )", f"{indent}}}", ""]
