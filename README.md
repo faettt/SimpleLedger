@@ -18,13 +18,21 @@
 > 视觉方向为「温和人文派」：暖中性底色、克制的青绿品牌色、等宽数字。
 > 完整设计规范（线框 / 视觉稿 / 组件 / 无障碍）见 [`docs/design/index.html`](docs/design/index.html)。
 
-| 统计（占比 · 趋势） | 我的（隐私承诺 · 导出与备份） | 大屏双栏（≥840dp） |
-|---|---|---|
-| ![统计](docs/screenshots/stats.png) | ![我的](docs/screenshots/mine.png) | ![大屏](docs/screenshots/wide-two-pane.png) |
+**「分区优先」主流程**（手机 · 底部四槽导航：分区 · 明细 · 统计 · 我的）
 
-分区首屏（卡片 · 预算进度）、分区详情（按天分组 · 记一笔）、全局分类管理等界面暂未提供截图
-（当前构建环境无可用模拟器 / 真机）。其结构与交互以「分区优先」设计规范
-[`docs/design/index.html`](docs/design/index.html) 为准。
+| 分区首屏（卡片 · 预算进度） | 分区详情（按天分组 · 记一笔） | 记一笔（分区只读 · 分类分组） |
+|---|---|---|
+| ![分区首屏](docs/screenshots/section-home.png) | ![分区详情](docs/screenshots/section-detail.png) | ![记一笔](docs/screenshots/add-entry.png) |
+
+| 明细（跨分区流水 · 分区筛选） | 统计（占比 · 趋势） | 我的（隐私承诺 · 导出与备份） |
+|---|---|---|
+| ![明细](docs/screenshots/ledger.png) | ![统计](docs/screenshots/stats.png) | ![我的](docs/screenshots/mine.png) |
+
+**管理面与大屏**
+
+| 全局分类管理 | 分区管理（专属分类 · 排序） | 大屏双栏（≥840dp） |
+|---|---|---|
+| ![全局分类](docs/screenshots/global-categories.png) | ![分区管理](docs/screenshots/manage.png) | ![大屏](docs/screenshots/wide-two-pane.png) |
 
 ## 技术栈
 

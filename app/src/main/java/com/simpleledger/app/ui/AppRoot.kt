@@ -305,8 +305,12 @@ private fun LedgerBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(barHeight)
-            .navigationBarsPadding(),
+            // navigationBarsPadding 必须排在 height **之前**：它要撑在 64dp 内容高度之外。
+            // 若写在 height 之后，手势条高度会从 64dp 内部被扣掉，内容区只剩约 40dp，
+            // 放不下 emoji(20sp)+标签(10.5sp)，标签会被整条裁掉（只看得见图标）。
+            // 从五槽改四槽时曾丢掉旧版的 `height(barHeight + 20.dp)` 缓冲，即由此产生。
+            .navigationBarsPadding()
+            .height(barHeight),
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
