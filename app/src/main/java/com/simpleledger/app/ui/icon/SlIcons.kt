@@ -86,37 +86,37 @@ object SlIcons {
     /** 底部导航（4 枚） */
     object Nav {
 
-        val NavSection: ImageVector by lazy {
+        val Section: ImageVector by lazy {
             buildIcon(
-                "nav-section",
+                "section",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = 0.2f,
-                translationY = -1.6f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M3.9 10.2c0-.9.7-1.6 1.6-1.6h2.9l1.5 1.8h8.2c.9 0 1.6.7 1.6 1.6v6.2c0 .9-.7 1.6-1.6 1.6H5.5c-.9 0-1.6-.7-1.6-1.6z"),
                 p("M6.4 7.4h10.8"),
             )
         }
 
-        val NavLedger: ImageVector by lazy {
+        val Ledger: ImageVector by lazy {
             buildIcon(
-                "nav-ledger",
+                "ledger",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.0f,
-                translationY = -0.4f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M7.0 6.4h10.2a1.6 1.6 0 0 1 1.6 1.6v8.5a1.9 1.9 0 0 1 -1.9 1.9h-10.0a1.7 1.7 0 0 1 -1.7 -1.7v-8.5a1.8 1.8 0 0 1 1.8 -1.8z"),
                 p("M8.4 9.4h7.2M8.4 12h7.2M8.4 14.6h4.4"),
             )
         }
 
-        val NavStats: ImageVector by lazy {
+        val Stats: ImageVector by lazy {
             buildIcon(
-                "nav-stats",
+                "stats",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = 0.0f,
-                translationY = -0.9f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M4.2 19.2h15.6"),
                 p("M7 19.2v-5.4"),
                 p("M11 19.2V9.4"),
@@ -125,13 +125,13 @@ object SlIcons {
             )
         }
 
-        val NavMine: ImageVector by lazy {
+        val Mine: ImageVector by lazy {
             buildIcon(
-                "nav-mine",
+                "mine",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = 0.0f,
-                translationY = -0.3f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M8.6 8.4a3.4 3.4 0 1 0 6.8 0a3.4 3.4 0 1 0 -6.8 0"),
                 p("M5.4 19.6c.8-3.9 3.4-5.9 6.6-5.9s5.8 2 6.6 5.9"),
             )

@@ -220,7 +220,10 @@ def main() -> None:
         for key in keys:
             for item in groups.get(key, []):
                 paths = parse_svg(ICON_DIR / f"{item['name']}.svg")
-                out += emit_icon(item["name"], item["viewBox"], float(item["strokeWidth"]),
+                # nav 组的成员名去掉 nav- 前缀（调用点写 SlIcons.Nav.Section，而不是 Nav.NavSection）
+                kname = (item["name"].removeprefix("nav-")
+                         if item["group"] == "nav" else item["name"])
+                out += emit_icon(kname, item["viewBox"], float(item["strokeWidth"]),
                                  paths, "        ")
         out.append("    }")
         out.append("")
@@ -236,7 +239,36 @@ def main() -> None:
         paths = parse_svg(ICON_DIR / f"{item['name']}.svg")
         cat += emit_icon(item["name"], item["viewBox"], float(item["strokeWidth"]),
                          paths, "    ")
+    # iconId → ImageVector 查表（UI 层唯一入口；越界兜底到 Tag，与数据库迁移兜底一致）
+    cat.append("    /**")
+    cat.append("     * 全部 50 枚（iconId 升序）。供图标选择网格枚举——")
+    cat.append("     * 顺序与 manifest.json 一致，选择网格的行/列布局以此为唯一依据。")
+    cat.append("     */")
+    cat.append("    val allIcons: List<Pair<Int, ImageVector>> = listOf(")
+    for item in groups["category"]:
+        cat.append(f'        {item["iconId"]} to {pascal(item["name"])},')
+    cat.append("    )")
+    cat.append("")
+    cat.append("    /**")
+    cat.append("     * iconId → ImageVector。**UI 层取分类图标的唯一入口**。")
+    cat.append("     *")
+    cat.append("     * 越界或未知值一律兜底到 [Tag]（43）—— 与数据库迁移 `MIGRATION_3_4` 的")
+    cat.append("     * `ELSE ${IconMapping.DEFAULT_CATEGORY_ICON_ID}` 是同一个兜底，保证任何脏数据")
+    cat.append("     * （旧版本残留、手动改库、未来 iconId 被删除）都只会显示默认图标，不会崩。")
+    cat.append("     */")
+    cat.append("    fun slCategoryIcon(iconId: Int): ImageVector = when (iconId) {")
+    for item in groups["category"]:
+        cat.append(f'        {item["iconId"]} -> {pascal(item["name"])}')
+    cat.append("        else -> Tag")
+    cat.append("    }")
     cat.append("}")
+    cat.append("")
+    cat.append("/**")
+    cat.append(" * 顶层委托：让调用点可以 `import …ui.icon.slCategoryIcon` 后短名调用，")
+    cat.append(" * 而不必写成 `SlCategoryIcons.slCategoryIcon(…)`。")
+    cat.append(" * 实际逻辑在 [SlCategoryIcons.slCategoryIcon]，含越界兜底。")
+    cat.append(" */")
+    cat.append("fun slCategoryIcon(iconId: Int): ImageVector = SlCategoryIcons.slCategoryIcon(iconId)")
     cat.append("")
     (OUT_DIR / "SlCategoryIcons.kt").write_text("\n".join(cat), encoding="utf-8")
 

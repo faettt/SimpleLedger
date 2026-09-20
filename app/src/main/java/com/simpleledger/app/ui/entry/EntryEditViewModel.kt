@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.simpleledger.app.data.local.IconMapping
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
@@ -171,8 +172,12 @@ class EntryEditViewModel(
     /**
      * EC-05：就地新建分类——类型默认跟随当前表单的支出/收入，归属默认当前分区；
      * 建好后重载候选并自动选中新分类。
+     *
+     * ⚠️ v4：就地新建**不带图标选择**（这是快速路径，只有一个名字输入框），
+     * 因此新分类落到默认图标 43 = tag —— 与数据库迁移的兜底值一致。
+     * 用户后续可在分类管理里换图标。
      */
-    fun createCategoryInline(name: String, emoji: String) {
+    fun createCategoryInline(name: String) {
         if (name.isBlank()) {
             _state.update { it.copy(error = "分类名称不能为空") }
             return
@@ -183,7 +188,8 @@ class EntryEditViewModel(
                 val id = repo.saveCategory(
                     CategoryEntity(
                         name = name.trim(),
-                        emoji = emoji,
+                        // 默认图标 43 = tag（快速路径不带图标选择，见上方注释）
+                        iconId = IconMapping.DEFAULT_CATEGORY_ICON_ID,
                         type = s.type,
                         sectionId = s.sectionId.takeIf { it > 0 },
                     )
@@ -285,7 +291,8 @@ class EntryEditViewModel(
                         Money.formatWithSymbol(cents)
                     }
                     val label = buildString {
-                        if (section != null) append("${section.emoji} ${section.name} · ")
+                        // v4：不再拼 emoji 前缀（F4——分区身份由色条/图标承担，文字只留名称）
+                        if (section != null) append("${section.name} · ")
                         append(amountLabel)
                     }
                     _state.update {

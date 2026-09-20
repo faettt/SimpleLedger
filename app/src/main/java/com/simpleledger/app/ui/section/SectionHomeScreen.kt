@@ -189,7 +189,8 @@ private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
     impact?.blockedReason?.let { return it }
     val entryCount = impact?.entryCount ?: 0
     val exclusiveCount = impact?.exclusiveCategoryCount ?: 0
-    val fallbackName = impact?.fallback?.let { "${it.emoji}${it.name}" }
+    // v4：删除提示文案不拼 emoji（这是读给用户听的字，图标在此无信息量）
+    val fallbackName = impact?.fallback?.name
     val entriesLine = if (entryCount > 0 && fallbackName != null) {
         stringResource(R.string.delete_section_body_entries, entryCount, fallbackName)
     } else {

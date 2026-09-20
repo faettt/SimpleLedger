@@ -191,6 +191,7 @@
     <string name="a11y_image_count">有 %1$d 张单据</string>
     <string name="a11y_move_up">上移</string>
     <string name="a11y_move_down">下移</string>
+    <string name="a11y_pick_icon">点按选择图标</string>
     <string name="a11y_move_up_section">上移分区</string>
     <string name="a11y_move_down_section">下移分区</string>
     <string name="a11y_section_month_expense">本月花销</string>

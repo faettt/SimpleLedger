@@ -122,7 +122,9 @@ class SectionDetailViewModel(
             Money.formatWithSymbol(full.entry.amountCents)
         }
         val section = full.section
-        return if (section != null) "${section.emoji} ${section.name} · $amount" else amount
+        // v4：读屏文案不再拼 emoji —— TalkBack 会把 emoji 念成「表情符号」，
+        // 对视障用户是噪音。分区身份由 UI 侧的图标/色条表达，读屏只留语义文本。
+        return if (section != null) "${section.name} · $amount" else amount
     }
 
     companion object {

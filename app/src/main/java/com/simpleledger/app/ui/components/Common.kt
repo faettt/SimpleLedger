@@ -36,6 +36,7 @@ import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.time.YearMonth
+import com.simpleledger.app.ui.icon.SlIcons
 
 /**
  * 月份切换头部：‹ 2026年9月 ›  今天  [尾部插槽]
@@ -121,7 +122,14 @@ fun EmptyHint(
                     .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("🗒️", fontSize = 28.sp)
+                // v4：空态插图从 emoji 🗒️ 换成手绘的「翻开的手账本」（32 网格 lg 档）
+                // 装饰性 → contentDescription null，语义由下方 text 承担
+                Icon(
+                    imageVector = SlIcons.Illustration.EmptyLg,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(34.dp),
+                )
             }
             Text(
                 text = text,

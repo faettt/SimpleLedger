@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,12 +45,14 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
+import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.time.YearMonth
+import androidx.compose.ui.graphics.vector.ImageVector
 
 /* 列表栏：月份头 + 概览 + 分区筛选 + 账目列表 + 移动到分区对话框的挂载点。 */
 
@@ -129,7 +132,18 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = state.filters.sectionId == section.id,
                     onClick = { viewModel.filterSection(section.id) },
-                    label = { Text("${section.emoji} ${section.name}", fontSize = 12.5.sp) },
+                    label = {
+                        // v4：筛选 chip 用「图标 + 名称」渲染（emoji 退场）
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = slCategoryIcon(section.iconId),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(section.name, fontSize = 12.5.sp)
+                        }
+                    },
                 )
             }
         }
@@ -296,7 +310,10 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
         state.filters.type?.let { type ->
             SmallTag(stringResource(if (type == EntryType.EXPENSE) R.string.expense else R.string.income))
         }
-        selectedCategory?.let { SmallTag("${it.emoji} ${it.name}") }
+        selectedCategory?.let {
+            // v4：激活筛选摘要用「图标 + 名称」
+            SmallTag(it.name, icon = slCategoryIcon(it.iconId))
+        }
         Spacer(modifier = Modifier.weight(1f))
         TextButton(onClick = onClearAll) {
             Text(stringResource(R.string.clear_all), fontSize = 12.5.sp)
@@ -305,18 +322,29 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
 }
 
 @Composable
-private fun SmallTag(text: String) {
+private fun SmallTag(text: String, icon: ImageVector? = null) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.primaryContainer)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
-        Text(
-            text = text,
-            fontSize = 11.5.sp,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(13.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(
+                text = text,
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }

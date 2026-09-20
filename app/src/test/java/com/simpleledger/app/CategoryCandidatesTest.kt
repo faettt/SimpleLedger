@@ -18,16 +18,16 @@ import org.junit.Test
  */
 class CategoryCandidatesTest {
 
-    private fun global(id: Long, name: String, emoji: String = "🍚", type: Int = EntryType.EXPENSE) =
-        CategoryEntity(id = id, name = name, emoji = emoji, type = type, sectionId = null, sortOrder = 0)
+    private fun global(id: Long, name: String, iconId: Int = 2, type: Int = EntryType.EXPENSE) =
+        CategoryEntity(id = id, name = name, iconId = iconId, type = type, sectionId = null, sortOrder = 0)
 
     private fun exclusive(
         id: Long,
         name: String,
         sectionId: Long,
-        emoji: String = "🧱",
+        iconId: Int = 44,
         type: Int = EntryType.EXPENSE,
-    ) = CategoryEntity(id = id, name = name, emoji = emoji, type = type, sectionId = sectionId, sortOrder = 0)
+    ) = CategoryEntity(id = id, name = name, iconId = iconId, type = type, sectionId = sectionId, sortOrder = 0)
 
     @Test
     fun `partition keeps exclusive first and splits groups preserving order`() {
@@ -72,14 +72,16 @@ class CategoryCandidatesTest {
         val exclusiveTotal = CategoryTotal(
             categoryId = 10,
             name = "材料",
-            emoji = "🧱",
+            iconId = 44,
             sectionId = 5L,
             sectionName = "装修",
-            sectionEmoji = "🔨",
+            sectionIconId = 17,
+            sectionColorIndex = null,
             total = 1000L,
             count = 1,
         )
-        assertEquals("🔨 装修 · 材料", CategoryCandidates.shareLabel(exclusiveTotal))
+        // v4（F4）：标签不再带 emoji 前缀 —— 分区身份由图表胶带色表达，文字只做消歧
+        assertEquals("装修 · 材料", CategoryCandidates.shareLabel(exclusiveTotal))
     }
 
     @Test
@@ -87,14 +89,16 @@ class CategoryCandidatesTest {
         val globalTotal = CategoryTotal(
             categoryId = 1,
             name = "餐饮",
-            emoji = "🍚",
+            iconId = 2,
             sectionId = null,
             sectionName = null,
-            sectionEmoji = null,
+            sectionIconId = null,
+            sectionColorIndex = null,
             total = 1000L,
             count = 1,
         )
-        assertEquals("🍚 餐饮", CategoryCandidates.shareLabel(globalTotal))
+        // v4（F4）：全局分类无分区消歧需求，标签就是分类名本身
+        assertEquals("餐饮", CategoryCandidates.shareLabel(globalTotal))
     }
 
     @Test

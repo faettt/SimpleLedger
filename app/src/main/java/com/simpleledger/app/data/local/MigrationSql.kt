@@ -44,13 +44,13 @@ object MigrationSql {
         // 以装修分区 id 子查询为 sectionId；支出 5 条 sortOrder 0..4，收入 2 条 sortOrder 0..1
         val zhuangxiuId = "(SELECT id FROM sections WHERE name = '装修' ORDER BY id LIMIT 1)"
         append("INSERT INTO categories (name, emoji, type, sectionId, sortOrder) ")
-        append("SELECT '主材', '🧱', 0, $zhuangxiuId, 0")
-        append(" UNION ALL SELECT '人工', '👷', 0, $zhuangxiuId, 1")
-        append(" UNION ALL SELECT '家具', '🛋️', 0, $zhuangxiuId, 2")
-        append(" UNION ALL SELECT '家电', '📺', 0, $zhuangxiuId, 3")
-        append(" UNION ALL SELECT '设计费', '📐', 0, $zhuangxiuId, 4")
-        append(" UNION ALL SELECT '报销', '💵', 1, $zhuangxiuId, 0")
-        append(" UNION ALL SELECT '退款', '↩️', 1, $zhuangxiuId, 1")
+        append("SELECT '主材', '\uD83E\uDDF1', 0, $zhuangxiuId, 0")
+        append(" UNION ALL SELECT '人工', '\uD83D\uDC77', 0, $zhuangxiuId, 1")
+        append(" UNION ALL SELECT '家具', '\uD83D\uDECB\uFE0F', 0, $zhuangxiuId, 2")
+        append(" UNION ALL SELECT '家电', '\uD83D\uDCFA', 0, $zhuangxiuId, 3")
+        append(" UNION ALL SELECT '设计费', '\uD83D\uDCD0', 0, $zhuangxiuId, 4")
+        append(" UNION ALL SELECT '报销', '\uD83D\uDCB5', 1, $zhuangxiuId, 0")
+        append(" UNION ALL SELECT '退款', '\u21A9\uFE0F', 1, $zhuangxiuId, 1")
     }
 
     /*
@@ -170,4 +170,27 @@ object MigrationSql {
     /** v3 → v4 ⑨：账目新增「报销」维度（与核对正交，可叠加） */
     const val ADD_ENTRY_REIMBURSE_STATE =
         "ALTER TABLE entries ADD COLUMN reimburseState INTEGER NOT NULL DEFAULT 0"
+
+    /**
+     * v4 全部语句，**按 [AppDatabase.MIGRATION_3_4] 的执行顺序排列**。
+     *
+     * 单独列出来是因为顺序本身就是契约：比如必须在 DROP 旧表**之前**先建新表、
+     * 索引必须等 RENAME 之后才能建（建早了会被 DROP 一起带走）。
+     * 单测按这份清单断言，顺序一旦被改动测试就会红。
+     */
+    val V4_STATEMENTS: List<Pair<String, String>> = listOf(
+        "CREATE_CATEGORIES_V4" to CREATE_CATEGORIES_V4,
+        "COPY_CATEGORIES_V4" to COPY_CATEGORIES_V4,
+        "DROP_CATEGORIES_OLD" to DROP_CATEGORIES_OLD,
+        "RENAME_CATEGORIES_V4" to RENAME_CATEGORIES_V4,
+        "RECREATE_CATEGORY_TYPE_INDEX" to RECREATE_CATEGORY_TYPE_INDEX,
+        "RECREATE_CATEGORY_SECTION_INDEX" to RECREATE_CATEGORY_SECTION_INDEX,
+        "CREATE_SECTIONS_V4" to CREATE_SECTIONS_V4,
+        "COPY_SECTIONS_V4" to COPY_SECTIONS_V4,
+        "DROP_SECTIONS_OLD" to DROP_SECTIONS_OLD,
+        "RENAME_SECTIONS_V4" to RENAME_SECTIONS_V4,
+        "ALIGN_SECTION_COLOR_INDEX" to ALIGN_SECTION_COLOR_INDEX,
+        "ADD_ENTRY_RECONCILED" to ADD_ENTRY_RECONCILED,
+        "ADD_ENTRY_REIMBURSE_STATE" to ADD_ENTRY_REIMBURSE_STATE,
+    )
 }

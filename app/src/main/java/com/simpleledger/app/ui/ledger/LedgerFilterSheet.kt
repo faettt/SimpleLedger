@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -26,6 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.ui.icon.slCategoryIcon
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 
 /*
  * 筛选面板：类型（全部/支出/收入）+ 分类多选 + 清除/完成。
@@ -82,7 +87,18 @@ internal fun FilterSheetContent(
                 FilterChip(
                     selected = state.filters.categoryId == category.id,
                     onClick = { onCategoryChange(category.id) },
-                    label = { Text("${category.emoji} ${category.name}", fontSize = 12.5.sp) },
+                    label = {
+                        // v4：分类筛选 chip 用「图标 + 名称」渲染（emoji 退场）
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = slCategoryIcon(category.iconId),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(category.name, fontSize = 12.5.sp)
+                        }
+                    },
                 )
             }
         }

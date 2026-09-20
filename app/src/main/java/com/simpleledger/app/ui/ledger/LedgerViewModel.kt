@@ -219,7 +219,8 @@ class LedgerViewModel(
         val full = repo.getEntryFull(entryId) ?: return null
         val amount = if (settings.hideAmounts.value) "金额已隐藏" else Money.formatWithSymbol(full.entry.amountCents)
         val section = full.section
-        return if (section != null) "${section.emoji} ${section.name} · $amount" else amount
+        // v4：读屏文案不拼 emoji（TalkBack 念 emoji 是噪音）；分区身份由 UI 图标/色条表达
+        return if (section != null) "${section.name} · $amount" else amount
     }
 
     /** 撤销删除：把刚保存的账目删掉（提示条里的「撤销」） */

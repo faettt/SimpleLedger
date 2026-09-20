@@ -65,6 +65,8 @@ import com.simpleledger.app.ui.security.canAuthenticate
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.material3.Icon
+import com.simpleledger.app.ui.icon.SlIcons
 
 /**
  * 「我的」页。
@@ -390,7 +392,13 @@ private fun PrivacyCard(countsText: String) {
                         .background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    // v4：字符 ✓ → 手绘 check-xs（xs 档描边 2.0，专为 11dp 白色小位设计）
+                    Icon(
+                        imageVector = SlIcons.Ui.CheckXs,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(11.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.width(9.dp))
                 Text(

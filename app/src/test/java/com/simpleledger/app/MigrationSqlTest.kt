@@ -85,4 +85,98 @@ class MigrationSqlTest {
         // 通过名字子查询定位装修分区（改名时子查询返回 NULL → 落为全局，不丢数据、不报错）
         assertTrue(sql.contains("SELECT id FROM sections WHERE name = '装修'"))
     }
+
+    /* ---------------------------------------------------------------- v3 → v4 */
+
+    /** execSQL 一次一条 —— 13 条语句任何一条都不能混入分号 */
+    @Test
+    fun `v3 to v4 statements are all single-statement`() {
+        assertEquals(
+            "v4 语句条数应与 MIGRATION_3_4 一致",
+            13,
+            MigrationSql.V4_STATEMENTS.size,
+        )
+        MigrationSql.V4_STATEMENTS.forEach { (name, sql) ->
+            assertTrue("$name 不应为空", sql.isNotBlank())
+            assertEquals("$name 混入了分号", 0, sql.count { it == ';' })
+        }
+    }
+
+    @Test
+    fun `v3 to v4 rebuilds categories with iconId and without emoji`() {
+        val sql = MigrationSql.CREATE_CATEGORIES_V4
+        assertTrue(sql.startsWith("CREATE TABLE IF NOT EXISTS `categories_new`"))
+        // 列集合必须与 Room 导出的 4.json 完全一致（缺列/多列都会让启动时 schema 校验崩）
+        listOf("`id`", "`name`", "`iconId` INTEGER NOT NULL", "`type`", "`sectionId` INTEGER", "`sortOrder`")
+            .forEach { assertTrue("categories_new 缺少：$it", sql.contains(it)) }
+        assertTrue("categories_new 不得再含 emoji 列", !sql.contains("emoji"))
+        assertTrue("主键必须是 AUTOINCREMENT", sql.contains("PRIMARY KEY AUTOINCREMENT"))
+    }
+
+    @Test
+    fun `v3 to v4 copy translates every legacy emoji with vs16 stripping`() {
+        val sql = MigrationSql.COPY_CATEGORIES_V4
+        // 左侧剥掉变体选择符：6 个旧 emoji 带 U+FE0F，不同输入法写入时可能不带
+        assertTrue(sql.contains("REPLACE(`emoji`, char(65039), '')"))
+        // 50 个 WHEN 一个都不能少 —— 漏一个 = 该分类升级后丢图标
+        assertEquals(50, "WHEN".toRegex().findAll(sql).count())
+        // 兜底必须是 43 = tag，与 IconMapping.DEFAULT_CATEGORY_ICON_ID 一致
+        assertTrue(sql.contains("ELSE 43 END"))
+        // 新表列与旧表列一一对应，保证 id / sortOrder 等不漂移
+        assertTrue(sql.contains("SELECT `id`, `name`,"))
+        assertTrue(sql.contains("FROM `categories`"))
+    }
+
+    @Test
+    fun `v3 to v4 drops and renames categories in the safe order`() {
+        assertEquals("DROP TABLE `categories`", MigrationSql.DROP_CATEGORIES_OLD)
+        assertEquals("ALTER TABLE `categories_new` RENAME TO `categories`", MigrationSql.RENAME_CATEGORIES_V4)
+        // 索引随旧表被删，RENAME 后必须重建，且名字与 Room 生成的一致。
+        // ⚠️ 反引号也必须一致：Room 的 createSql 里标识符带反引号（见 3.json），
+        //    少写反引号虽然 SQLite 也认，但会让「与 Room 逐字一致」这条契约名存实亡。
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS `index_categories_type` ON `categories` (`type`)",
+            MigrationSql.RECREATE_CATEGORY_TYPE_INDEX,
+        )
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS `index_categories_sectionId` ON `categories` (`sectionId`)",
+            MigrationSql.RECREATE_CATEGORY_SECTION_INDEX,
+        )
+    }
+
+    @Test
+    fun `v3 to v4 rebuilds sections with iconId and tape color`() {
+        val create = MigrationSql.CREATE_SECTIONS_V4
+        assertTrue(create.startsWith("CREATE TABLE IF NOT EXISTS `sections_new`"))
+        assertTrue(create.contains("`iconId` INTEGER NOT NULL"))
+        assertTrue(create.contains("`colorIndex` INTEGER NOT NULL"))
+        assertTrue(!create.contains("emoji"))
+        val copy = MigrationSql.COPY_SECTIONS_V4
+        assertTrue(copy.contains("REPLACE(`emoji`, char(65039), '')"))
+        // 分区兜底 1 = pin（与分类的 43 不同，别抄错）
+        assertTrue(copy.contains("ELSE 1 END"))
+        assertEquals("ALTER TABLE `sections_new` RENAME TO `sections`", MigrationSql.RENAME_SECTIONS_V4)
+    }
+
+    @Test
+    fun `v3 to v4 aligns seed section tape colors`() {
+        val sql = MigrationSql.ALIGN_SECTION_COLOR_INDEX
+        // 与 SectionFirstSeed 的三个初始分区一致：装修=赭黄 2 / 旅行=灰蓝 1 / 日常开支=青绿 0
+        assertTrue(sql.contains("WHEN '装修' THEN 2"))
+        assertTrue(sql.contains("WHEN '旅行' THEN 1"))
+        assertTrue(sql.contains("WHEN '日常开支' THEN 0"))
+        assertTrue(sql.contains("ELSE 0 END"))
+    }
+
+    @Test
+    fun `v3 to v4 adds the two orthogonal entry status columns`() {
+        assertEquals(
+            "ALTER TABLE entries ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_ENTRY_RECONCILED,
+        )
+        assertEquals(
+            "ALTER TABLE entries ADD COLUMN reimburseState INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_ENTRY_REIMBURSE_STATE,
+        )
+    }
 }

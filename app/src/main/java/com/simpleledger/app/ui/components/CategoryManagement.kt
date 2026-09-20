@@ -56,7 +56,11 @@ import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
-import com.simpleledger.app.util.EmojiChoices
+import com.simpleledger.app.data.local.IconMapping
+import com.simpleledger.app.ui.icon.SlCategoryIcons
+import com.simpleledger.app.ui.icon.SlIconGrid
+import com.simpleledger.app.ui.icon.SlIconTile
+import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.util.Money
 
 /*
@@ -89,7 +93,12 @@ fun SectionManageList(
                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(section.emoji, fontSize = 20.sp)
+                        SlIconTile(
+                            icon = slCategoryIcon(section.iconId),
+                            // 无障碍：相邻 Text 已读出分区名，图标是重复信息 → 置 null
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -184,17 +193,21 @@ fun CategoryList(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(category.emoji, fontSize = 20.sp)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                category.name,
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SlIconTile(
+                            icon = slCategoryIcon(category.iconId),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        category.name,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.weight(1f),
@@ -238,22 +251,23 @@ fun IconActionButton(
     }
 }
 
-/** 分区新建 / 编辑弹窗：名称 + emoji + 月度预算 + 分区备注（分区首屏与分区管理页共用） */
+/** 分区新建 / 编辑弹窗：名称 + 图标 + 月度预算 + 分区备注（分区首屏与分区管理页共用） */
 @Composable
 fun SectionDialog(
     initial: SectionEntity?,
     onDismiss: () -> Unit,
-    onSave: (id: Long?, name: String, emoji: String, note: String, budgetCents: Long) -> Unit,
+    onSave: (id: Long?, name: String, iconId: Int, note: String, budgetCents: Long) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var emoji by remember { mutableStateOf(initial?.emoji ?: "📌") }
+    // v4：图标是 iconId（Int），不再是 emoji 字符串。新建默认 1 = pin（与种子一致）
+    var iconId by remember { mutableStateOf(initial?.iconId ?: IconMapping.DEFAULT_SECTION_ICON_ID) }
     var note by remember { mutableStateOf(initial?.note ?: "") }
     var budgetText by remember {
         mutableStateOf(
             initial?.budgetCents?.takeIf { it > 0 }?.let { Money.formatCents(it).replace(",", "") } ?: ""
         )
     }
-    var showEmojiPicker by remember { mutableStateOf(false) }
+    var showIconPicker by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -266,10 +280,16 @@ fun SectionDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
-                            .clickable { showEmojiPicker = !showEmojiPicker },
+                            .clickable { showIconPicker = !showIconPicker },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(emoji, fontSize = 24.sp)
+                        // 图标预览位：点它展开/收起选择网格。
+                        // contentDescription 用文字说明"这是图标选择按钮"，而不是读图标名
+                        Icon(
+                            imageVector = slCategoryIcon(iconId),
+                            contentDescription = stringResource(R.string.a11y_pick_icon),
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     OutlinedTextField(
@@ -289,12 +309,9 @@ fun SectionDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                if (showEmojiPicker) {
+                if (showIconPicker) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    EmojiGrid(onPick = {
-                        emoji = it
-                        showEmojiPicker = false
-                    })
+                    SlIconGrid(selectedIconId = iconId, onPick = { iconId = it })
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -336,7 +353,7 @@ fun SectionDialog(
                     onSave(
                         initial?.id,
                         name.trim(),
-                        emoji,
+                        iconId,
                         note,
                         Money.parseToCents(budgetText) ?: 0L,
                     )
@@ -347,19 +364,20 @@ fun SectionDialog(
     )
 }
 
-/** 分类新建 / 编辑弹窗：名称 + emoji + 类型（分区专属分类与全局分类管理页共用） */
+/** 分类新建 / 编辑弹窗：名称 + 图标 + 类型（分区专属分类与全局分类管理页共用） */
 @Composable
 fun CategoryDialog(
     initial: CategoryEntity?,
     defaultType: Int,
     onDismiss: () -> Unit,
-    onSave: (id: Long?, name: String, emoji: String, type: Int) -> Unit,
+    onSave: (id: Long?, name: String, iconId: Int, type: Int) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var emoji by remember { mutableStateOf(initial?.emoji ?: "🏷️") }
+    // v4：图标是 iconId（Int）。新建默认 43 = tag（与数据库迁移兜底一致）
+    var iconId by remember { mutableStateOf(initial?.iconId ?: IconMapping.DEFAULT_CATEGORY_ICON_ID) }
     // P2-6：类型不可在弹窗内修改——由入口上下文决定（编辑沿用原类型；新建取入口的默认类型）。
     val type = initial?.type ?: defaultType
-    var showEmojiPicker by remember { mutableStateOf(false) }
+    var showIconPicker by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -372,10 +390,14 @@ fun CategoryDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
-                            .clickable { showEmojiPicker = !showEmojiPicker },
+                            .clickable { showIconPicker = !showIconPicker },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(emoji, fontSize = 24.sp)
+                        Icon(
+                            imageVector = slCategoryIcon(iconId),
+                            contentDescription = stringResource(R.string.a11y_pick_icon),
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     OutlinedTextField(
@@ -395,12 +417,9 @@ fun CategoryDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                if (showEmojiPicker) {
+                if (showIconPicker) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    EmojiGrid(onPick = {
-                        emoji = it
-                        showEmojiPicker = false
-                    })
+                    SlIconGrid(selectedIconId = iconId, onPick = { iconId = it })
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 // P2-6：弹窗内不再提供类型开关——类型由入口上下文决定（分区管理 / 全局分类页的类型
@@ -429,31 +448,10 @@ fun CategoryDialog(
                 if (name.isBlank()) {
                     nameError = true
                 } else {
-                    onSave(initial?.id, name.trim(), emoji, type)
+                    onSave(initial?.id, name.trim(), iconId, type)
                 }
             }) { Text(stringResource(R.string.save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
-}
-
-/** emoji 快速选择网格（分区 / 分类弹窗共用） */
-@Composable
-fun EmojiGrid(onPick: (String) -> Unit) {
-    Column {
-        EmojiChoices.chunked(7).forEach { rowEmojis ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                rowEmojis.forEach { candidate ->
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clickable { onPick(candidate) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(candidate, fontSize = 20.sp)
-                    }
-                }
-            }
-        }
-    }
 }

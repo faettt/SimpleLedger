@@ -41,6 +41,7 @@ import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
+import com.simpleledger.app.ui.icon.slCategoryIcon
 
 /**
  * 分区首屏卡片：emoji + 分区名 + **本月花销** + **预算进度条**（FR-10）。
@@ -114,7 +115,15 @@ fun SectionCard(
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(total.emoji, fontSize = 19.sp)
+                    // v4：emoji → 手绘图标。
+                    // TODO(M2 主题重写)：此处改为「左侧 4dp 分区胶带色边 + 图标用胶带色」，
+                    //   见 tokens-journal.json 的 tape.palette 与 F4 决策。
+                    Icon(
+                        imageVector = slCategoryIcon(total.iconId),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {

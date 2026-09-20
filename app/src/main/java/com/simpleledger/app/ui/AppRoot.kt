@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.simpleledger.app.R
 import com.simpleledger.app.ui.category.GlobalCategoriesScreen
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.entry.EntryEditScreen
 import com.simpleledger.app.ui.ledger.LedgerScreen
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
@@ -62,19 +66,19 @@ import com.simpleledger.app.ui.stats.StatsScreen
  * - `Routes` 改由独立文件 `ui/Routes.kt` 提供（唯一真源），本文件不再自带路由常量。
  */
 
-/** 导航项：emoji 作为图标（分类体系本身就用 emoji 表达，保持语言一致） */
+/** 导航项：v4 起图标是**手绘 ImageVector**（原 emoji 已退场，见 docs/design/icons/） */
 private data class NavItem(
     val route: String,
     val labelRes: Int,
-    val emoji: String,
+    val icon: ImageVector,
 )
 
 /** 一级导航（4 槽，顺序即 UI 顺序）：分区 · 明细 · 统计 · 我的 */
 private val navItems = listOf(
-    NavItem(Routes.SECTIONS, R.string.nav_sections, "🗂️"),
-    NavItem(Routes.LEDGER, R.string.nav_ledger, "📒"),
-    NavItem(Routes.STATS, R.string.nav_stats, "📊"),
-    NavItem(Routes.MINE, R.string.nav_mine, "👤"),
+    NavItem(Routes.SECTIONS, R.string.nav_sections, SlIcons.Nav.Section),
+    NavItem(Routes.LEDGER, R.string.nav_ledger, SlIcons.Nav.Ledger),
+    NavItem(Routes.STATS, R.string.nav_stats, SlIcons.Nav.Stats),
+    NavItem(Routes.MINE, R.string.nav_mine, SlIcons.Nav.Mine),
 )
 
 /** 窗口尺寸类：基于**窗口宽度**判定（内容区会被 Navigation Rail 占宽，不能用作判据） */
@@ -363,7 +367,15 @@ private fun BottomBarSlot(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                Text(item.emoji, fontSize = 20.sp, modifier = Modifier.alpha(if (selected) 1f else 0.72f))
+                // v4：emoji → 手绘图标；选中/未选中沿用原有透明度表达（不新增变色维度）
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .alpha(if (selected) 1f else 0.72f),
+                )
                 Text(
                     text = stringResource(item.labelRes),
                     fontSize = 10.5.sp,
@@ -396,7 +408,14 @@ private fun LedgerNavRail(
             NavigationRailItem(
                 selected = currentRoute == item.route,
                 onClick = { onNavigate(item.route) },
-                icon = { Text(item.emoji, fontSize = 19.sp) },
+                icon = {
+                    // v4：emoji → 手绘图标；选中色由 NavigationRailItemDefaults 统一给
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(21.dp),
+                    )
+                },
                 label = { Text(stringResource(item.labelRes), fontSize = 11.sp) },
                 colors = NavigationRailItemDefaults.colors(
                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,

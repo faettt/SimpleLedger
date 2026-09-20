@@ -79,6 +79,8 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.icon.SlIcons
 
 /**
  * 记一笔 / 编辑账目的表单主体。
@@ -234,13 +236,34 @@ fun EntryEditForm(
             Text("时间", style = MaterialTheme.typography.titleSmall)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // v4：emoji 前缀 → 行内图标（inline 档 14dp；图标描述置 null，日期文本本身已是语义）
                 AssistChip(
                     onClick = { showDatePicker = true },
-                    label = { Text("📅 " + DateTimes.dateLabel(DateTimes.toLocalDate(state.entryTime))) },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = SlIcons.Ui.CalendarInline,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(DateTimes.dateLabel(DateTimes.toLocalDate(state.entryTime)))
+                        }
+                    },
                 )
                 AssistChip(
                     onClick = { showTimePicker = true },
-                    label = { Text("🕐 " + DateTimes.timeLabel(DateTimes.toLocalTime(state.entryTime))) },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = SlIcons.Ui.ClockInline,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(DateTimes.timeLabel(DateTimes.toLocalTime(state.entryTime)))
+                        }
+                    },
                 )
             }
 
@@ -379,9 +402,10 @@ fun EntryEditForm(
             initial = null,
             defaultType = state.type,
             onDismiss = { showCreateCategory = false },
-            onSave = { _, name, emoji, type ->
+            onSave = { _, name, _, type ->
                 // EC-05：类型 / 归属默认跟随当前表单与分区，故忽略 type 参数（由 VM 决定）
-                viewModel.createCategoryInline(name, emoji)
+                // v4：就地新建不带图标选择（快速路径），新分类落默认图标 43 = tag（见 VM 注释）
+                viewModel.createCategoryInline(name)
                 showCreateCategory = false
             },
         )
@@ -446,8 +470,17 @@ private fun ReadOnlySectionRow(state: EntryEditUiState) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // v4：只读分区行改「图标 + 名称」（FR-22：明确不可点击改分区；emoji 退场）
+            if (section != null) {
+                Icon(
+                    imageVector = slCategoryIcon(section.iconId),
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+            }
             Text(
-                text = if (section != null) "${section.emoji} ${section.name}" else "未指定分区",
+                text = section?.name ?: stringResource(R.string.no_section),
                 fontSize = 14.5.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -487,7 +520,18 @@ private fun CategoryGroup(
             FilterChip(
                 selected = selectedCategoryId == category.id,
                 onClick = { onSelect(category.id) },
-                label = { Text("${category.emoji} ${category.name}") },
+                label = {
+                    // v4：分类候选 chip 改「图标 + 名称」（emoji 退场）
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = slCategoryIcon(category.iconId),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(category.name)
+                    }
+                },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                 ),

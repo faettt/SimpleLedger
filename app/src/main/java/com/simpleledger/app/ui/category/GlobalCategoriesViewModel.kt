@@ -45,7 +45,7 @@ class GlobalCategoriesViewModel(private val repo: LedgerRepository) : ViewModel(
         _error.value = null
     }
 
-    fun saveCategory(id: Long?, name: String, emoji: String, type: Int) {
+    fun saveCategory(id: Long?, name: String, iconId: Int, type: Int) {
         if (name.isBlank()) {
             _error.value = "分类名称不能为空"
             return
@@ -57,7 +57,7 @@ class GlobalCategoriesViewModel(private val repo: LedgerRepository) : ViewModel(
                     CategoryEntity(
                         id = id ?: 0,
                         name = name.trim(),
-                        emoji = emoji,
+                        iconId = iconId,
                         type = type,
                         // 全局分类：sectionId 恒为 null（严禁用 0L 表示全局）
                         sectionId = existing?.sectionId,

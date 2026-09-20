@@ -69,20 +69,23 @@ class SectionHomeViewModel(private val repo: LedgerRepository) : ViewModel() {
 
     fun toggleReorder() = reorderMode.update { !it }
 
-    fun saveSection(id: Long?, name: String, emoji: String, note: String, budgetCents: Long) {
+    fun saveSection(id: Long?, name: String, iconId: Int, note: String, budgetCents: Long) {
         if (name.isBlank()) {
             _error.value = "分区名称不能为空"
             return
         }
         viewModelScope.launch {
             runCatching {
+                // ⚠️ colorIndex 不在编辑表单里：编辑时必须回填原值，否则会重置胶带色
+                val existing = id?.let { repo.getSection(it) }
                 repo.saveSection(
                     SectionEntity(
                         id = id ?: 0,
                         name = name.trim(),
-                        emoji = emoji,
+                        iconId = iconId,
                         note = note.trim(),
                         budgetCents = budgetCents,
+                        colorIndex = existing?.colorIndex ?: 0,
                     )
                 )
             }.onFailure { e -> _error.value = e.message ?: "保存失败" }

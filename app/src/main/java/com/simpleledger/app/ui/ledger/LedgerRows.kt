@@ -48,11 +48,14 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.SectionMoveRules
+import com.simpleledger.app.ui.icon.SlIcons
+import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
+import androidx.compose.material3.Icon
 
 /*
  * 共享的账目展示组件：日分组标题 / 账目行 / 金额文本。
@@ -120,10 +123,13 @@ internal fun EntryRow(
     val hidden = LocalHideAmounts.current
     val meta = buildString {
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
-        full.section?.let { append(" · ${it.emoji}${it.name}") }
-        if (full.images.isNotEmpty()) append(" · 📷${full.images.size}")
-        if (full.entry.note.isNotBlank()) append(" · 💬")
+        // v4：分区名不再拼 emoji（F4——分区身份由色条/图标表达，文字只留名称）
+        full.section?.let { append(" · ${it.name}") }
     }
+    // v4：📷 / 💬 从「拼进字符串的 emoji」改成**渲染出来的行内图标**（SlIcons.Ui.CameraInline /
+    // NoteInline）。它们与读屏串 speech 的分工：视觉用图标，语义由 speechImageCount / speechHasNote 兜底。
+    val hasNote = full.entry.note.isNotBlank()
+    val imageCount = full.images.size
     var menuOpen by remember { mutableStateOf(false) }
 
     // 读屏串：行内三个 Text 节点会被 TalkBack 分三次朗读，失去「这是一笔账」的整体语义。
@@ -187,7 +193,14 @@ internal fun EntryRow(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(full.category?.emoji ?: "🏷️", fontSize = 17.sp)
+                // v4：emoji → 手绘图标。兜底 43 = tag，与迁移兜底一致；
+                // 装饰性 → contentDescription null，读屏由 speech 串负责
+                Icon(
+                    imageVector = slCategoryIcon(full.category?.iconId ?: 43),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp),
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -198,13 +211,40 @@ internal fun EntryRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = meta,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // v4：meta 行拆成「文本 + 行内图标」。图标 12dp（inline 档，描边 1.7），
+                // contentDescription 置 null —— 语义由 speech 串统一给出，避免重复朗读
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = meta,
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (imageCount > 0) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = SlIcons.Ui.CameraInline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(
+                            text = imageCount.toString(),
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (hasNote) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = SlIcons.Ui.NoteInline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
             AmountText(amountCents = full.entry.amountCents, isIncome = isIncome)
@@ -316,9 +356,10 @@ internal fun MoveSectionDialog(
     val uncategorized = stringResource(R.string.uncategorized)
     val noSection = stringResource(R.string.no_section)
     val hiddenAmount = stringResource(R.string.amount_hidden)
-    val currentSectionLabel = entry.section?.let { "${it.emoji}${it.name}" } ?: noSection
+    val currentSectionLabel = entry.section?.name ?: noSection
     val currentLine = stringResource(R.string.move_current_section, currentSectionLabel)
-    val categoryLabel = "${entry.category?.emoji ?: ""}${entry.category?.name ?: uncategorized}"
+    // v4：读屏/拼接文案一律不带 emoji（TalkBack 念 emoji 是噪音）
+    val categoryLabel = entry.category?.name ?: uncategorized
     val amountText = if (hidden) hiddenAmount else Money.formatWithSymbol(entry.entry.amountCents)
     val headerLine = "$categoryLabel · $amountText　$currentLine"
 
@@ -353,7 +394,15 @@ internal fun MoveSectionDialog(
                                     .padding(horizontal = 10.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("${section.emoji} ${section.name}", fontSize = 14.5.sp)
+                                // 分区选择行：图标（分区自身 iconId）+ 名称
+                                Icon(
+                                    imageVector = slCategoryIcon(section.iconId),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Text(section.name, fontSize = 14.5.sp)
                             }
                         }
                     }
@@ -363,7 +412,7 @@ internal fun MoveSectionDialog(
                     Text(
                         text = stringResource(
                             R.string.move_reselect_hint,
-                            target?.let { "${it.emoji} ${it.name}" } ?: "",
+                            target?.let { it.name } ?: "",
                         ),
                         fontSize = 12.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -392,7 +441,7 @@ internal fun MoveSectionDialog(
                                         onClick = { selectedCategoryId = candidate.id },
                                     )
                                     Text(
-                                        text = "${candidate.emoji} ${candidate.name}",
+                                        text = candidate.name,
                                         fontSize = 14.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,

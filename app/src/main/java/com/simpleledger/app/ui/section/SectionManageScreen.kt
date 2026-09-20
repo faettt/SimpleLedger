@@ -49,6 +49,8 @@ import com.simpleledger.app.ui.components.ContentMaxWidth
 import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.components.SectionDialog
 import com.simpleledger.app.util.Money
+import androidx.compose.foundation.layout.size
+import com.simpleledger.app.ui.icon.slCategoryIcon
 
 /**
  * 分区管理页（N10 / FR-18/19）。
@@ -135,13 +137,24 @@ fun SectionManageScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${state.section?.emoji ?: ""} ${state.section?.name ?: ""}".trim(),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            // v4：标题改「图标 + 分区名」（emoji 退场）
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                state.section?.let {
+                                    Icon(
+                                        imageVector = slCategoryIcon(it.iconId),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(7.dp))
+                                }
+                                Text(
+                                    text = state.section?.name ?: "",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                             val budget = state.section?.budgetCents ?: 0L
                             val budgetLine = if (budget > 0) {
                                 stringResource(R.string.section_manage_budget, Money.formatWithSymbol(budget))
@@ -245,7 +258,8 @@ internal fun categoryDeleteMessage(impact: CategoryDeleteImpact?): String {
     val count = impact?.entryCount ?: 0
     val fallback = impact?.fallback
     return if (count > 0 && fallback != null) {
-        stringResource(R.string.delete_category_body_moved, count, "${fallback.emoji} ${fallback.name}")
+        // v4：提示文案不拼 emoji —— 这是要给用户读的字，图标在这里没有信息量
+        stringResource(R.string.delete_category_body_moved, count, fallback.name)
     } else {
         stringResource(R.string.delete_category_body_none)
     }

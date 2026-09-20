@@ -132,10 +132,11 @@ class MoneySpeechTest {
             CategoryTotal(
                 categoryId = 1L,
                 name = name,
-                emoji = "🍚",
+                iconId = 2,
                 sectionId = null,
                 sectionName = null,
-                sectionEmoji = null,
+                sectionIconId = null,
+                sectionColorIndex = null,
                 total = cents,
                 count = 1,
             ),

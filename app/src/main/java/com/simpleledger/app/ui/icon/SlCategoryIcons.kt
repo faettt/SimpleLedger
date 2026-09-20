@@ -665,4 +665,128 @@ object SlCategoryIcons {
         )
     }
 
+    /**
+     * 全部 50 枚（iconId 升序）。供图标选择网格枚举——
+     * 顺序与 manifest.json 一致，选择网格的行/列布局以此为唯一依据。
+     */
+    val allIcons: List<Pair<Int, ImageVector>> = listOf(
+        1 to Pin,
+        2 to RiceBowl,
+        3 to NoodleBowl,
+        4 to Coffee,
+        5 to Beer,
+        6 to Salad,
+        7 to Donut,
+        8 to Bus,
+        9 to Car,
+        10 to Taxi,
+        11 to Bicycle,
+        12 to Fuel,
+        13 to Plane,
+        14 to Hotel,
+        15 to Bag,
+        16 to House,
+        17 to Hammer,
+        18 to Tools,
+        19 to Bulb,
+        20 to Pill,
+        21 to Hospital,
+        22 to Gamepad,
+        23 to Film,
+        24 to Ball,
+        25 to Guitar,
+        26 to Book,
+        27 to GradCap,
+        28 to Laptop,
+        29 to Phone,
+        30 to Pet,
+        31 to Gift,
+        32 to RedEnvelope,
+        33 to Baby,
+        34 to Nail,
+        35 to Haircut,
+        36 to MoneyBag,
+        37 to Invest,
+        38 to Receipt,
+        39 to Lotion,
+        40 to Teddy,
+        41 to Sparkle,
+        42 to Box,
+        43 to Tag,
+        44 to Brick,
+        45 to Helmet,
+        46 to Sofa,
+        47 to Tv,
+        48 to Ruler,
+        49 to Banknote,
+        50 to Refund,
+    )
+
+    /**
+     * iconId → ImageVector。**UI 层取分类图标的唯一入口**。
+     *
+     * 越界或未知值一律兜底到 [Tag]（43）—— 与数据库迁移 `MIGRATION_3_4` 的
+     * `ELSE ${IconMapping.DEFAULT_CATEGORY_ICON_ID}` 是同一个兜底，保证任何脏数据
+     * （旧版本残留、手动改库、未来 iconId 被删除）都只会显示默认图标，不会崩。
+     */
+    fun slCategoryIcon(iconId: Int): ImageVector = when (iconId) {
+        1 -> Pin
+        2 -> RiceBowl
+        3 -> NoodleBowl
+        4 -> Coffee
+        5 -> Beer
+        6 -> Salad
+        7 -> Donut
+        8 -> Bus
+        9 -> Car
+        10 -> Taxi
+        11 -> Bicycle
+        12 -> Fuel
+        13 -> Plane
+        14 -> Hotel
+        15 -> Bag
+        16 -> House
+        17 -> Hammer
+        18 -> Tools
+        19 -> Bulb
+        20 -> Pill
+        21 -> Hospital
+        22 -> Gamepad
+        23 -> Film
+        24 -> Ball
+        25 -> Guitar
+        26 -> Book
+        27 -> GradCap
+        28 -> Laptop
+        29 -> Phone
+        30 -> Pet
+        31 -> Gift
+        32 -> RedEnvelope
+        33 -> Baby
+        34 -> Nail
+        35 -> Haircut
+        36 -> MoneyBag
+        37 -> Invest
+        38 -> Receipt
+        39 -> Lotion
+        40 -> Teddy
+        41 -> Sparkle
+        42 -> Box
+        43 -> Tag
+        44 -> Brick
+        45 -> Helmet
+        46 -> Sofa
+        47 -> Tv
+        48 -> Ruler
+        49 -> Banknote
+        50 -> Refund
+        else -> Tag
+    }
 }
+
+/**
+ * 顶层委托：让调用点可以 `import …ui.icon.slCategoryIcon` 后短名调用，
+ * 而不必写成 `SlCategoryIcons.slCategoryIcon(…)`。
+ * 实际逻辑在 [SlCategoryIcons.slCategoryIcon]，含越界兜底。
+ */
+fun slCategoryIcon(iconId: Int): ImageVector = SlCategoryIcons.slCategoryIcon(iconId)

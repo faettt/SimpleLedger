@@ -53,13 +53,13 @@ class StatsCalculatorTest {
     fun `category shares sum to 1 and handle empty`() {
         val totals = listOf(
             com.simpleledger.app.data.local.entity.CategoryTotal(
-                categoryId = 1, name = "餐饮", emoji = "🍚",
-                sectionId = null, sectionName = null, sectionEmoji = null,
+                categoryId = 1, name = "餐饮", iconId = 2,
+                sectionId = null, sectionName = null, sectionIconId = null, sectionColorIndex = null,
                 total = 3000L, count = 3,
             ),
             com.simpleledger.app.data.local.entity.CategoryTotal(
-                categoryId = 2, name = "交通", emoji = "🚌",
-                sectionId = null, sectionName = null, sectionEmoji = null,
+                categoryId = 2, name = "交通", iconId = 8,
+                sectionId = null, sectionName = null, sectionIconId = null, sectionColorIndex = null,
                 total = 1000L, count = 1,
             ),
         )
