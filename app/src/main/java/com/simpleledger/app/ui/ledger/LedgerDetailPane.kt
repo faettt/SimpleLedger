@@ -29,12 +29,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.settings.LocalHideAmounts
@@ -103,7 +105,7 @@ internal fun EntryDetailPane(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = full.category?.name ?: "未分类",
+                        text = full.category?.name ?: stringResource(R.string.uncategorized),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -118,11 +120,11 @@ internal fun EntryDetailPane(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                OutlinedButton(onClick = { onEdit(full.entry.id) }) { Text("编辑") }
+                OutlinedButton(onClick = { onEdit(full.entry.id) }) { Text(stringResource(R.string.edit)) }
                 Spacer(modifier = Modifier.width(8.dp))
                 // 与列表长按一致：直接删除 + 4 秒撤销，不弹确认框
                 TextButton(onClick = { onDelete(full.entry.id) }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             }
 

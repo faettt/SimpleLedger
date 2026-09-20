@@ -33,9 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
+import com.simpleledger.app.R
 
 /** 记一笔 / 编辑账目在列表页内的两种承载形态 */
 enum class EntryEditHostStyle {
@@ -55,6 +57,7 @@ enum class EntryEditHostStyle {
 @Composable
 fun EntryEditHost(
     entryId: Long,
+    sectionId: Long,
     style: EntryEditHostStyle,
     snackbarHostState: SnackbarHostState,
     onDismiss: () -> Unit,
@@ -64,7 +67,7 @@ fun EntryEditHost(
 ) {
     val viewModel: EntryEditViewModel = viewModel(
         key = "entry_$entryId",
-        factory = EntryEditViewModel.factory(entryId),
+        factory = EntryEditViewModel.factory(entryId, sectionId),
     )
     val state by viewModel.state.collectAsState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -182,10 +185,10 @@ fun EntryEditHost(
                         showDeleteConfirm = false
                         viewModel.deleteEntry()
                     },
-                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                ) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

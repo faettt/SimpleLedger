@@ -9,7 +9,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,20 +20,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
+import com.simpleledger.app.R
 
 /**
  * 手机（Compact）宿主：全屏页面。
  * 平板与桌面不走这里——它们用列表页内的居中浮层 / 右侧面板，避免打断浏览上下文。
+ *
+ * [sectionId] 为记账分区上下文（新建=入口带入；编辑=账目所属），表单内只读（Q-07）。
  */
 @Composable
 fun EntryEditScreen(
     entryId: Long,
+    sectionId: Long,
     onDone: (Long?) -> Unit,
     viewModel: EntryEditViewModel = viewModel(
         key = "entry_$entryId",
-        factory = EntryEditViewModel.factory(entryId),
+        factory = EntryEditViewModel.factory(entryId, sectionId),
     ),
 ) {
     val state by viewModel.state.collectAsState()
@@ -106,10 +110,10 @@ fun EntryEditScreen(
                         showDeleteConfirm = false
                         viewModel.deleteEntry()
                     },
-                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                ) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

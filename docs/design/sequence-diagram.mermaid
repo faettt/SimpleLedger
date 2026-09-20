@@ -1,0 +1,84 @@
+%% SimpleLedger 分区优先重构 —— 关键调用时序
+%% 图 1：分区首屏 → 分区详情 → 记一笔 → 保存 → 返回
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant AR as AppRoot
+    participant SH as SectionHomeScreen
+    participant SHVM as SectionHomeViewModel
+    participant SD as SectionDetailScreen
+    participant SDVM as SectionDetailViewModel
+    participant Host as EntryEditHost/Screen
+    participant EVM as EntryEditViewModel
+    participant Repo as LedgerRepository
+    participant DB as Room(DAO)
+
+    U->>AR: 冷启动
+    AR->>SH: startDestination = SECTIONS
+    SH->>SHVM: collect state
+    SHVM->>Repo: observeSectionHome(本月范围)
+    Repo->>DB: observeSectionOverview(start, end)
+    DB-->>SHVM: List<SectionTotal>(含空分区)
+    SHVM-->>SH: 卡片(emoji/名/本月花销/进度条)
+    Note over SH: 进度条配色 = BudgetCalculator.budgetRatio/isOverspent/isNearLimit
+
+    U->>SD: 点「🔨 装修」卡片 (sectionId)
+    SD->>SDVM: 携带 sectionId
+    SDVM->>Repo: observeSection(id) + observeEntries(本月/该分区)
+    Repo->>DB: observeEntries(start,end,sectionId,..)
+    DB-->>SDVM: EntryFull 列表 → 按天分组(Q-12)
+    SDVM-->>SD: 标题=🔨装修, 列表, 底部「记一笔」
+
+    U->>Host: 点底部「记一笔」
+    Host->>EVM: 新建 VM(entryId=NEW, sectionId=装修)
+    EVM->>Repo: getById(sectionId) 只读分区 + observeCandidates(sectionId, EXPENSE)
+    Repo->>DB: observeCandidates(sectionId, type)
+    DB-->>EVM: 专属在前 + 全局 (CategoryCandidates.partition)
+    Note over EVM: selectedCategoryId = null (Q-01 不自动选中)
+
+    U->>EVM: 输入金额 + 点选「主材」
+    U->>EVM: 保存
+    EVM->>EVM: 校验金额非空 && 已选分类 (FR-26)
+    EVM->>Repo: saveEntry(EntryDraft(sectionId=装修, categoryId=主材,...))
+    Repo->>DB: withTransaction{ insertEntry + images 同步 }
+    DB-->>Repo: savedId
+    Repo-->>EVM: savedId
+    EVM-->>Host: state.saved = true
+    Host-->>SD: onSaved → 停留分区详情 (EC-11d)
+    SD->>SDVM: Flow 自动刷新
+    SDVM->>Repo: observeEntries(...) 重新发射
+    SD-->>U: 列表出现新账目 + 提示「已记入 🔨 装修 · ¥XXX」+ 撤销
+    Note over SD: 卡片花销/进度条数据源同 Flow，自动更新 (EC-11b)
+
+    U->>AR: 返回键
+    AR-->>SH: 回分区首屏(装修卡片花销已更新)
+
+%% 图 2：明细页「记一笔」（Q-13：先弹分区选择，不可跳过）
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant LP as LedgerListPane
+    participant LS as LedgerScreen
+    participant Pick as SectionPickerDialog
+    participant Host as EntryEditHost/Screen
+    participant EVM as EntryEditViewModel
+    participant Repo as LedgerRepository
+
+    U->>LP: 点「记一笔」
+    LP->>LS: onRecord()
+    LS->>Pick: 弹出分区选择器(不可跳过, Q-13)
+    Pick->>Repo: observeSections()
+    Repo-->>Pick: 分区列表
+    alt 0 分区 (EC-04)
+        Pick-->>U: 提示「还没有分区」+ 去分区首屏新建
+    else 有分区
+        U->>Pick: 选定「🔨 装修」
+        Pick->>Host: 打开表单(sectionId=装修, 分区已定, 不可改)
+        Host->>EVM: 新建 VM(entryId=NEW, sectionId=装修)
+        EVM->>Repo: observeCandidates(装修, EXPENSE)
+        Repo-->>EVM: 候选(专属/全局)
+        U->>EVM: 填金额 + 选分类 + 保存
+        EVM->>Repo: saveEntry(sectionId=装修,...)
+        Repo-->>EVM: savedId → 提示「已记入 🔨 装修 · ¥XXX」
+    end
+    Note over LS: 明细页无任何"跳过分区"入口 (FR-08/FR-28)

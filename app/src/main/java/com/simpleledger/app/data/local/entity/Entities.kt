@@ -31,14 +31,25 @@ data class SectionEntity(
 
 /**
  * 分类：用户自定义的支出 / 收入类型（如「餐饮」「交通」），挂在某条账目上。
+ *
+ * 「分区优先」重构后引入**归属维度** `sectionId`：
+ * - `sectionId == null` ⇒ **全局**（所有分区可见，一次定义、到处可用）；
+ * - `sectionId != null` ⇒ **该分区专属**。
+ *
+ * ⚠️ **刻意不给 `sectionId` 声明 FK**（见设计 D-1）：SQLite 无法为已有表补 FK，
+ * 一旦声明就得重建 `categories`，而 `entries` 的 `ForeignKey.RESTRICT` 会让重建失败。
+ * 完整性改由 `LedgerRepository` 保证（删分区时显式 `detachFromSection` 降级为全局）。
+ * ⚠️ **严禁用 `0L` 表示全局**——`null` 才是全局语义。
  */
-@Entity(tableName = "categories", indices = [Index("type")])
+@Entity(tableName = "categories", indices = [Index("type"), Index("sectionId")])
 data class CategoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val emoji: String = "🏷️",
     /** 0 = 支出分类，1 = 收入分类 */
     val type: Int,
+    /** 归属：null = 全局；非空 = 该分区专属（不加 FK，见类注释） */
+    val sectionId: Long? = null,
     val sortOrder: Int = 0,
 )
 
@@ -118,11 +129,22 @@ data class TypeTotal(
     val total: Long,
 )
 
-/** 按分类汇总 */
+/**
+ * 按分类汇总。
+ *
+ * 「分区优先」重构后增加**归属字段**，供 Q-09「分类占比按 id 聚合 + 分区名消歧」使用：
+ * 专属分类会带出所属分区的名称与 emoji，标签渲染为「🔨 装修 · 材料」；全局分类则为 null。
+ */
 data class CategoryTotal(
     val categoryId: Long,
     val name: String,
     val emoji: String,
+    /** null = 全局 */
+    val sectionId: Long?,
+    /** 专属分类所属分区名；全局为 null */
+    val sectionName: String?,
+    /** 专属分类所属分区 emoji；全局为 null */
+    val sectionEmoji: String?,
     val total: Long,
     val count: Int,
 )

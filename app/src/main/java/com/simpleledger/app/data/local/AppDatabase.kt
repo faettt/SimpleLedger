@@ -21,7 +21,7 @@ import com.simpleledger.app.data.local.entity.SectionEntity
         EntryEntity::class,
         EntryImageEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,9 +40,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 → v3：分类新增「归属」维度，并补入装修专属分类。
+         *
+         * **只做增量 DDL**（`ALTER TABLE ADD COLUMN` + `CREATE INDEX`）+ 一条补分类 INSERT：
+         * 不 DROP / 不 CREATE TABLE（D-1），`entries` 表零改动。
+         *
+         * 按主理人裁定 **C-2**：**不执行**任何「装修账目分类改写」的 `UPDATE`——
+         * 12 个既有分类因 `ADD COLUMN` 后天然为 NULL 而全部归位为全局（零 UPDATE），
+         * 装修专属分类作为**新增**补入。
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(MigrationSql.ADD_CATEGORY_SECTION_ID)
+                db.execSQL(MigrationSql.CREATE_CATEGORY_SECTION_INDEX)
+                db.execSQL(MigrationSql.INSERT_SECTION_FIRST_CATEGORIES)
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -51,34 +69,56 @@ abstract class AppDatabase : RoomDatabase() {
                 })
                 .build()
 
-        /** 首次启动时预置常用分区与分类，用户可随意增删改 */
+        /**
+         * 首次启动时按 [SectionFirstSeed] 的**理想结构**预置数据（用户可随意增删改）。
+         *
+         * 与 `MIGRATION_2_3` 同源：先插分区、再插全局分类（sectionId = NULL）、
+         * 最后按分区名回查 id 插分区专属分类——保证「新装」与「升级」初始态一致。
+         */
         private fun seed(db: SupportSQLiteDatabase) {
             val now = System.currentTimeMillis()
-            // 预算示例：日常开支 5000 元 / 装修 26 万元 / 旅行未设预算
-            db.execSQL(
-                "INSERT INTO sections (name, emoji, note, budgetCents, sortOrder, createdAt) VALUES " +
-                    "('日常开支', '📌', '日常生活开销', 500000, 0, $now), " +
-                    "('装修', '🔨', '主材与人工，控制在 26 万内', 26000000, 1, $now), " +
-                    "('旅行', '✈️', '出发前把大头订完', 0, 2, $now)"
-            )
-            db.execSQL(
-                "INSERT INTO categories (name, emoji, type, sortOrder) VALUES " +
-                    "('餐饮', '🍚', 0, 0), " +
-                    "('交通', '🚌', 0, 1), " +
-                    "('购物', '🛍️', 0, 2), " +
-                    "('居住', '🏠', 0, 3), " +
-                    "('医疗', '💊', 0, 4), " +
-                    "('娱乐', '🎮', 0, 5), " +
-                    "('学习', '📚', 0, 6), " +
-                    "('其他支出', '📦', 0, 7)"
-            )
-            db.execSQL(
-                "INSERT INTO categories (name, emoji, type, sortOrder) VALUES " +
-                    "('工资', '💰', 1, 0), " +
-                    "('理财', '📈', 1, 1), " +
-                    "('红包', '🧧', 1, 2), " +
-                    "('其他收入', '✨', 1, 3)"
-            )
+
+            // 1) 分区
+            SectionFirstSeed.sections.forEachIndexed { index, section ->
+                db.execSQL(
+                    "INSERT INTO sections (name, emoji, note, budgetCents, sortOrder, createdAt) " +
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(section.name, section.emoji, section.note, section.budgetCents, index, now),
+                )
+            }
+
+            // 2) 全局分类（sectionId = NULL）；sortOrder 按 (type, 全局) 作用域递增
+            val counters = HashMap<String, Int>()
+            SectionFirstSeed.globalCategories.forEach { category ->
+                val order = nextOrder(counters, category.type, null)
+                db.execSQL(
+                    "INSERT INTO categories (name, emoji, type, sectionId, sortOrder) VALUES (?, ?, ?, NULL, ?)",
+                    arrayOf<Any?>(category.name, category.emoji, category.type, order),
+                )
+            }
+
+            // 3) 分区专属分类；按 sectionName 回查分区 id
+            SectionFirstSeed.sectionCategories.forEach { category ->
+                val sectionId = db.query(
+                    "SELECT id FROM sections WHERE name = ? ORDER BY id LIMIT 1",
+                    arrayOf(category.sectionName),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getLong(0) else null
+                }
+                val order = nextOrder(counters, category.type, sectionId)
+                db.execSQL(
+                    "INSERT INTO categories (name, emoji, type, sectionId, sortOrder) VALUES (?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(category.name, category.emoji, category.type, sectionId, order),
+                )
+            }
+        }
+
+        /** 在 (type, 归属) 作用域内取下一个 sortOrder（与 `CategoryDao.nextSortOrder` 口径一致） */
+        private fun nextOrder(counters: MutableMap<String, Int>, type: Int, sectionId: Long?): Int {
+            val key = "$type:${sectionId ?: "global"}"
+            val next = counters[key] ?: 0
+            counters[key] = next + 1
+            return next
         }
     }
 }

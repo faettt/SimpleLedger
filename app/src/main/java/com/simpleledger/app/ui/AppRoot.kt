@@ -1,6 +1,5 @@
 package com.simpleledger.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -26,14 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,26 +42,25 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.simpleledger.app.R
+import com.simpleledger.app.ui.category.GlobalCategoriesScreen
 import com.simpleledger.app.ui.entry.EntryEditScreen
 import com.simpleledger.app.ui.ledger.LedgerScreen
-import com.simpleledger.app.ui.ledger.NEW_ENTRY_ID
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
-import com.simpleledger.app.ui.manage.ManageScreen
 import com.simpleledger.app.ui.mine.MineScreen
+import com.simpleledger.app.ui.section.SectionDetailScreen
+import com.simpleledger.app.ui.section.SectionHomeScreen
+import com.simpleledger.app.ui.section.SectionManageScreen
 import com.simpleledger.app.ui.stats.StatsScreen
 
-object Routes {
-    const val LEDGER = "ledger"
-    const val STATS = "stats"
-    const val MANAGE = "manage"
-    const val MINE = "mine"
-    const val ENTRY_EDIT = "entry/{entryId}"
-
-    fun entryEdit(entryId: Long): String = "entry/$entryId"
-
-    /** 一级导航（不含全局主操作「记一笔」） */
-    val topLevel = listOf(LEDGER, STATS, MANAGE, MINE)
-}
+/*
+ * 应用外壳：窗口形态判定 + 4 槽一级导航 + 路由挂载。
+ *
+ * 「分区优先」重构要点（FR-06/07、同步点 #2）：
+ * - 一级导航从 5 槽收敛为 **4 槽**：分区 · 明细 · 统计 · 我的，**分区升为首屏**（startDestination）；
+ * - **移除底部中央凸起「＋」与大屏 Rail 的「记一笔」项**——记账入口统一收敛到
+ *   「分区详情底部」与「明细页先选分区」两条路径，App 内不存在任何「跳过分区」的记账入口；
+ * - `Routes` 改由独立文件 `ui/Routes.kt` 提供（唯一真源），本文件不再自带路由常量。
+ */
 
 /** 导航项：emoji 作为图标（分类体系本身就用 emoji 表达，保持语言一致） */
 private data class NavItem(
@@ -74,11 +69,11 @@ private data class NavItem(
     val emoji: String,
 )
 
+/** 一级导航（4 槽，顺序即 UI 顺序）：分区 · 明细 · 统计 · 我的 */
 private val navItems = listOf(
+    NavItem(Routes.SECTIONS, R.string.nav_sections, "🗂️"),
     NavItem(Routes.LEDGER, R.string.nav_ledger, "📒"),
     NavItem(Routes.STATS, R.string.nav_stats, "📊"),
-    // 中间为「记一笔」全局主操作（凸起按钮），见 LedgerBottomBar
-    NavItem(Routes.MANAGE, R.string.nav_sections, "🗂️"),
     NavItem(Routes.MINE, R.string.nav_mine, "👤"),
 )
 
@@ -109,6 +104,8 @@ fun AppRoot() {
     // 用 rememberSaveable 而非 remember：折叠屏展开/折叠、旋转都会触发配置变更，
     // 若 Activity 因故重建（例如系统回收或未覆盖的配置项），remember 会丢掉正在编辑的账目。
     var editingEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // 与 editingEntryId 同生共死：编辑态所属分区（新建=入口带入；编辑=NEW_SECTION 由 VM 从账目读取）
+    var editingSectionId by rememberSaveable { mutableStateOf(Routes.NEW_SECTION) }
 
     // 折叠态：真读 FoldingFeature（非分隔铰链已被过滤），带铰链矩形供明细页做避让计算
     val foldInfo = rememberFoldInfo()
@@ -131,14 +128,9 @@ fun AppRoot() {
 
         // 离开明细页时收起编辑面板，避免切回来时它又冒出来
         LaunchedEffect(currentRoute) {
-            if (currentRoute != Routes.LEDGER) editingEntryId = null
-        }
-
-        val startCreate: () -> Unit = {
-            if (effectiveLayout == WindowLayout.Compact) {
-                navController.navigate(Routes.entryEdit(NEW_ENTRY_ID))
-            } else {
-                editingEntryId = NEW_ENTRY_ID
+            if (currentRoute != Routes.LEDGER) {
+                editingEntryId = null
+                editingSectionId = Routes.NEW_SECTION
             }
         }
 
@@ -148,7 +140,6 @@ fun AppRoot() {
                     LedgerBottomBar(
                         currentRoute = currentRoute,
                         onNavigate = navController::navigateTopLevel,
-                        onRecord = startCreate,
                     )
                 }
             },
@@ -160,7 +151,6 @@ fun AppRoot() {
                         expanded = effectiveLayout == WindowLayout.Expanded,
                         dense = dense,
                         onNavigate = navController::navigateTopLevel,
-                        onRecord = startCreate,
                     )
                 }
                 AppNavHost(
@@ -169,8 +159,15 @@ fun AppRoot() {
                     dense = dense,
                     foldInfo = foldInfo,
                     editingEntryId = editingEntryId,
-                    onStartEdit = { id -> editingEntryId = id },
-                    onStopEdit = { editingEntryId = null },
+                    editingSectionId = editingSectionId,
+                    onStartEdit = { id, sectionId ->
+                        editingEntryId = id
+                        editingSectionId = sectionId
+                    },
+                    onStopEdit = {
+                        editingEntryId = null
+                        editingSectionId = Routes.NEW_SECTION
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -194,37 +191,96 @@ private fun AppNavHost(
     dense: Boolean,
     foldInfo: FoldInfo,
     editingEntryId: Long?,
-    onStartEdit: (Long) -> Unit,
+    editingSectionId: Long,
+    onStartEdit: (Long, Long) -> Unit,
     onStopEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
         navController = navController,
-        startDestination = Routes.LEDGER,
+        startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
         modifier = modifier,
     ) {
+        // 分区首屏（默认落点）
+        composable(Routes.SECTIONS) {
+            SectionHomeScreen(
+                onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
+                layout = layout,
+            )
+        }
+
+        // 分区详情：按天分组账目 + 底部「记一笔」+ 右上「管理」
+        composable(Routes.SECTION_DETAIL) { entry ->
+            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
+            SectionDetailScreen(
+                sectionId = sectionId,
+                resultHandle = entry.savedStateHandle,
+                onBack = { navController.popBackStack() },
+                onManage = { id -> navController.navigate(Routes.sectionManage(id)) },
+                onCreateEntry = { id -> navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, id)) },
+                onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
+                layout = layout,
+                dense = dense,
+            )
+        }
+
+        // 分区管理：编辑分区信息 + 该分区专属分类
+        composable(Routes.SECTION_MANAGE) { entry ->
+            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
+            SectionManageScreen(
+                sectionId = sectionId,
+                onBack = { navController.popBackStack() },
+                layout = layout,
+            )
+        }
+
+        // 全局分类管理（从「我的 → 记账 → 全局分类」进入）
+        composable(Routes.GLOBAL_CATEGORIES) {
+            GlobalCategoriesScreen(
+                onBack = { navController.popBackStack() },
+                layout = layout,
+            )
+        }
+
+        // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
         composable(Routes.LEDGER) { entry ->
             LedgerScreen(
                 resultHandle = entry.savedStateHandle,
                 onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
+                onCreateEntry = { sectionId ->
+                    navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, sectionId))
+                },
+                onGoToSections = { navController.navigateTopLevel(Routes.SECTIONS) },
                 layout = layout,
                 dense = dense,
                 foldInfo = foldInfo,
                 editingEntryId = editingEntryId,
+                editingSectionId = editingSectionId,
                 onStartEdit = onStartEdit,
                 onStopEdit = onStopEdit,
             )
         }
+
         // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
-        // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这三页，
+        // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这几页，
         // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
         composable(Routes.STATS) { StatsScreen(layout = layout) }
-        composable(Routes.MANAGE) { ManageScreen(layout = layout) }
-        composable(Routes.MINE) { MineScreen(layout = layout) }
+        composable(Routes.MINE) {
+            MineScreen(
+                layout = layout,
+                onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
+            )
+        }
+
+        // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）
         composable(Routes.ENTRY_EDIT) { entry ->
-            val entryId = entry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
+            val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
+                ?: Routes.NEW_ENTRY_ID
+            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull()
+                ?: Routes.NEW_SECTION
             EntryEditScreen(
                 entryId = entryId,
+                sectionId = sectionId,
                 onDone = { savedId ->
                     navController.previousBackStackEntry
                         ?.savedStateHandle
@@ -237,28 +293,23 @@ private fun AppNavHost(
 }
 
 /* ============================================================
-   手机：底部 5 槽位导航 + 中央凸起「记一笔」
+   手机：底部 4 槽位导航（已移除中央凸起「记一笔」，同步点 #2）
    ============================================================ */
 @Composable
 private fun LedgerBottomBar(
     currentRoute: String?,
     onNavigate: (String) -> Unit,
-    onRecord: () -> Unit,
 ) {
     val barHeight = 64.dp
-    val recordSize = 52.dp
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(barHeight + 20.dp)
+            .height(barHeight)
             .navigationBarsPadding(),
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight)
-                .align(Alignment.BottomCenter),
+            modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp,
         ) {}
@@ -266,37 +317,16 @@ private fun LedgerBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
-                .align(Alignment.BottomCenter),
+                .height(barHeight),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            navItems.forEachIndexed { index, item ->
-                if (index == 2) {
-                    // 中央槽位留给凸起按钮
-                    Spacer(modifier = Modifier.width(recordSize + 8.dp))
-                }
+            navItems.forEach { item ->
                 BottomBarSlot(
                     item = item,
                     selected = currentRoute == item.route,
                     onClick = { onNavigate(item.route) },
                 )
-            }
-        }
-
-        // 中央凸起「记一笔」：最高频动作，独立于导航体系
-        Surface(
-            onClick = onRecord,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .size(recordSize)
-                .shadow(8.dp, RoundedCornerShape(16.dp)),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("＋", fontSize = 26.sp, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -342,7 +372,7 @@ private fun BottomBarSlot(
 }
 
 /* ============================================================
-   大屏：Navigation Rail（Medium 图标+文字 / Expanded 加宽常驻文字）
+   大屏：Navigation Rail（4 项，已移除「记一笔」，同步点 #2）
    ============================================================ */
 @Composable
 private fun LedgerNavRail(
@@ -350,7 +380,6 @@ private fun LedgerNavRail(
     expanded: Boolean,
     dense: Boolean,
     onNavigate: (String) -> Unit,
-    onRecord: () -> Unit,
 ) {
     NavigationRail(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -359,36 +388,7 @@ private fun LedgerNavRail(
         modifier = Modifier.width(if (expanded && !dense) 108.dp else 84.dp),
     ) {
         Spacer(modifier = Modifier.height(8.dp))
-        navItems.forEachIndexed { index, item ->
-            if (index == 2) {
-                // 「记一笔」以品牌填充块呈现，视觉上明显区别于普通导航项
-                NavigationRailItem(
-                    selected = false,
-                    onClick = onRecord,
-                    icon = {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "＋",
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-                    },
-                    label = { Text(stringResource(R.string.nav_record), fontSize = 11.sp) },
-                    colors = NavigationRailItemDefaults.colors(
-                        indicatorColor = Color.Transparent,
-                        selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                )
-            }
+        navItems.forEach { item ->
             NavigationRailItem(
                 selected = currentRoute == item.route,
                 onClick = { onNavigate(item.route) },

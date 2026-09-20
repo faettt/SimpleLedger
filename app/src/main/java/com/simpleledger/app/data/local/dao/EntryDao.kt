@@ -54,12 +54,18 @@ interface EntryDao {
         categoryId: Long?,
     ): Flow<List<TypeTotal>>
 
-    /** 按分类汇总 */
+    /**
+     * 分类占比：**按分类 id 聚合** + `LEFT JOIN sections` 带出归属字段（Q-09 消歧）。
+     * 专属分类会带出所属分区名 / emoji；全局分类两列为 NULL。
+     */
     @Query(
         """
         SELECT e.categoryId AS categoryId, c.name AS name, c.emoji AS emoji,
+               c.sectionId AS sectionId, s.name AS sectionName, s.emoji AS sectionEmoji,
                COALESCE(SUM(e.amountCents), 0) AS total, COUNT(*) AS count
-        FROM entries e JOIN categories c ON c.id = e.categoryId
+        FROM entries e
+        JOIN categories c ON c.id = e.categoryId
+        LEFT JOIN sections s ON s.id = c.sectionId
         WHERE e.entryTime >= :start AND e.entryTime < :end
           AND e.type = :type
           AND (:sectionId IS NULL OR e.sectionId = :sectionId)
@@ -73,20 +79,28 @@ interface EntryDao {
         sectionId: Long?,
     ): Flow<List<CategoryTotal>>
 
-    /** 按分区汇总（含分区备注与月度预算） */
+    /**
+     * 分区首屏「含空分区」汇总（本月支出 / 收入 / 笔数）。
+     *
+     * **必须用 LEFT JOIN sections**：空分区（本月无账目，甚至从未记账）也要出现在首屏，
+     * 否则用户看不到自己新建的分区。用 `COUNT(e.id)` 而非 `COUNT(*)`——LEFT JOIN 未命中时
+     * `e.*` 全为 NULL，`COUNT(*)` 会得到 1，导致空分区笔数错报为 1。
+     */
     @Query(
         """
-        SELECT e.sectionId AS sectionId, s.name AS name, s.emoji AS emoji, s.note AS note,
+        SELECT s.id AS sectionId, s.name AS name, s.emoji AS emoji, s.note AS note,
                s.budgetCents AS budgetCents,
                COALESCE(SUM(CASE WHEN e.type = 0 THEN e.amountCents ELSE 0 END), 0) AS expense,
                COALESCE(SUM(CASE WHEN e.type = 1 THEN e.amountCents ELSE 0 END), 0) AS income,
-               COUNT(*) AS count
-        FROM entries e JOIN sections s ON s.id = e.sectionId
-        WHERE e.entryTime >= :start AND e.entryTime < :end
-        GROUP BY e.sectionId ORDER BY expense DESC
+               COUNT(e.id) AS count
+        FROM sections s
+        LEFT JOIN entries e
+          ON e.sectionId = s.id AND e.entryTime >= :start AND e.entryTime < :end
+        GROUP BY s.id
+        ORDER BY s.sortOrder, s.id
         """
     )
-    fun observeSectionTotals(start: Long, end: Long): Flow<List<SectionTotal>>
+    fun observeSectionOverview(start: Long, end: Long): Flow<List<SectionTotal>>
 
     /**
      * 全局搜索：跨全部时间，四类匹配 —— 账目备注、分类名、分区名 / 分区备注、金额数字。

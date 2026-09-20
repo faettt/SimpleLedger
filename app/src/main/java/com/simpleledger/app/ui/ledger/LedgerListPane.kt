@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -32,9 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.settings.LocalHideAmounts
@@ -56,10 +60,12 @@ internal fun LedgerListPane(
     viewModel: LedgerViewModel,
     selectedEntryId: Long?,
     onRowClick: (Long) -> Unit,
+    onRecord: () -> Unit,
     onFilterClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onGoToSections: () -> Unit,
     onDuplicate: (Long) -> Unit,
-    onMoveTo: (Long, Long) -> Unit,
+    onMoveTo: (Long, Long, Long?) -> Unit,
     onDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -78,14 +84,14 @@ internal fun LedgerListPane(
                     onClick = onSearchClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text("搜索", fontSize = 13.sp)
+                    Text(stringResource(R.string.search), fontSize = 13.sp)
                 }
                 TextButton(
                     onClick = onFilterClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
                     Box {
-                        Text("筛选", fontSize = 13.sp)
+                        Text(stringResource(R.string.filter), fontSize = 13.sp)
                         if (filtersActive) {
                             Box(
                                 modifier = Modifier
@@ -116,7 +122,7 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = state.filters.sectionId == null,
                     onClick = { viewModel.filterSection(null) },
-                    label = { Text("全部分区", fontSize = 12.5.sp) },
+                    label = { Text(stringResource(R.string.all_sections), fontSize = 12.5.sp) },
                 )
             }
             items(state.sections, key = { it.id }) { section ->
@@ -132,15 +138,37 @@ internal fun LedgerListPane(
             ActiveFilterBar(state = state, onClearAll = viewModel::clearFilters)
         }
 
+        // 「记一笔」入口（Q-13）：点击先弹分区选择器，分区不可跳过
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                onClick = onRecord,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp),
+            ) {
+                Text(stringResource(R.string.record_entry), fontSize = 13.5.sp)
+            }
+        }
+
         if (state.isEmpty) {
             EmptyHint(
                 text = if (filtersActive) {
-                    "当前筛选条件下没有账目"
+                    stringResource(R.string.filters_none_result)
                 } else {
-                    "本月还没有账目，点下方「＋」记一笔"
+                    // 同步点 #1：空态不再指向已移除的中央「＋」，改为引导去「分区」记账
+                    stringResource(R.string.ledger_empty)
                 },
-                actionLabel = if (filtersActive) "清除全部筛选" else null,
-                onAction = viewModel::clearFilters,
+                actionLabel = if (filtersActive) {
+                    stringResource(R.string.filter_clear_all)
+                } else {
+                    stringResource(R.string.go_record_in_section)
+                },
+                onAction = if (filtersActive) viewModel::clearFilters else onGoToSections,
             )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -173,9 +201,10 @@ internal fun LedgerListPane(
         MoveSectionDialog(
             entry = target,
             sections = state.sections,
+            allCategories = state.categories,
             onDismiss = { moveTarget = null },
-            onPick = { sectionId ->
-                onMoveTo(target.entry.id, sectionId)
+            onConfirm = { sectionId, newCategoryId ->
+                onMoveTo(target.entry.id, sectionId, newCategoryId)
                 moveTarget = null
             },
         )
@@ -198,21 +227,21 @@ private fun OverviewRow(expenseCents: Long, incomeCents: Long) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OverviewCell(
-                label = "支出",
+                label = stringResource(R.string.expense),
                 value = if (hidden) "••••" else Money.formatWithSymbol(expenseCents),
                 color = expenseColor(),
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider()
             OverviewCell(
-                label = "收入",
+                label = stringResource(R.string.income),
                 value = if (hidden) "••••" else Money.formatWithSymbol(incomeCents),
                 color = incomeColor(),
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider()
             OverviewCell(
-                label = "结余",
+                label = stringResource(R.string.stats_balance),
                 value = if (hidden) "••••" else Money.formatWithSymbol(incomeCents - expenseCents),
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
@@ -265,12 +294,12 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         state.filters.type?.let { type ->
-            SmallTag(if (type == EntryType.EXPENSE) "支出" else "收入")
+            SmallTag(stringResource(if (type == EntryType.EXPENSE) R.string.expense else R.string.income))
         }
         selectedCategory?.let { SmallTag("${it.emoji} ${it.name}") }
         Spacer(modifier = Modifier.weight(1f))
         TextButton(onClick = onClearAll) {
-            Text("清除全部", fontSize = 12.5.sp)
+            Text(stringResource(R.string.clear_all), fontSize = 12.5.sp)
         }
     }
 }

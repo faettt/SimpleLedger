@@ -45,6 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -59,12 +60,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.simpleledger.app.R
+import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.ui.components.CategoryDialog
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -79,6 +85,12 @@ import java.time.ZoneOffset
  *
  * 刻意不依赖 Scaffold 与导航：三种宿主（手机全屏页、折叠屏居中浮层、大屏右侧面板）
  * 都复用这一个组件，保证行为完全一致——包括键盘、日期时间选择器与贴图查看。
+ *
+ * 「分区优先」后的变化：
+ * - 移除「分区」chips，改为**只读分区行**（FR-21/22）；表单内不存在改分区控件（Q-07）
+ * - 分类区**分组标题**「本分区专属」/「全局」（FR-24，允许同名不合并 Q-02）
+ * - 空态 + 「＋ 新建分类」就地创建（EC-05）
+ * - 编辑态把「不在候选内的当前分类」作为独立**历史分类** chip 呈现（EC-09）
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -92,6 +104,7 @@ fun EntryEditForm(
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showCreateCategory by remember { mutableStateOf(false) }
     var enlargedPath by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -107,14 +120,14 @@ fun EntryEditForm(
                     selected = state.type == EntryType.EXPENSE,
                     onClick = { viewModel.setType(EntryType.EXPENSE) },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                ) { Text("支出") }
+                ) { Text(stringResource(R.string.expense)) }
                 SegmentedButton(
                     selected = state.type == EntryType.INCOME,
                     onClick = { viewModel.setType(EntryType.INCOME) },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                 ) {
                     Text(
-                        "收入",
+                        stringResource(R.string.income),
                         color = if (state.type == EntryType.INCOME) {
                             incomeColor()
                         } else {
@@ -126,7 +139,7 @@ fun EntryEditForm(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 金额：绝对主角，44px 超大字号 + 常驻光标
+            // 金额：绝对主角，超大字号 + 常驻光标
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("¥", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
@@ -160,58 +173,62 @@ fun EntryEditForm(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 分类
-            Text("分类", style = MaterialTheme.typography.titleSmall)
+            // 分区：只读展示（FR-22），不可点击改分区
+            Text(stringResource(R.string.section), style = MaterialTheme.typography.titleSmall)
             Spacer(modifier = Modifier.height(8.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ReadOnlySectionRow(state)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 分类：分组呈现（专属在前 / 全局在后）+ 空态 + 就地新建
+            Text(stringResource(R.string.category), style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val candidatesEmpty =
+                state.exclusiveCategories.isEmpty() && state.globalCategories.isEmpty()
+
+            if (candidatesEmpty && state.historicalCategory == null) {
+                // EC-05：当前分区 + 当前类型下候选集合为空 → 空态引导
+                Text(
+                    text = stringResource(R.string.category_empty_hint),
+                    fontSize = 12.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                state.historicalCategory?.let { historical ->
+                    // EC-09：不在候选内的当前分类，独立呈现、保留、不静默改写
+                    CategoryGroup(
+                        title = stringResource(R.string.category_group_historical),
+                        categories = listOf(historical),
+                        selectedCategoryId = state.selectedCategoryId,
+                        onSelect = viewModel::selectCategory,
+                    )
+                }
+                if (state.exclusiveCategories.isNotEmpty()) {
+                    CategoryGroup(
+                        title = stringResource(R.string.category_group_exclusive),
+                        categories = state.exclusiveCategories,
+                        selectedCategoryId = state.selectedCategoryId,
+                        onSelect = viewModel::selectCategory,
+                    )
+                }
+                if (state.globalCategories.isNotEmpty()) {
+                    CategoryGroup(
+                        title = stringResource(R.string.category_group_global),
+                        categories = state.globalCategories,
+                        selectedCategoryId = state.selectedCategoryId,
+                        onSelect = viewModel::selectCategory,
+                    )
+                }
+            }
+            TextButton(
+                onClick = { showCreateCategory = true },
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
             ) {
-                state.categories.forEach { category ->
-                    FilterChip(
-                        selected = state.selectedCategoryId == category.id,
-                        onClick = { viewModel.selectCategory(category.id) },
-                        label = { Text("${category.emoji} ${category.name}") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
-                    )
-                }
+                Text(stringResource(R.string.category_create_inline), fontSize = 13.sp)
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 分区（含分区备注与月度预算提示）
-            Text("分区", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.sections, key = { it.id }) { section ->
-                    FilterChip(
-                        selected = state.selectedSectionId == section.id,
-                        onClick = { viewModel.selectSection(section.id) },
-                        label = { Text("${section.emoji} ${section.name}") },
-                    )
-                }
-            }
-            val currentSection = state.sections.firstOrNull { it.id == state.selectedSectionId }
-            if (currentSection != null) {
-                val hints = buildList {
-                    if (currentSection.note.isNotBlank()) add("📌 ${currentSection.note}")
-                    if (currentSection.budgetCents > 0) {
-                        add("月度预算 ${Money.formatWithSymbol(currentSection.budgetCents)}")
-                    }
-                }
-                if (hints.isNotEmpty()) {
-                    Text(
-                        text = hints.joinToString(" · "),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 时间
             Text("时间", style = MaterialTheme.typography.titleSmall)
@@ -299,8 +316,7 @@ fun EntryEditForm(
                     enabled = !state.saving,
                     modifier = Modifier
                         .weight(if (state.isEdit) 1f else 1.4f)
-                        // heightIn 而非 height：2.0× 字号下固定 52dp 会把「保存修改」竖向裁掉，
-                        // 用最小高度约束既保住原视觉，又允许文字放大时按钮自然长高
+                        // heightIn 而非 height：2.0× 字号下固定高度会把按钮文字竖向裁掉
                         .heightIn(min = 52.dp),
                 ) {
                     if (state.saving) {
@@ -312,7 +328,7 @@ fun EntryEditForm(
                     } else {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (state.isEdit) "保存修改" else "保存")
+                        Text(if (state.isEdit) "保存修改" else stringResource(R.string.save))
                     }
                 }
                 if (!state.isEdit) {
@@ -323,7 +339,6 @@ fun EntryEditForm(
                             .weight(1f)
                             .heightIn(min = 52.dp),
                     ) {
-                        // 去掉 maxLines=1：2.0× 字号下「保存并再记」需要换行显示，硬截断会丢字
                         Text("保存并再记", fontSize = 13.sp)
                     }
                 }
@@ -359,6 +374,19 @@ fun EntryEditForm(
         }
     }
 
+    if (showCreateCategory) {
+        CategoryDialog(
+            initial = null,
+            defaultType = state.type,
+            onDismiss = { showCreateCategory = false },
+            onSave = { _, name, emoji, type ->
+                // EC-05：类型 / 归属默认跟随当前表单与分区，故忽略 type 参数（由 VM 决定）
+                viewModel.createCategoryInline(name, emoji)
+                showCreateCategory = false
+            },
+        )
+    }
+
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = Instant.ofEpochMilli(state.entryTime)
@@ -375,7 +403,7 @@ fun EntryEditForm(
                     },
                 ) { Text("确定") }
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel)) } },
         ) {
             DatePicker(state = pickerState)
         }
@@ -400,8 +428,71 @@ fun EntryEditForm(
                     },
                 ) { Text("确定") }
             },
-            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** 只读分区行：emoji + 分区名，明确不可点击改分区（FR-22） */
+@Composable
+private fun ReadOnlySectionRow(state: EntryEditUiState) {
+    val section = state.section
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (section != null) "${section.emoji} ${section.name}" else "未指定分区",
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = stringResource(R.string.section_readonly_hint),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 一组分类：分组小标题 + chips（专属 / 全局 / 历史共用） */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategoryGroup(
+    title: String,
+    categories: List<CategoryEntity>,
+    selectedCategoryId: Long?,
+    onSelect: (Long) -> Unit,
+) {
+    Text(
+        text = title,
+        fontSize = 11.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+    )
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        categories.forEach { category ->
+            FilterChip(
+                selected = selectedCategoryId == category.id,
+                onClick = { onSelect(category.id) },
+                label = { Text("${category.emoji} ${category.name}") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                ),
+            )
+        }
     }
 }
 
@@ -430,7 +521,7 @@ fun EntryFormHeader(
             Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
         }
         Text(
-            text = if (isEdit) "编辑账目" else "记一笔",
+            text = stringResource(if (isEdit) R.string.edit_entry else R.string.add_entry),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 4.dp),
@@ -440,7 +531,7 @@ fun EntryFormHeader(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Filled.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.delete),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(19.dp),
                 )

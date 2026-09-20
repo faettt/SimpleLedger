@@ -262,8 +262,21 @@ class LedgerViewModel(
         }.getOrNull()
     }
 
-    /** 长按菜单：移动到其它分区（贴图记录保持不变，不会因为移动而丢图） */
-    suspend fun moveEntryToSection(entryId: Long, sectionId: Long): Boolean {
+    /**
+     * 长按菜单：移动到其它分区。
+     *
+     * [newCategoryId] 非空时**同时改分类**：这是修复 P1-1 的关键——当原分类是其它分区的
+     * 专属分类、无法随账目平移到目标分区时，UI 会让用户为目标分区重选一个同类型分类，
+     * 再一次性提交「改分区 + 改分类」。两者在同一 `saveEntry` 事务内完成，不会出现
+     * 「分区=旅行、分类只属于装修」的中间态。为 null 时仅改分区、保留原分类。
+     *
+     * 贴图记录保持不变（`keptImagePaths`），不会因为移动而丢图。
+     */
+    suspend fun moveEntryToSection(
+        entryId: Long,
+        sectionId: Long,
+        newCategoryId: Long? = null,
+    ): Boolean {
         val full = repo.getEntryFull(entryId) ?: return false
         return runCatching {
             repo.saveEntry(
@@ -271,7 +284,7 @@ class LedgerViewModel(
                     id = entryId,
                     type = full.entry.type,
                     amountCents = full.entry.amountCents,
-                    categoryId = full.entry.categoryId,
+                    categoryId = newCategoryId ?: full.entry.categoryId,
                     sectionId = sectionId,
                     entryTime = full.entry.entryTime,
                     note = full.entry.note,

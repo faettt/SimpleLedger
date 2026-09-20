@@ -8,7 +8,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.data.local.entity.CategoryTotal
 import com.simpleledger.app.data.local.entity.EntryType
-import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.logic.CategoryShare
 import com.simpleledger.app.logic.StatsCalculator
@@ -30,7 +29,6 @@ data class StatsUiState(
     val shares: List<CategoryShare> = emptyList(),
     val daily: List<Pair<Int, Long>> = emptyList(),
     val daysInMonth: Int = YearMonth.now().lengthOfMonth(),
-    val sectionTotals: List<SectionTotal> = emptyList(),
     val isEmpty: Boolean = false,
 )
 
@@ -44,9 +42,8 @@ class StatsViewModel(private val repo: LedgerRepository) : ViewModel() {
         combine(
             repo.observeTypeTotals(start, end),
             repo.observeCategoryTotals(EntryType.EXPENSE, start, end),
-            repo.observeSectionTotals(start, end),
             repo.observeEntries(start, end),
-        ) { totals, categoryTotals, sectionTotals, entries ->
+        ) { totals, categoryTotals, entries ->
             StatsUiState(
                 month = m,
                 expenseCents = totals.firstOrNull { it.type == EntryType.EXPENSE }?.total ?: 0,
@@ -55,7 +52,6 @@ class StatsViewModel(private val repo: LedgerRepository) : ViewModel() {
                 daily = StatsCalculator.dailyExpense(entries.map { it.entry })
                     .map { (date, cents) -> date.dayOfMonth to cents },
                 daysInMonth = m.lengthOfMonth(),
-                sectionTotals = sectionTotals,
                 isEmpty = entries.isEmpty(),
             )
         }

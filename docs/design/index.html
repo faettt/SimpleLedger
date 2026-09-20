@@ -205,13 +205,11 @@ code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:
 .s-amt{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .s-amt.exp{color:var(--s-expense)}
 .s-amt.inc{color:var(--s-income)}
-.s-tabbar{display:grid;grid-template-columns:repeat(5,1fr);align-items:end;gap:2px;
+.s-tabbar{display:grid;grid-template-columns:repeat(4,1fr);align-items:end;gap:2px;
   padding:6px 8px 10px;background:var(--s-surface);border-top:1px solid var(--s-line);position:relative}
 .s-tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:9px;color:var(--s-ink-3)}
 .s-tab.on{color:var(--s-brand);font-weight:600}
 .s-tab em{display:block;font-size:14px;font-style:normal;line-height:1}
-.s-rec{width:48px;height:48px;border-radius:16px;background:var(--s-brand);color:var(--s-on-brand);
-  display:grid;place-items:center;font-size:19px;font-weight:600;margin-top:-20px;box-shadow:0 6px 16px rgba(15,118,110,.32)}
 .s-elev{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);
   background:var(--s-ink);color:var(--s-bg);font-size:10px;padding:7px 12px;border-radius:10px;white-space:nowrap;
   box-shadow:var(--shadow-2);display:flex;gap:10px;align-items:center}
@@ -515,7 +513,7 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
         <table>
           <thead><tr><th style="width:74px">编号</th><th>假设内容</th><th style="width:38%">理由</th></tr></thead>
           <tbody>
-            <tr><td>A1</td><td>底部导航由 3 个 Tab 改为 <b>5 槽位</b>：明细 · 统计 · <b>记一笔（中央凸起）</b> · 分区 · 我的</td><td>「记一笔」是最高频动作，值得占据中央位置；分区管理从二级页提升为一级入口</td></tr>
+            <tr><td>A1</td><td>底部导航 <b>4 槽位</b>：<b>分区（首屏）</b> · 明细 · 统计 · 我的；<b>移除中央凸起「记一笔」</b></td><td>「分区优先」重构：分区承载用途与预算，是差异化核心；记账入口统一收敛到「分区详情底部」/「明细页先选分区」，杜绝任何跳过分区的记账路径</td></tr>
             <tr><td>A2</td><td>新增 <b>「我的 / 设置」</b> 页：外观、数据导出与备份、应用锁、（可选）隐藏金额</td><td>隐私优先的产品必须让用户看到「数据在我手里」，导出与备份入口缺失是当前最大短板</td></tr>
             <tr><td>A3</td><td>分区增加 <b>月度预算</b> 字段，统计页展示进度与超支预警</td><td>装修场景的核心诉求是「花到哪一步了」；分区备注已有半结构化的预算文本，升级为字段更可用</td></tr>
             <tr><td>A4</td><td>「记一笔」在手机上为全屏页，在平板 / 桌面为<b>弹窗或右侧面板</b></td><td>大屏全屏跳转会打断浏览上下文，浮层更符合键盘与大屏操作习惯</td></tr>
@@ -582,8 +580,8 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
 
       <h3>痛点 → 设计对策</h3>
       <div class="grid g2">
-        <div class="card-flat"><b>痛点：记账步骤多，坚持不下来</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 中央凸起「记一笔」全屏页只问四件事：金额、分类、分区、备注（后两者有默认值）；金额输入即出键盘，无二次跳转。</p></div>
-        <div class="card-flat"><b>痛点：大额支出记了，但看不出项目进度</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 分区字段化预算，统计页每个分区一条预算进度条，超支转琥珀色并在顶部汇总提示。</p></div>
+        <div class="card-flat"><b>痛点：记账步骤多，坚持不下来</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 「记一笔」全屏页只问四件事：金额、分类、备注、贴图——分区由进入路径携带、表单内只读；金额输入即出键盘，无二次跳转。</p></div>
+        <div class="card-flat"><b>痛点：大额支出记了，但看不出项目进度</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 分区字段化预算，「分区」首屏每个分区一条预算进度条，超支转琥珀色并给出文字说明。</p></div>
         <div class="card-flat"><b>痛点：统计图好看但不知道点进去看什么</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 所有图表可点击下钻：点某个分类扇区 → 跳到明细页并自动带上该分类筛选，形成闭环。</p></div>
         <div class="card-flat"><b>痛点：怕数据丢了，又不想注册账号</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">→ 「我的」页用一句话说明本地存储 + 系统云备份状态，把「导出」做成显性按钮而非藏在三级菜单。</p></div>
       </div>
@@ -593,8 +591,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
     <section id="s02">
       <div class="sec-head"><span class="sec-num">02</span><h2>信息架构与导航结构</h2></div>
       <p class="sec-desc">
-        记账类产品的信息架构有一个天然主轴：<strong>流水（发生过什么）→ 汇总（意味着什么）→ 结构（怎么归类）</strong>。
-        新方案把这条主轴映射为一级导航，并让「记一笔」脱离导航体系、独立成为全局主操作。
+        记账类产品的信息架构有一个天然主轴：<strong>分区（怎么归类）→ 流水（发生过什么）→ 汇总（意味着什么）</strong>。
+        「分区优先」重构后，<strong>分区升为首屏（默认落点）</strong>，一级导航收敛为 <strong>4 槽</strong>（分区 · 明细 · 统计 · 我的）；
+        「记一笔」不再是全局主操作，统一从「分区详情底部」或「明细页先选分区」进入。
       </p>
 
       <h3>信息架构树</h3>
@@ -602,13 +601,25 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
         <div class="card">
           <div class="ia">
             <div class="ia-node">
+              <div class="ia-dot">🗂️</div>
+              <div class="ia-body">
+                <b>分区 <span>Sections</span> <span class="tag tag-brand" style="margin-left:4px">默认落地页 · 首屏</span></b>
+                <p style="font-size:12.5px;color:var(--ink-2)">回答「我的钱按什么结构归类」</p>
+                <div class="ia-leaves">
+                  <span class="ia-leaf up">分区卡片（emoji · 本月花销 · 预算进度）</span><span class="ia-leaf up">新建 / 排序</span>
+                  <span class="ia-leaf">分区详情（按天分组 + 底部「记一笔」）</span><span class="ia-leaf">分区管理（信息 + 专属分类）</span>
+                </div>
+              </div>
+            </div>
+            <div class="ia-node">
               <div class="ia-dot">📒</div>
               <div class="ia-body">
-                <b>明细 <span>Ledger</span> <span class="tag tag-brand" style="margin-left:4px">默认落地页</span></b>
-                <p style="font-size:12.5px;color:var(--ink-2)">回答「这个月发生了什么」</p>
+                <b>明细 <span>Ledger</span></b>
+                <p style="font-size:12.5px;color:var(--ink-2)">回答「这个月发生了什么」（跨分区总览 + 搜索 / 筛选）</p>
                 <div class="ia-leaves">
                   <span class="ia-leaf up">月份切换</span><span class="ia-leaf up">月度概览</span><span class="ia-leaf up">按天分组流水</span>
                   <span class="ia-leaf">筛选：分区 / 类型 / 分类</span><span class="ia-leaf">账目详情 · 编辑 · 删除</span>
+                  <span class="ia-leaf">「记一笔」先弹分区选择器</span>
                 </div>
               </div>
             </div>
@@ -618,41 +629,30 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
                 <b>统计 <span>Stats</span></b>
                 <p style="font-size:12.5px;color:var(--ink-2)">回答「这些数字意味着什么」</p>
                 <div class="ia-leaves">
-                  <span class="ia-leaf up">月度总览</span><span class="ia-leaf up">分类占比</span><span class="ia-leaf up">每日趋势</span>
-                  <span class="ia-leaf up">分区预算进度</span><span class="ia-leaf">图表下钻到明细</span>
-                </div>
-              </div>
-            </div>
-            <div class="ia-node">
-              <div class="ia-dot" style="background:var(--brand);color:var(--brand-on)">＋</div>
-              <div class="ia-body">
-                <b>记一笔 <span>Record</span> <span class="tag tag-new" style="margin-left:4px">全局主操作</span></b>
-                <p style="font-size:12.5px;color:var(--ink-2)">不占导航槽位，中央凸起，任意页面可达</p>
-                <div class="ia-leaves">
-                  <span class="ia-leaf">支出 / 收入</span><span class="ia-leaf">金额</span><span class="ia-leaf">分类</span>
-                  <span class="ia-leaf">分区</span><span class="ia-leaf">日期时间</span><span class="ia-leaf">备注</span><span class="ia-leaf">贴图</span>
-                </div>
-              </div>
-            </div>
-            <div class="ia-node">
-              <div class="ia-dot">🗂️</div>
-              <div class="ia-body">
-                <b>分区 <span>Sections &amp; Categories</span> <span class="tag tag-new" style="margin-left:4px">提升为一级</span></b>
-                <p style="font-size:12.5px;color:var(--ink-2)">回答「我的钱按什么结构归类」</p>
-                <div class="ia-leaves">
-                  <span class="ia-leaf up">分区管理（含预算）</span><span class="ia-leaf">分类管理（支出 / 收入）</span>
-                  <span class="ia-leaf">排序</span><span class="ia-leaf">删除时账目迁移</span>
+                  <span class="ia-leaf up">月度总览</span><span class="ia-leaf up">分类占比（专属分类带分区名消歧）</span><span class="ia-leaf up">每日趋势</span>
+                  <span class="ia-leaf">图表下钻到明细</span>
                 </div>
               </div>
             </div>
             <div class="ia-node">
               <div class="ia-dot">👤</div>
               <div class="ia-body">
-                <b>我的 <span>Settings</span> <span class="tag tag-new" style="margin-left:4px">新增</span></b>
+                <b>我的 <span>Settings</span></b>
                 <p style="font-size:12.5px;color:var(--ink-2)">回答「我的数据安全吗、怎么带走」</p>
                 <div class="ia-leaves">
                   <span class="ia-leaf up">外观（明暗 / 动态取色）</span><span class="ia-leaf up">数据导出 · 备份 · 恢复</span>
-                  <span class="ia-leaf up">应用锁 · 隐藏金额</span><span class="ia-leaf">关于与开源许可</span>
+                  <span class="ia-leaf up">全局分类管理</span><span class="ia-leaf up">应用锁 · 隐藏金额</span>
+                </div>
+              </div>
+            </div>
+            <div class="ia-node">
+              <div class="ia-dot" style="background:var(--brand);color:var(--brand-on)">＋</div>
+              <div class="ia-body">
+                <b>记一笔 <span>Record</span> <span class="tag tag-new" style="margin-left:4px">非全局主操作</span></b>
+                <p style="font-size:12.5px;color:var(--ink-2)">不再是导航槽位 / 中央凸起；必须携带分区上下文（记账时分区只读）</p>
+                <div class="ia-leaves">
+                  <span class="ia-leaf">支出 / 收入</span><span class="ia-leaf">金额</span><span class="ia-leaf">分类（专属 / 全局分组）</span>
+                  <span class="ia-leaf">分区（只读）</span><span class="ia-leaf">日期时间</span><span class="ia-leaf">备注</span><span class="ia-leaf">贴图</span>
                 </div>
               </div>
             </div>
@@ -666,7 +666,7 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               <tbody>
                 <tr><td style="width:96px;color:var(--ink-3)">层级原则</td><td>一级导航只放<strong>不同性质</strong>的任务；同一任务的不同维度用页面内 Tab（如「分区 / 分类」）</td></tr>
                 <tr><td style="color:var(--ink-3)">深度原则</td><td>任何功能<strong>不超过 2 层</strong>。原方案里「分区管理」藏在第三个 Tab 的二级 Tab 中，认知成本过高</td></tr>
-                <tr><td style="color:var(--ink-3)">主次原则</td><td>「记一笔」在导航体系中<strong>被承认为最高频动作</strong>，因此用中央凸起按钮单独承载，而不是右下角小 FAB</td></tr>
+                <tr><td style="color:var(--ink-3)">主次原则</td><td>记账必须携带<strong>分区上下文</strong>，「记一笔」<strong>不再占据全局槽位</strong>；入口收敛到「分区详情底部」与「明细页先选分区」，避免「记了账却没地方归」</td></tr>
                 <tr><td style="color:var(--ink-3)">闭环原则</td><td>统计页每个图表都能<strong>下钻回明细</strong>并自动带上筛选条件，避免「看得到、点不进」</td></tr>
               </tbody>
             </table>
@@ -675,8 +675,8 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
             <b style="font-size:13.5px;color:var(--brand-deep)">导航槽位对比</b>
             <p style="font-size:12.5px;color:var(--brand-deep);margin-top:8px;line-height:1.75">
               原方案：<b>3 个 Tab</b>（明细 / 统计 / 管理）+ 右下 FAB<br>
-              新方案：<b>5 槽位</b>（明细 · 统计 · <b>记一笔</b> · 分区 · 我的）<br>
-              <span style="opacity:.85">依据：Material 3 导航栏建议 3–5 项；中央凸起按钮在 5 槽布局中最易实现拇指可达与视觉聚焦。</span>
+              「分区优先」重构：<b>4 槽位</b>（<b>分区</b> · 明细 · 统计 · 我的），<b>分区升首屏</b>，<b>移除中央凸起「记一笔」</b><br>
+              <span style="opacity:.85">依据：分区承载用途与预算，是「简账」的差异化核心；「记一笔」需分区上下文，故从全局槽位退场，改由分区入口承载。</span>
             </p>
           </div>
         </div>
@@ -689,12 +689,12 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
           <tbody>
             <tr>
               <td><b>Compact</b><br><span class="t-meta">&lt; 600dp · 手机竖屏</span></td>
-              <td>底部导航栏（5 槽位，中央凸起）</td>
-              <td>单栏；「记一笔」为全屏页面，从中央按钮推入</td>
+              <td>底部导航栏（4 槽位：分区 · 明细 · 统计 · 我的）</td>
+              <td>单栏；首屏为「分区」；「记一笔」为全屏页面，从「分区详情底部」或「明细页先选分区」进入</td>
             </tr>
             <tr>
               <td><b>Medium</b><br><span class="t-meta">600–840dp · 折叠屏展开 / 小平板竖屏</span></td>
-              <td>左侧 Navigation Rail（5 项，图标 + 文字）</td>
+              <td>左侧 Navigation Rail（4 项，图标 + 文字）</td>
               <td>单栏但内容限宽 640dp 居中；「记一笔」为居中模态浮层，不打断浏览上下文</td>
             </tr>
             <tr>
@@ -1097,10 +1097,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               <div class="wf-box" style="height:20px">（滚动区：更多账目）</div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab on"><em>▣</em>明细</div>
               <div class="s-tab"><em>◫</em>统计</div>
-              <div class="s-tab"><div class="s-rec" style="background:#B9B3AA">＋</div></div>
-              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab"><em>◔</em>我的</div>
             </div>
           </div></div>
@@ -1144,27 +1143,25 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               <div class="wf-box" style="height:56px">本月支出 / 收入 / 结余</div>
               <div class="wf-box" style="height:124px">分类占比环形图 + 图例（可点击下钻）</div>
               <div class="wf-box" style="height:86px">每日支出柱状图（1–30 日）</div>
-              <div class="wf-box" style="height:96px">分区预算进度：🔨 装修 ▓▓▓░░ 33%<br>┌ 日常开支 ▓▓▓▓▓ 超支 ┐</div>
-              <div class="wf-box" style="height:20px">（滚动区：更多分区）</div>
+              <!-- Q-08：统计页移除「分区预算」块；分区预算进度改在「分区」首屏 / 分区详情呈现 -->
+              <div class="wf-box" style="height:20px">（滚动区：更多分类占比）</div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab"><em>▣</em>明细</div>
               <div class="s-tab on"><em>◫</em>统计</div>
-              <div class="s-tab"><div class="s-rec" style="background:#B9B3AA">＋</div></div>
-              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab"><em>◔</em>我的</div>
             </div>
           </div></div>
         </div>
 
-        <!-- 线框 4：分区管理 -->
+        <!-- 线框 4：分区（首屏） -->
         <div class="device-wrap">
-          <div class="device-cap"><b>④ 分区管理</b>含预算与删除迁移提示</div>
+          <div class="device-cap"><b>④ 分区（首屏）</b>卡片列表 · 预算进度 · 新建入口</div>
           <div class="phone"><div class="screen wf">
             <div class="s-status"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
             <div class="s-body" style="display:flex;flex-direction:column;gap:7px;padding-top:6px">
-              <div class="wf-box" style="height:28px">页面标题：分区与分类</div>
-              <div class="wf-box" style="height:30px">Tab：分区 ｜ 分类</div>
+              <div class="wf-box" style="height:28px">页面标题：分区</div>
               <div class="wf-box" style="height:62px">🔨 装修 · 主材<br>预算 ¥260,000 · 已用 33%　　⋮ ⠿</div>
               <div class="wf-box" style="height:62px">📌 日常开支<br>预算 ¥5,000 · 已超支　　⋮ ⠿</div>
               <div class="wf-box" style="height:62px">✈️ 旅行<br>无预算　　⋮ ⠿</div>
@@ -1173,10 +1170,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
             </div>
             <div class="s-cta"><div style="background:#B9B3AA">＋ 新建分区</div></div>
             <div class="s-tabbar">
+              <div class="s-tab on"><em>◲</em>分区</div>
               <div class="s-tab"><em>▣</em>明细</div>
               <div class="s-tab"><em>◫</em>统计</div>
-              <div class="s-tab"><div class="s-rec" style="background:#B9B3AA">＋</div></div>
-              <div class="s-tab on"><em>◲</em>分区</div>
               <div class="s-tab"><em>◔</em>我的</div>
             </div>
           </div></div>
@@ -1198,10 +1194,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               <div class="wf-box" style="height:20px">（滚动区）</div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab"><em>▣</em>明细</div>
               <div class="s-tab"><em>◫</em>统计</div>
-              <div class="s-tab"><div class="s-rec" style="background:#B9B3AA">＋</div></div>
-              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab on"><em>◔</em>我的</div>
             </div>
           </div></div>
@@ -1225,10 +1220,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               </div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab on"><em>▣</em>明细</div>
               <div class="s-tab"><em>◫</em>统计</div>
-              <div class="s-tab"><div class="s-rec" style="background:#B9B3AA">＋</div></div>
-              <div class="s-tab"><em>◲</em>分区</div>
               <div class="s-tab"><em>◔</em>我的</div>
             </div>
           </div></div>
@@ -1295,10 +1289,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               </div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab on"><em>📒</em>明细</div>
               <div class="s-tab"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>👤</em>我的</div>
             </div>
           </div></div>
@@ -1401,40 +1394,24 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
                 </div>
                 <div class="s-ticks"><span>1日</span><span>10日</span><span>19日</span><span>30日</span></div>
               </div>
-              <div style="background:var(--s-surface);border:1px solid var(--s-line);border-radius:16px;padding:12px">
-                <div style="font-size:10.5px;font-weight:600;margin-bottom:8px">分区预算</div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
-                  <span>🔨 装修</span><span style="color:var(--s-ink-3)">86,400 / 260,000</span>
-                </div>
-                <div class="s-prog"><i style="width:33%"></i></div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin:9px 0 3px">
-                  <span>📌 日常开支</span><span style="color:var(--s-warn)">5,180 / 5,000</span>
-                </div>
-                <div class="s-prog"><i class="warn" style="width:100%"></i></div>
-                <div style="font-size:9.5px;color:var(--s-warn);margin-top:4px">⚠ 已超支 ¥180</div>
-              </div>
+              <!-- Q-08：统计页移除「分区预算」块 -->
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>📒</em>明细</div>
               <div class="s-tab on"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>👤</em>我的</div>
             </div>
           </div></div>
         </div>
 
-        <!-- ④ 分区管理 -->
+        <!-- ④ 分区（首屏） -->
         <div class="device-wrap">
-          <div class="device-cap"><b>分区与分类</b>预算进度直接写在分区上</div>
+          <div class="device-cap"><b>分区（首屏）</b>预算进度直接写在分区上 · 右上「排序」切排序态</div>
           <div class="phone"><div class="screen">
             <div class="s-status"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
-            <div class="s-topbar"><div style="font-size:13.5px;font-weight:600">分区与分类</div><div class="s-iconbtn">＋</div></div>
+            <div class="s-topbar"><div style="font-size:13.5px;font-weight:600">分区</div><div class="s-iconbtn">＋</div></div>
             <div class="s-body">
-              <div style="display:flex;background:var(--s-surface-2);border-radius:11px;padding:3px;gap:3px;margin-bottom:11px">
-                <div style="flex:1;text-align:center;font-size:11px;padding:6px 0;border-radius:8px;background:var(--s-surface);font-weight:650;color:var(--s-brand)">分区</div>
-                <div style="flex:1;text-align:center;font-size:11px;padding:6px 0;border-radius:8px;color:var(--s-ink-2)">分类</div>
-              </div>
               <div style="background:var(--s-surface);border:1px solid var(--s-line);border-radius:14px;padding:11px;margin-bottom:7px">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div class="s-bub brand">🔨</div>
@@ -1467,10 +1444,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
             </div>
             <div class="s-cta"><div>＋ 新建分区</div></div>
             <div class="s-tabbar">
+              <div class="s-tab on"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>📒</em>明细</div>
               <div class="s-tab"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab on"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>👤</em>我的</div>
             </div>
           </div></div>
@@ -1504,10 +1480,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               <div class="s-row"><span>🙈 隐藏金额</span><span class="v">关 ›</span></div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>📒</em>明细</div>
               <div class="s-tab"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab on"><em>👤</em>我的</div>
             </div>
           </div></div>
@@ -1565,10 +1540,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
               </div>
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab on"><em>📒</em>明细</div>
               <div class="s-tab"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>👤</em>我的</div>
             </div>
             <div class="s-elev"><span>已记入 🔨 装修 · ¥2,000.00</span><b>撤销</b></div>
@@ -1615,23 +1589,12 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
                 </div>
                 <div class="s-ticks"><span>1日</span><span>10日</span><span>19日</span><span>30日</span></div>
               </div>
-              <div style="background:var(--s-surface);border:1px solid var(--s-line);border-radius:16px;padding:12px">
-                <div style="font-size:10.5px;font-weight:600;margin-bottom:8px">分区预算</div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
-                  <span>🔨 装修</span><span style="color:var(--s-ink-3)">86,400 / 260,000</span>
-                </div>
-                <div class="s-prog"><i style="width:33%"></i></div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin:9px 0 3px">
-                  <span>📌 日常开支</span><span style="color:var(--s-warn)">5,180 / 5,000</span>
-                </div>
-                <div class="s-prog"><i class="warn" style="width:100%"></i></div>
-              </div>
+              <!-- Q-08：统计页移除「分区预算」块 -->
             </div>
             <div class="s-tabbar">
+              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>📒</em>明细</div>
               <div class="s-tab on"><em>📊</em>统计</div>
-              <div class="s-tab"><div class="s-rec">＋</div></div>
-              <div class="s-tab"><em>🗂️</em>分区</div>
               <div class="s-tab"><em>👤</em>我的</div>
             </div>
           </div></div>
@@ -1647,12 +1610,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
           <div class="tablet"><div class="screen">
             <div class="window-body" style="min-height:auto;height:100%">
               <div class="rail">
+                <div class="rail-item"><em>🗂️</em>分区</div>
                 <div class="rail-item on"><em>📒</em>明细</div>
                 <div class="rail-item"><em>📊</em>统计</div>
-                <div class="rail-item" style="background:var(--brand);color:#fff;box-shadow:0 4px 12px rgba(15,118,110,.3)">
-                  <em>＋</em>记一笔
-                </div>
-                <div class="rail-item"><em>🗂️</em>分区</div>
                 <div class="rail-item"><em>👤</em>我的</div>
               </div>
               <div style="flex:1;padding:14px 0;display:flex;justify-content:center;overflow:hidden">
@@ -1700,10 +1660,9 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
             <div class="window-bar"><i></i><i></i><i></i><span>简账 · 明细</span></div>
             <div class="window-body">
               <div class="rail">
+                <div class="rail-item"><em>🗂️</em>分区</div>
                 <div class="rail-item on"><em>📒</em>明细</div>
                 <div class="rail-item"><em>📊</em>统计</div>
-                <div class="rail-item" style="background:var(--brand);color:#fff"><em>＋</em>记一笔</div>
-                <div class="rail-item"><em>🗂️</em>分区</div>
                 <div class="rail-item"><em>👤</em>我的</div>
               </div>
               <div class="listpane">
@@ -1809,22 +1768,22 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
         以下流程定义了三件事：几步完成、每步看到什么、异常时怎么办。
       </p>
 
-      <h3>主流程 · 记一笔（目标：≤ 3 次点击）</h3>
+      <h3>主流程 · 记一笔（明细页入口先选分区）</h3>
       <div class="flow">
-        <div class="flow-step"><b>① 唤起</b><p>任意页面点中央「＋」。全屏页推入，输入法与数字键盘自动升起。</p></div>
+        <div class="flow-step"><b>① 唤起</b><p>从「分区详情」底部「记一笔」，或在「明细」页点「＋ 记一笔」后先在分区选择器中选定分区（不可跳过）。全屏页推入，输入法与数字键盘自动升起。</p></div>
         <div class="flow-arrow">→</div>
-        <div class="flow-step"><b>② 输金额</b><p>默认「支出」、当前时间、上次使用的分区。只需按数字。</p></div>
+        <div class="flow-step"><b>② 输金额</b><p>默认「支出」、当前时间；分区为<strong>上下文、记账时只读</strong>（表单内不存在改分区的控件）。只需按数字。</p></div>
         <div class="flow-arrow">→</div>
-        <div class="flow-step"><b>③ 选分类</b><p>4×N 网格，最近使用的三个自动前置，通常一次点击命中。</p></div>
+        <div class="flow-step"><b>③ 选分类</b><p>按「本分区专属 / 全局」分组呈现；<strong>不预选、不自动前置</strong>——首次进入需主动选择，避免误记。</p></div>
         <div class="flow-arrow">→</div>
-        <div class="flow-step"><b>④ 保存</b><p>底部 52dp 主按钮；成功后回到来源页并提示「已记入 …」+ 撤销。</p></div>
+        <div class="flow-step"><b>④ 保存</b><p>底部 52dp 主按钮；成功后返回来源页并提示「已记入 …」+ 撤销。</p></div>
       </div>
       <div class="card" style="margin-top:16px">
         <table>
           <thead><tr><th style="width:150px">步骤</th><th>即时反馈（&lt; 100ms）</th><th>结果反馈（提交后）</th><th style="width:26%">异常处理</th></tr></thead>
           <tbody>
             <tr><td>输入金额</td><td>数字即时千分位分组，光标常驻，非法字符直接被过滤</td><td class="t-meta">—</td><td>金额为空或为 0 → 保存按钮保持禁用并显示原因</td></tr>
-            <tr><td>选择分类 / 分区</td><td>chip 150ms 底色与文字色过渡，气泡轻微放大 1.03×</td><td class="t-meta">—</td><td>无分类时给出「先创建一个分类」的直达入口</td></tr>
+            <tr><td>选择分类</td><td>chip 150ms 底色与文字色过渡，气泡轻微放大 1.03×</td><td class="t-meta">—</td><td>无分类时给出「先创建一个分类」的直达入口</td></tr>
             <tr><td>添加贴图</td><td>立即出现加载占位，读取成功替换为缩略图</td><td>保存时写入本地目录并出现 📷 计数</td><td>图片读取失败 → 提示「有 N 张图片读取失败，请换一张」，账目仍可保存</td></tr>
             <tr><td>点击保存</td><td>按钮进入 loading 并锁定宽度（防止跳动）</td><td>回到来源页 + Snackbar「已记入 🔨 装修 · ¥2,000.00」+ 撤销</td><td>写库失败 → 返回表单并保留全部输入，提示「保存失败，请重试」</td></tr>
           </tbody>
@@ -1912,8 +1871,8 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);font-si
           <tbody>
             <tr>
               <td><b>Compact</b><br><span class="t-meta">&lt;600dp · 手机竖屏</span></td>
-              <td>底部导航栏 5 槽 + 中央凸起按钮，高 64dp</td>
-              <td>单栏 · 页边距 16dp ·「记一笔」全屏页 · 对话框宽度 = 屏幕宽 − 48dp</td>
+              <td>底部导航栏 4 槽（分区 · 明细 · 统计 · 我的），高 64dp</td>
+              <td>单栏 · 首屏为「分区」· 页边距 16dp ·「记一笔」全屏页（从分区详情底部 / 明细页先选分区进入）· 对话框宽度 = 屏幕宽 − 48dp</td>
             </tr>
             <tr>
               <td><b>Medium</b><br><span class="t-meta">600–840dp · 折叠屏 / 小平板</span></td>
@@ -2130,7 +2089,7 @@ val BudgetWarn  = Color(0xFFA16207)  // 预算预警</code></pre>
           <div class="card-flat">
             <b>实现优先级建议</b>
             <p style="font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.8">
-              <b>P0（本轮必做）</b>：令牌替换现有主题色 · 中央「记一笔」导航 · 明细页信息层级调整 · 空态与 Snackbar 撤销<br>
+              <b>P0（本轮必做）</b>：分区优先信息架构（4 槽导航「分区 · 明细 · 统计 · 我的」+ 分区首屏 / 分区详情 / 分区管理 / 全局分类 + 分类「全局 / 专属」归属）· 明细页信息层级调整 · 空态与 Snackbar 撤销<br>
               <b>P1（体验增强）</b>：分区预算字段与进度条 · 「我的」页与数据导出 · 等宽数字<br>
               <b>P2（大屏适配）</b>：Navigation Rail · 列表-详情双栏 · 统计页多栏 · 折叠屏铰链避让
             </p>
@@ -2157,7 +2116,7 @@ val BudgetWarn  = Color(0xFFA16207)  // 预算预警</code></pre>
 
       <h3>下一步建议</h3>
       <div class="grid g3">
-        <div class="card-flat"><b>① 确认 5 项设计假设</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">见 §00 表格。其中 A1（5 槽导航）与 A3（分区预算）影响最大，建议优先拍板。</p></div>
+        <div class="card-flat"><b>① 确认 5 项设计假设</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">见 §00 表格。其中 A1（导航槽位）与 A3（分区预算归属）影响最大，建议优先拍板。</p></div>
         <div class="card-flat"><b>② 选定后进入实现</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">按 P0 → P1 → P2 顺序落地；P0 约等于一次「换皮 + 导航重构」，风险最低、感知提升最大。</p></div>
         <div class="card-flat"><b>③ 真机回归</b><p style="font-size:12.5px;color:var(--ink-2);margin-top:6px">沿用现有模拟器走查流程：四档窗口 × 明暗双主题，重点核对对比度与动态字号不破版。</p></div>
       </div>

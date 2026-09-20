@@ -1,7 +1,6 @@
 package com.simpleledger.app.ui.stats
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,16 +22,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.simpleledger.app.data.local.entity.SectionTotal
+import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.LocalHideAmounts
-import com.simpleledger.app.logic.BudgetCalculator
+import com.simpleledger.app.logic.CategoryCandidates
 import com.simpleledger.app.logic.CategoryShare
 import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.components.CategoryPieChart
@@ -42,12 +40,10 @@ import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.components.DailyBarChart
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
-import com.simpleledger.app.ui.ledger.AmountText
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.chartPalette
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
-import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
 
 /**
@@ -123,14 +119,7 @@ fun StatsScreen(
                     }
                 }
 
-                // 分区预算进度（含超支预警）
-                if (state.sectionTotals.isNotEmpty()) {
-                    item {
-                        SectionTitle("分区预算")
-                        SectionBudgetGrid(sections = state.sectionTotals, twoColumn = twoColumn)
-                    }
-                }
-
+                // Q-08：分区预算块已移除——预算进度改由「分区」首屏卡片承载，统计页专注趋势 / 占比 / 每日支出
                 item { Spacer(modifier = Modifier.height(28.dp)) }
             }
         }
@@ -172,7 +161,7 @@ private fun OverviewCard(state: StatsUiState, hidden: Boolean) {
             )
             CellDivider()
             StatCell(
-                label = "结余",
+                label = stringResource(R.string.stats_balance),
                 value = if (hidden) {
                     "••••"
                 } else {
@@ -212,7 +201,7 @@ private fun CategoryShareSection(
                         )
                         Spacer(modifier = Modifier.width(9.dp))
                         Text(
-                            "${share.total.emoji} ${share.total.name}",
+                            CategoryCandidates.shareLabel(share.total),
                             fontSize = 13.5.sp,
                             modifier = Modifier.weight(1f),
                         )
@@ -240,44 +229,6 @@ private fun DailyExpenseSection(daily: List<Pair<Int, Long>>, daysInMonth: Int, 
     Card(modifier = Modifier.padding(horizontal = 16.dp)) {
         Column(modifier = Modifier.padding(18.dp)) {
             DailyBarChart(daily = daily, daysInMonth = daysInMonth, hidden = hidden)
-        }
-    }
-}
-
-/**
- * 分区预算排布。
- *
- * 双栏时按 2 个一组分行；**奇数个分区时最后一行用等宽 Spacer 占位**，
- * 而不是让最后一张卡拉成整行——否则网格会突然出现一张明显更宽、内容却更少的卡，
- * 破坏「同类信息等宽」的视觉节奏。
- *
- * 选型说明：这里沿用 `LazyColumn` + 行内 `Row(weight(1f))` 组合，而非 `LazyVerticalGrid`。
- * 原因：整页只有一个滚动容器（LazyColumn），不会出现嵌套滚动；每张卡自身高度由内容决定、
- * Row 取二者最大值，测量路径是确定的，没有「wrap-content 高度需要反推父高」的循环依赖。
- */
-@Composable
-private fun SectionBudgetGrid(sections: List<SectionTotal>, twoColumn: Boolean) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (twoColumn) {
-            sections.chunked(2).forEach { rowSections ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    SectionBudgetCard(section = rowSections[0], modifier = Modifier.weight(1f))
-                    if (rowSections.size == 2) {
-                        SectionBudgetCard(section = rowSections[1], modifier = Modifier.weight(1f))
-                    } else {
-                        // 奇数尾行：留空位不拉伸
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        } else {
-            sections.forEach { section -> SectionBudgetCard(section = section) }
         }
     }
 }
@@ -310,132 +261,6 @@ private fun StatCell(
             style = TabularNums,
             maxLines = 1,
         )
-    }
-}
-
-/**
- * 分区预算卡：预算有值才显示进度条；未设预算时只显示支出金额。
- * 颜色按用量分级（正常 / 接近上限 / 超支），但那只是加速识别——结论始终由文字给出。
- *
- * [modifier] 由调用方注入：单列时保持默认（自身 `fillMaxWidth`，与改动前一致）；
- * 双栏时传入 `Modifier.weight(1f)`，由父 `Row` 均分宽度。
- */
-@Composable
-private fun SectionBudgetCard(section: SectionTotal, modifier: Modifier = Modifier) {
-    val hidden = LocalHideAmounts.current
-    val budget = section.budgetCents
-    val hasBudget = budget > 0
-    val ratio = BudgetCalculator.budgetRatio(section.expense, budget)
-    val overspent = BudgetCalculator.isOverspent(section.expense, budget)
-    val nearLimit = BudgetCalculator.isNearLimit(section.expense, budget)
-
-    val barColor = when {
-        overspent -> expenseColor()
-        nearLimit -> warnColor()
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(section.emoji, fontSize = 16.sp)
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = section.name,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = buildString {
-                            append("${section.count} 笔")
-                            if (hasBudget) {
-                                append(" · 已用 ${(ratio * 100).toInt()}%")
-                            } else {
-                                append(" · 未设预算")
-                            }
-                        },
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                AmountText(
-                    amountCents = section.expense,
-                    isIncome = false,
-                    fontSize = 15.sp,
-                )
-            }
-
-            if (section.note.isNotBlank()) {
-                Text(
-                    text = "📌 ${section.note}",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-
-            if (hasBudget) {
-                Spacer(modifier = Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    progress = { ratio },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(99.dp)),
-                    color = barColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    gapSize = 0.dp,
-                    drawStopIndicator = {},
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = if (hidden) {
-                            "已用 •••• / ••••"
-                        } else {
-                            "已用 ${Money.formatWithSymbol(section.expense)} / ${Money.formatWithSymbol(budget)}"
-                        },
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = TabularNums,
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = when {
-                            hidden -> ""
-                            overspent -> "⚠ 已超支 ${Money.formatWithSymbol(section.expense - budget)}"
-                            else -> "剩余 ${Money.formatWithSymbol(budget - section.expense)}"
-                        },
-                        fontSize = 11.5.sp,
-                        fontWeight = if (overspent) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (overspent) expenseColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = TabularNums,
-                    )
-                }
-            }
-
-            if (section.income > 0) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = if (hidden) "收入 ••••" else "收入 ${Money.formatWithSymbol(section.income)}",
-                    fontSize = 11.5.sp,
-                    color = incomeColor(),
-                    style = TabularNums,
-                )
-            }
-        }
     }
 }
 

@@ -76,6 +76,7 @@ import java.io.File
 @Composable
 fun MineScreen(
     layout: WindowLayout = WindowLayout.Compact,
+    onNavigateGlobalCategories: () -> Unit = {},
     viewModel: MineViewModel = viewModel(factory = MineViewModel.Factory),
 ) {
     val state by viewModel.state.collectAsState()
@@ -184,6 +185,13 @@ fun MineScreen(
                             .ifBlank { "未设置" },
                         enabled = true,
                         onClick = { showQuickAmounts = true },
+                    )
+                    // Q-03：全局分类入口（一次定义、到处可用）
+                    ActionRow(
+                        title = stringResource(R.string.mine_global_categories),
+                        desc = stringResource(R.string.mine_global_categories_desc),
+                        enabled = true,
+                        onClick = onNavigateGlobalCategories,
                     )
 
                     GroupTitle(stringResource(R.string.mine_group_data))
@@ -353,10 +361,10 @@ private fun QuickAmountsDialog(
         },
         confirmButton = {
             TextButton(onClick = { onSave(texts.map { Money.parseToCents(it) ?: 0L }) }) {
-                Text("保存")
+                Text(stringResource(R.string.save))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

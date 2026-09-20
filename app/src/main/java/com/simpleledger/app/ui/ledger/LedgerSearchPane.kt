@@ -30,10 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simpleledger.app.R
+import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
@@ -61,12 +64,13 @@ internal fun LedgerSearchPane(
     results: List<DayGroup>,
     truncated: Boolean,
     sections: List<SectionEntity>,
+    allCategories: List<CategoryEntity>,
     onQueryChange: (String) -> Unit,
     onToggleType: () -> Unit,
     onBack: () -> Unit,
     onResultClick: (Long) -> Unit,
     onDuplicate: (Long) -> Unit,
-    onMoveTo: (Long, Long) -> Unit,
+    onMoveTo: (Long, Long, Long?) -> Unit,
     onDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -144,9 +148,10 @@ internal fun LedgerSearchPane(
         MoveSectionDialog(
             entry = target,
             sections = sections,
+            allCategories = allCategories,
             onDismiss = { moveTarget = null },
-            onPick = { sectionId ->
-                onMoveTo(target.entry.id, sectionId)
+            onConfirm = { sectionId, newCategoryId ->
+                onMoveTo(target.entry.id, sectionId, newCategoryId)
                 moveTarget = null
             },
         )
@@ -183,7 +188,7 @@ private fun SearchHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "返回")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.back))
         }
         OutlinedTextField(
             value = keyword,

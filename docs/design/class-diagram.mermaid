@@ -1,0 +1,197 @@
+classDiagram
+    class EntryType {
+        <<object>>
+        +Int EXPENSE = 0
+        +Int INCOME = 1
+    }
+
+    class SectionEntity {
+        +Long id
+        +String name
+        +String emoji
+        +String note
+        +Long budgetCents
+        +Int sortOrder
+        +Long createdAt
+    }
+
+    class CategoryEntity {
+        +Long id
+        +String name
+        +String emoji
+        +Int type
+        +Long sectionId  %% null = 全局；非空 = 该分区专属
+        +Int sortOrder
+    }
+
+    class EntryEntity {
+        +Long id
+        +Int type
+        +Long amountCents
+        +Long categoryId
+        +Long sectionId
+        +Long entryTime
+        +String note
+        +Long createdAt
+        +Long updatedAt
+    }
+
+    class EntryFull {
+        +EntryEntity entry
+        +CategoryEntity category
+        +SectionEntity section
+        +List~EntryImageEntity~ images
+    }
+
+    class SectionTotal {
+        +Long sectionId
+        +String name
+        +String emoji
+        +String note
+        +Long budgetCents
+        +Long expense
+        +Long income
+        +Int count
+    }
+
+    class CategoryTotal {
+        +Long categoryId
+        +String name
+        +String emoji
+        +Long sectionId
+        +String sectionName
+        +String sectionEmoji
+        +Long total
+        +Int count
+    }
+
+    class CategoryDao {
+        <<interface>>
+        +observeCandidates(sectionId, type) Flow
+        +observeGlobalByType(type) Flow
+        +observeSectionByType(sectionId, type) Flow
+        +getById(id) CategoryEntity
+        +insert(c) Long
+        +update(c)
+        +delete(id)
+        +moveEntries(from, to)
+        +detachFromSection(sectionId) Int
+        +nextSortOrder(type, sectionId) Int
+    }
+
+    class EntryDao {
+        <<interface>>
+        +observeSectionOverview(start, end) Flow
+        +observeCategoryTotals(type, start, end, sectionId) Flow
+        +observeEntries(...) Flow
+    }
+
+    class LedgerRepository {
+        +observeCandidates(sectionId, type) Flow
+        +observeSectionHome(start, end) Flow
+        +observeGlobalCategories(type) Flow
+        +saveCategory(c) Long
+        +deleteCategory(id) Result
+        +deleteSection(id) Result
+        +sectionDeleteImpact(id) SectionDeleteImpact
+        +saveEntry(draft) Long
+    }
+
+    class SectionDeleteImpact {
+        +Int entryCount
+        +Int exclusiveCategoryCount
+        +SectionEntity fallback
+        +String blockedReason
+    }
+
+    class CategoryCandidates {
+        <<object>>
+        +partition(list) Candidates
+        +filterByType(list, type) List
+        +shareLabel(total) String
+        +isEmpty(exclusive, global) Boolean
+    }
+
+    class SectionFirstSeed {
+        <<object>>
+        +sections List
+        +categories List
+    }
+
+    class EntryEditViewModel {
+        +state StateFlow
+        +setType(type)
+        +selectCategory(id)
+        +createCategoryInline(name, emoji)
+        +save()
+        +saveAndContinue()
+    }
+
+    class EntryEditUiState {
+        +Boolean isEdit
+        +Long sectionId
+        +SectionEntity section
+        +Int type
+        +String amountText
+        +List exclusiveCategories
+        +List globalCategories
+        +Long selectedCategoryId
+        +CategoryEntity historicalCategory
+    }
+
+    class SectionHomeViewModel {
+        +state StateFlow
+        +saveSection(...)
+        +deleteSection(id)
+        +moveSection(id, dir)
+        +impactOf(id) SectionDeleteImpact
+    }
+
+    class SectionDetailViewModel {
+        +state StateFlow
+        +deleteEntryWithSnapshot(id)
+        +duplicateEntry(id)
+    }
+
+    class SectionManageViewModel {
+        +state StateFlow
+        +saveCategory(...)
+        +deleteCategory(id)
+        +moveCategory(id, type, dir)
+        +saveSection(...)
+    }
+
+    class GlobalCategoriesViewModel {
+        +state StateFlow
+        +saveCategory(...)
+        +deleteCategory(id)
+        +moveCategory(id, type, dir)
+    }
+
+    class AppRoot {
+        +Routes
+        +WindowLayout
+        +startDestination = SECTIONS
+    }
+
+    SectionEntity "1" --> "0..*" CategoryEntity : sectionId(归属, 仅专属)
+    SectionEntity "1" --> "0..*" EntryEntity : sectionId
+    CategoryEntity "1" --> "0..*" EntryEntity : categoryId(RESTRICT)
+    EntryEntity "1" --> "0..*" EntryFull : id
+    EntryFull --> CategoryEntity
+    EntryFull --> SectionEntity
+    LedgerRepository --> CategoryDao
+    LedgerRepository --> EntryDao
+    LedgerRepository --> CategoryCandidates
+    AppRoot --> SectionHomeViewModel
+    AppRoot --> SectionDetailViewModel
+    AppRoot --> SectionManageViewModel
+    AppRoot --> GlobalCategoriesViewModel
+    SectionHomeViewModel --> LedgerRepository
+    SectionDetailViewModel --> LedgerRepository
+    SectionManageViewModel --> LedgerRepository
+    GlobalCategoriesViewModel --> LedgerRepository
+    EntryEditViewModel --> LedgerRepository
+    EntryEditViewModel --> CategoryCandidates
+    SectionHomeViewModel --> SectionTotal
+    CategoryCandidates --> CategoryTotal

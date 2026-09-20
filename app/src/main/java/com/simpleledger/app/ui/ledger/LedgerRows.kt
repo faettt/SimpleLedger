@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -37,10 +41,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simpleledger.app.R
+import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.logic.SectionMoveRules
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -76,9 +83,13 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
         Spacer(modifier = Modifier.weight(1f))
         Text(
             text = if (hidden) {
-                "支 ••••　收 ••••"
+                stringResource(R.string.day_summary_hidden)
             } else {
-                "支 ${Money.formatCents(expenseCents)}　收 ${Money.formatCents(incomeCents)}"
+                stringResource(
+                    R.string.day_summary,
+                    Money.formatCents(expenseCents),
+                    Money.formatCents(incomeCents),
+                )
             },
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -118,19 +129,32 @@ internal fun EntryRow(
     // 读屏串：行内三个 Text 节点会被 TalkBack 分三次朗读，失去「这是一笔账」的整体语义。
     // 顺序按「最重要在前」：方向 → 分类 → 金额 → 时间 → 分区 → 备注/单据。
     // 方向词必须显式给出：视觉靠 −/+ 与颜色，读屏念不出颜色、也不会把符号当方向。
+    // 文案取自 strings.xml：buildString 的 lambda 非 Composable，故先把文案解析到局部变量。
+    val speechDirection = stringResource(if (isIncome) R.string.income else R.string.expense)
+    val speechUncategorized = stringResource(R.string.uncategorized)
+    // 隐私模式：绝不把真实金额交给读屏，否则打码只挡了眼睛、挡不住耳朵
+    val speechAmount = if (hidden) {
+        stringResource(R.string.amount_hidden)
+    } else {
+        Money.toChineseSpeech(full.entry.amountCents)
+    }
+    val speechHasNote = stringResource(R.string.a11y_has_note)
+    val speechImageCount = stringResource(R.string.a11y_image_count, full.images.size)
     val speech = buildString {
-        append(if (isIncome) "收入" else "支出")
+        append(speechDirection)
         append("，")
-        append(full.category?.name ?: "未分类")
+        append(full.category?.name ?: speechUncategorized)
         append("，")
-        // 隐私模式：绝不把真实金额交给读屏，否则打码只挡了眼睛、挡不住耳朵
-        append(if (hidden) "金额已隐藏" else Money.toChineseSpeech(full.entry.amountCents))
+        append(speechAmount)
         append("，")
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
         full.section?.let { append("，${it.name}") }
-        if (full.entry.note.isNotBlank()) append("，有备注")
-        if (full.images.isNotEmpty()) append("，有 ${full.images.size} 张单据")
+        if (full.entry.note.isNotBlank()) append("，$speechHasNote")
+        if (full.images.isNotEmpty()) append("，$speechImageCount")
     }
+
+    val moreActionsLabel = stringResource(R.string.a11y_more_actions)
+    val uncategorizedLabel = stringResource(R.string.uncategorized)
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -144,7 +168,7 @@ internal fun EntryRow(
                 .semantics(mergeDescendants = true) { contentDescription = speech }
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClickLabel = "更多操作",
+                    onLongClickLabel = moreActionsLabel,
                     onLongClick = { menuOpen = true },
                 )
                 .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -168,7 +192,7 @@ internal fun EntryRow(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = full.category?.name ?: "未分类",
+                    text = full.category?.name ?: uncategorizedLabel,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -192,21 +216,21 @@ internal fun EntryRow(
             modifier = Modifier.align(Alignment.TopEnd),
         ) {
             DropdownMenuItem(
-                text = { Text("复制一笔") },
+                text = { Text(stringResource(R.string.duplicate_one)) },
                 onClick = {
                     menuOpen = false
                     onDuplicate()
                 },
             )
             DropdownMenuItem(
-                text = { Text("移动到其它分区") },
+                text = { Text(stringResource(R.string.move_section_title)) },
                 onClick = {
                     menuOpen = false
                     onMove()
                 },
             )
             DropdownMenuItem(
-                text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                 onClick = {
                     menuOpen = false
                     onDelete()
@@ -241,49 +265,157 @@ fun AmountText(
     )
 }
 
-/** 移动到其它分区：列出全部分区，选中即完成（分区数量有限，无需二次确认） */
+/**
+ * 移动到其它分区。
+ *
+ * 关键约束（PRD EC-06 / QA P1-1）：不允许出现「分区 = X、分类只属于 Y」的非法组合。
+ * 因此不能只改 `sectionId` 而保留原分类，必须判断分类在目标分区是否仍合法：
+ * - 全局分类（`sectionId == null`）→ 任一分区可见，**直接允许**，仅改分区；
+ * - 专属分类本属于目标分区 → **直接允许**，仅改分区；
+ * - 专属分类属于**其它**分区 → 追加一步「为目标分区重选同类型分类」，
+ *   默认预选目标分区的兜底分类（「其他支出」/「其他收入」，否则候选第一项）；
+ *   若目标分区没有可用的同类型分类，则给出提示并**禁止确认**（绝不静默改成兜底分类）。
+ *
+ * 确认时一次性提交「改分区 +（必要时）改分类」，由同一事务完成，避免中间态。
+ */
 @Composable
 internal fun MoveSectionDialog(
     entry: EntryFull,
     sections: List<SectionEntity>,
+    allCategories: List<CategoryEntity>,
     onDismiss: () -> Unit,
-    onPick: (Long) -> Unit,
+    onConfirm: (sectionId: Long, newCategoryId: Long?) -> Unit,
 ) {
-    val targets = sections.filter { it.id != entry.entry.sectionId }
     // 隐私模式：对话框抬头即以真实金额列明「要移动的是哪一笔」，是容易被忽略的视觉泄露点
     val hidden = LocalHideAmounts.current
+    val currentCategory = entry.category
+    val targets = sections.filter { it.id != entry.entry.sectionId }
+
+    // null = 第一步（选目标分区）；非 null = 第二步（为该目标分区重选分类）
+    var reselectSectionId by remember { mutableStateOf<Long?>(null) }
+
+    // 目标分区的同类型候选：口径与 CategoryDao.observeCandidates 一致
+    // （type 匹配 且 (全局 or 本分区专属)），排序「专属在前 → sortOrder → id」
+    val candidates: List<CategoryEntity> = remember(reselectSectionId, allCategories) {
+        val sid = reselectSectionId
+        if (sid == null) {
+            emptyList()
+        } else {
+            allCategories
+                .filter { it.type == entry.entry.type && (it.sectionId == null || it.sectionId == sid) }
+                .sortedWith(compareBy({ if (it.sectionId == null) 1 else 0 }, { it.sortOrder }, { it.id }))
+        }
+    }
+
+    // 默认预选兜底分类；进入第二步或候选变化时重置为兜底预选（remember 的 key 变化即重置）
+    var selectedCategoryId by remember(reselectSectionId, candidates) {
+        mutableStateOf(SectionMoveRules.pickFallback(candidates, entry.entry.type)?.id)
+    }
+
+    // buildString 的 lambda 非 Composable，先把所有文案解析到局部变量
+    val uncategorized = stringResource(R.string.uncategorized)
+    val noSection = stringResource(R.string.no_section)
+    val hiddenAmount = stringResource(R.string.amount_hidden)
+    val currentSectionLabel = entry.section?.let { "${it.emoji}${it.name}" } ?: noSection
+    val currentLine = stringResource(R.string.move_current_section, currentSectionLabel)
+    val categoryLabel = "${entry.category?.emoji ?: ""}${entry.category?.name ?: uncategorized}"
+    val amountText = if (hidden) hiddenAmount else Money.formatWithSymbol(entry.entry.amountCents)
+    val headerLine = "$categoryLabel · $amountText　$currentLine"
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("移动到其它分区") },
+        title = { Text(stringResource(R.string.move_section_title)) },
         text = {
             Column {
                 Text(
-                    text = "${entry.category?.emoji ?: ""}${entry.category?.name ?: "未分类"} · " +
-                        (if (hidden) "金额已隐藏" else Money.formatWithSymbol(entry.entry.amountCents)) +
-                        "　当前：${entry.section?.emoji ?: ""}${entry.section?.name ?: "无分区"}",
+                    text = headerLine,
                     fontSize = 12.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                if (targets.isEmpty()) {
-                    Text("没有其它分区可选", fontSize = 13.sp)
+                if (reselectSectionId == null) {
+                    // 第一步：选目标分区。兼容则直接完成，不兼容则进入第二步。
+                    if (targets.isEmpty()) {
+                        Text(stringResource(R.string.move_no_other_section), fontSize = 13.sp)
+                    } else {
+                        targets.forEach { section ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        if (SectionMoveRules.canKeepCategory(currentCategory, section.id)) {
+                                            onConfirm(section.id, null)
+                                        } else {
+                                            reselectSectionId = section.id
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("${section.emoji} ${section.name}", fontSize = 14.5.sp)
+                            }
+                        }
+                    }
                 } else {
-                    targets.forEach { section ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onPick(section.id) }
-                                .padding(horizontal = 10.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("${section.emoji} ${section.name}", fontSize = 14.5.sp)
+                    // 第二步：说明原因 + 列出目标分区同类型候选 + 兜底预选
+                    val target = targets.firstOrNull { it.id == reselectSectionId }
+                    Text(
+                        text = stringResource(
+                            R.string.move_reselect_hint,
+                            target?.let { "${it.emoji} ${it.name}" } ?: "",
+                        ),
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (candidates.isEmpty()) {
+                        // 目标分区没有可用的同类型分类 → 禁止确认（不静默兜底）
+                        Text(
+                            text = stringResource(R.string.move_no_candidate),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            candidates.forEach { candidate ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { selectedCategoryId = candidate.id }
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = selectedCategoryId == candidate.id,
+                                        onClick = { selectedCategoryId = candidate.id },
+                                    )
+                                    Text(
+                                        text = "${candidate.emoji} ${candidate.name}",
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = {
+            if (reselectSectionId != null) {
+                TextButton(
+                    enabled = selectedCategoryId != null,
+                    onClick = {
+                        val sid = reselectSectionId
+                        val cid = selectedCategoryId
+                        if (sid != null && cid != null) onConfirm(sid, cid)
+                    },
+                ) { Text(stringResource(R.string.move_confirm)) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

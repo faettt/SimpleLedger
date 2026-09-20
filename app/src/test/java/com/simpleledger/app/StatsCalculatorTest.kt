@@ -52,8 +52,16 @@ class StatsCalculatorTest {
     @Test
     fun `category shares sum to 1 and handle empty`() {
         val totals = listOf(
-            com.simpleledger.app.data.local.entity.CategoryTotal(1, "餐饮", "🍚", 3000L, 3),
-            com.simpleledger.app.data.local.entity.CategoryTotal(2, "交通", "🚌", 1000L, 1),
+            com.simpleledger.app.data.local.entity.CategoryTotal(
+                categoryId = 1, name = "餐饮", emoji = "🍚",
+                sectionId = null, sectionName = null, sectionEmoji = null,
+                total = 3000L, count = 3,
+            ),
+            com.simpleledger.app.data.local.entity.CategoryTotal(
+                categoryId = 2, name = "交通", emoji = "🚌",
+                sectionId = null, sectionName = null, sectionEmoji = null,
+                total = 1000L, count = 1,
+            ),
         )
         val shares = StatsCalculator.categoryShares(totals)
         assertEquals(2, shares.size)

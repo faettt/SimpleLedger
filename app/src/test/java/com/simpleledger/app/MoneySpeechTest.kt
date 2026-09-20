@@ -128,7 +128,19 @@ class MoneySpeechTest {
     // ---------------------------------------------------------------- 图表摘要
 
     private fun share(name: String, cents: Long, fraction: Double) =
-        CategoryShare(CategoryTotal(1L, name, "🍚", cents, 1), fraction)
+        CategoryShare(
+            CategoryTotal(
+                categoryId = 1L,
+                name = name,
+                emoji = "🍚",
+                sectionId = null,
+                sectionName = null,
+                sectionEmoji = null,
+                total = cents,
+                count = 1,
+            ),
+            fraction,
+        )
 
     @Test
     fun `pie chart speech lists items with percent and chinese amount`() {

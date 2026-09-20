@@ -6,11 +6,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.simpleledger.app.data.local.entity.EntryFull
+import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.repo.EntryDraft
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.data.settings.AppSettings
+import com.simpleledger.app.logic.CategoryCandidates
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,29 +37,45 @@ data class PendingImage(
 
 data class EntryEditUiState(
     val isEdit: Boolean = false,
+    /** 固定的记账分区（新建=入口带入；编辑=账目所属），全程只读（FR-21/Q-07） */
+    val sectionId: Long = 0,
+    /** 只读展示分区（FR-22） */
+    val section: SectionEntity? = null,
     val type: Int = EntryType.EXPENSE,
     val amountText: String = "",
-    val categories: List<com.simpleledger.app.data.local.entity.CategoryEntity> = emptyList(),
+    /** 本分区专属候选（专属在前） */
+    val exclusiveCategories: List<CategoryEntity> = emptyList(),
+    /** 全局候选 */
+    val globalCategories: List<CategoryEntity> = emptyList(),
+    /** 打开表单时为 null（Q-01：取消自动选中） */
     val selectedCategoryId: Long? = null,
-    val sections: List<com.simpleledger.app.data.local.entity.SectionEntity> = emptyList(),
-    val selectedSectionId: Long? = null,
+    /** EC-09：不在候选内的当前分类（历史分类），保留展示、可保存、不静默改写 */
+    val historicalCategory: CategoryEntity? = null,
     val entryTime: Long = System.currentTimeMillis(),
     val note: String = "",
     val images: List<PendingImage> = emptyList(),
     val loading: Boolean = true,
     val saving: Boolean = false,
     val saved: Boolean = false,
-    /** 保存成功后回传给明细页的账目 id（用于「已记入…撤销」提示） */
     val savedEntryId: Long? = null,
-    /** 「保存并再记」后的轻提示（不退出表单，所以本地消化） */
     val notice: String? = null,
     val error: String? = null,
 )
 
+/**
+ * 记一笔 / 编辑账目的状态与动作。
+ *
+ * 「分区优先」后的关键变化：
+ * - **分区即上下文**：VM 接收固定 [sectionIdArg]，表单内无任何改分区控件（FR-21/Q-07）；
+ * - **取消分类自动选中**：打开表单 [EntryEditUiState.selectedCategoryId] 为 null（Q-01/FR-27）；
+ * - **候选按 (分区, 类型) 查询**：`observeCandidates` 唯一真源，UI 不得再拼接/去重（Q-02）；
+ * - **EC-09 历史分类**：编辑老账时，若当前分类不在候选内，作为独立「历史分类」保留。
+ */
 class EntryEditViewModel(
     private val repo: LedgerRepository,
     private val settings: AppSettings,
     private val entryId: Long,
+    private val sectionIdArg: Long,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EntryEditUiState(isEdit = entryId > 0))
@@ -65,52 +83,73 @@ class EntryEditViewModel(
 
     init {
         viewModelScope.launch {
-            val sections = repo.observeSections().first()
-            var editData: EntryFull? = null
-            if (entryId > 0) {
-                editData = repo.getEntryFull(entryId)
-            }
+            val editData = if (entryId > 0) repo.getEntryFull(entryId) else null
+            val resolvedSectionId = editData?.entry?.sectionId
+                ?: sectionIdArg.takeIf { it > 0 }
+                ?: 0L
             val type = editData?.entry?.type ?: EntryType.EXPENSE
+            val section = repo.getSection(resolvedSectionId)
+
             _state.update {
                 it.copy(
-                    sections = sections,
-                    selectedSectionId = editData?.entry?.sectionId ?: sections.firstOrNull()?.id,
+                    isEdit = entryId > 0,
+                    sectionId = resolvedSectionId,
+                    section = section,
+                    type = type,
+                    amountText = editData
+                        ?.let { data -> Money.formatCents(data.entry.amountCents).replace(",", "") }
+                        ?: "",
+                    entryTime = editData?.entry?.entryTime ?: System.currentTimeMillis(),
+                    note = editData?.entry?.note ?: "",
+                    images = editData?.images?.map { img -> PendingImage(existingPath = img.filePath) }
+                        ?: emptyList(),
+                    selectedCategoryId = editData?.entry?.categoryId,
+                    loading = false,
                 )
             }
-            loadCategories(type)
-            if (editData != null) {
-                _state.update {
-                    it.copy(
-                        type = type,
-                        amountText = Money.formatCents(editData.entry.amountCents).replace(",", ""),
-                        selectedCategoryId = editData.entry.categoryId,
-                        entryTime = editData.entry.entryTime,
-                        note = editData.entry.note,
-                        images = editData.images.map { img -> PendingImage(existingPath = img.filePath) },
-                        loading = false,
-                    )
-                }
-            } else {
-                _state.update { it.copy(loading = false) }
-            }
+            loadCandidates(resolvedSectionId, type, editData?.entry?.categoryId)
         }
     }
 
-    private suspend fun loadCategories(type: Int) {
-        val cats = repo.observeCategories(type).first()
+    /**
+     * 按 (分区, 类型) 重载候选，并处理 EC-09：若 [keepSelection] 不在候选内，则作为历史分类保留。
+     */
+    private suspend fun loadCandidates(sectionId: Long, type: Int, keepSelection: Long?) {
+        val candidates = repo.observeCandidates(sectionId, type).first()
+        val partition = CategoryCandidates.partition(candidates)
+        val inCandidates = keepSelection != null && candidates.any { it.id == keepSelection }
+        val historical = if (keepSelection != null && !inCandidates) {
+            repo.getCategory(keepSelection)
+        } else {
+            null
+        }
         _state.update { old ->
             old.copy(
-                categories = cats,
-                selectedCategoryId = old.selectedCategoryId?.takeIf { id -> cats.any { it.id == id } }
-                    ?: cats.firstOrNull()?.id,
+                exclusiveCategories = partition.exclusive,
+                globalCategories = partition.global,
+                selectedCategoryId = keepSelection,
+                historicalCategory = historical,
             )
         }
     }
 
+    /** 切类型：清空分类选择并重载候选（历史分类属于旧类型，一并清掉） */
     fun setType(type: Int) {
         if (_state.value.type == type) return
-        _state.update { it.copy(type = type, selectedCategoryId = null) }
-        viewModelScope.launch { loadCategories(type) }
+        _state.update { it.copy(type = type, selectedCategoryId = null, historicalCategory = null) }
+        viewModelScope.launch { loadCandidates(_state.value.sectionId, type, null) }
+    }
+
+    fun selectCategory(id: Long) {
+        val s = _state.value
+        val isCandidate = s.exclusiveCategories.any { it.id == id } ||
+            s.globalCategories.any { it.id == id }
+        _state.update {
+            it.copy(
+                selectedCategoryId = id,
+                historicalCategory = if (isCandidate) null else it.historicalCategory,
+            )
+        }
     }
 
     /** 金额输入限制：数字 + 一个小数点 + 最多两位小数 */
@@ -127,9 +166,32 @@ class EntryEditViewModel(
         }
     }
 
-    fun selectCategory(id: Long) = _state.update { it.copy(selectedCategoryId = id) }
-    fun selectSection(id: Long) = _state.update { it.copy(selectedSectionId = id) }
     fun setNote(text: String) = _state.update { it.copy(note = text) }
+
+    /**
+     * EC-05：就地新建分类——类型默认跟随当前表单的支出/收入，归属默认当前分区；
+     * 建好后重载候选并自动选中新分类。
+     */
+    fun createCategoryInline(name: String, emoji: String) {
+        if (name.isBlank()) {
+            _state.update { it.copy(error = "分类名称不能为空") }
+            return
+        }
+        val s = _state.value
+        viewModelScope.launch {
+            runCatching {
+                val id = repo.saveCategory(
+                    CategoryEntity(
+                        name = name.trim(),
+                        emoji = emoji,
+                        type = s.type,
+                        sectionId = s.sectionId.takeIf { it > 0 },
+                    )
+                )
+                loadCandidates(s.sectionId, s.type, id)
+            }.onFailure { e -> _state.update { it.copy(error = e.message ?: "分类创建失败") } }
+        }
+    }
 
     fun setDate(date: LocalDate) = _state.update {
         val time = LocalTime.ofInstant(Instant.ofEpochMilli(it.entryTime), ZoneId.systemDefault())
@@ -167,7 +229,7 @@ class EntryEditViewModel(
         it.copy(images = it.images.filterIndexed { i, _ -> i != index })
     }
 
-    /** 快捷金额：点一下直接填入（覆盖当前值），不做累加 —— 填入后光标仍在金额框，继续输入即可 */
+    /** 快捷金额：点一下直接填入（覆盖当前值），不做累加 */
     fun fillAmount(cents: Long) {
         _state.update { it.copy(amountText = Money.formatCents(cents).replace(",", "")) }
     }
@@ -175,8 +237,8 @@ class EntryEditViewModel(
     fun save() = doSave(continueAfter = false)
 
     /**
-     * 保存并再记一笔：保留类型 / 分类 / 分区 / 时间（连续记账通常发生在同一场景、同一分区），
-     * 只清空金额、备注与贴图，光标回到金额输入。
+     * 保存并再记一笔（EC-07）：保留**分区 + 类型 + 时间**，清空**分类选择**、金额、备注与贴图；
+     * 提示条显示「已记入 🔨 装修 · ¥XXX」。
      */
     fun saveAndContinue() = doSave(continueAfter = true)
 
@@ -193,8 +255,8 @@ class EntryEditViewModel(
             _state.update { it.copy(error = "请选择分类") }
             return
         }
-        val sectionId = current.selectedSectionId ?: run {
-            _state.update { it.copy(error = "请选择分区") }
+        val sectionId = current.sectionId.takeIf { it > 0 } ?: run {
+            _state.update { it.copy(error = "缺少分区上下文") }
             return
         }
 
@@ -216,10 +278,12 @@ class EntryEditViewModel(
                 )
             }.onSuccess { savedId ->
                 if (continueAfter) {
-                    val section = current.sections.firstOrNull { it.id == sectionId }
-                    // 隐私模式：与 useLedger 的提示条一致，金额位替换为「金额已隐藏」
-                    val amountLabel =
-                        if (settings.hideAmounts.value) "金额已隐藏" else Money.formatWithSymbol(cents)
+                    val section = current.section
+                    val amountLabel = if (settings.hideAmounts.value) {
+                        "金额已隐藏"
+                    } else {
+                        Money.formatWithSymbol(cents)
+                    }
                     val label = buildString {
                         if (section != null) append("${section.emoji} ${section.name} · ")
                         append(amountLabel)
@@ -230,6 +294,8 @@ class EntryEditViewModel(
                             amountText = "",
                             note = "",
                             images = emptyList(),
+                            selectedCategoryId = null,
+                            historicalCategory = null,
                             savedEntryId = savedId,
                             notice = "已记入 $label",
                             error = null,
@@ -260,10 +326,11 @@ class EntryEditViewModel(
     fun clearError() = _state.update { it.copy(error = null) }
 
     companion object {
-        fun factory(entryId: Long): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(entryId: Long, sectionId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as com.simpleledger.app.LedgerApp
-                EntryEditViewModel(app.container.repository, app.container.settings, entryId)
+                val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                    as com.simpleledger.app.LedgerApp
+                EntryEditViewModel(app.container.repository, app.container.settings, entryId, sectionId)
             }
         }
     }

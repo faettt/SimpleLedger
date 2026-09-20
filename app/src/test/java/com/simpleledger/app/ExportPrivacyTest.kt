@@ -88,6 +88,27 @@ class ExportPrivacyTest {
     }
 
     @Test
+    fun `export keeps exclusive category name regardless of visibility - EC09`() {
+        // 分类「归属可见性」只影响候选集合，不影响导出（同步点 #4）：
+        // 分区专属分类照样原样写出分类名与分区名，两列语义不变
+        val row = entryToExportRow(
+            entryFull(
+                amountCents = 100L,
+                category = CategoryEntity(
+                    id = 9,
+                    name = "主材",
+                    emoji = "🧱",
+                    type = EntryType.EXPENSE,
+                    sectionId = 1L,
+                ),
+                section = SectionEntity(id = 1, name = "装修", emoji = "🔨"),
+            ),
+        )
+        assertEquals("主材", row.category)
+        assertEquals("装修", row.section)
+    }
+
+    @Test
     fun `export row counts images and carries note`() {
         val row = entryToExportRow(
             entryFull(

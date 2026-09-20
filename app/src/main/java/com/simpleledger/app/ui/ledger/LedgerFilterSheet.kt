@@ -20,9 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryType
 
 /*
@@ -41,7 +43,7 @@ internal fun FilterSheetContent(
 ) {
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         Text(
-            text = "筛选",
+            text = stringResource(R.string.filter),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -59,8 +61,8 @@ internal fun FilterSheetContent(
                 ) {
                     Text(
                         text = when (type) {
-                            EntryType.EXPENSE -> "支出"
-                            EntryType.INCOME -> "收入"
+                            EntryType.EXPENSE -> stringResource(R.string.expense)
+                            EntryType.INCOME -> stringResource(R.string.income)
                             else -> "全部"
                         },
                         fontSize = 13.sp,
@@ -70,7 +72,7 @@ internal fun FilterSheetContent(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        Text("分类", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.category), fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(8.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -93,10 +95,10 @@ internal fun FilterSheetContent(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TextButton(onClick = onClearAll, modifier = Modifier.weight(1f)) {
-                Text("清除全部筛选")
+                Text(stringResource(R.string.filter_clear_all))
             }
             Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                Text("完成")
+                Text(stringResource(R.string.section_sort_done))
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
