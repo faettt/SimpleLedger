@@ -30,7 +30,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -67,6 +66,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.SlIcons
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 「我的」页。
@@ -125,7 +125,7 @@ fun MineScreen(
 
         containerColor = Color.Transparent,
 
-        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             // 可滚动的设置列表单独抽出：限宽外壳只切换包装，列表本体只有一份，避免两套代码走样
             val settings: @Composable () -> Unit = {

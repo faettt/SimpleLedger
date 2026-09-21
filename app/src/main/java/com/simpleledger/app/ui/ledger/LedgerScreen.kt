@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
@@ -48,6 +47,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
 import com.simpleledger.app.data.local.entity.ReimburseState
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /** 保存结果通过 SavedStateHandle 回传给明细页 / 分区详情页 */
 const val RESULT_SAVED_ENTRY_ID = "result_saved_entry_id"
@@ -294,7 +294,7 @@ fun LedgerScreen(
 
         containerColor = Color.Transparent,
 
-        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (twoPane) {
                 Row(modifier = Modifier.fillMaxSize()) {

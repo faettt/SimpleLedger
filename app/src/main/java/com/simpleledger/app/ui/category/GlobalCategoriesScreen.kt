@@ -16,7 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +45,7 @@ import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.section.categoryDeleteMessage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 全局分类管理页（N12 / Q-03）。
@@ -82,7 +82,7 @@ fun GlobalCategoriesScreen(
     Scaffold(
 
         containerColor = Color.Transparent,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SlSnackbarHost(snackbarHostState) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0

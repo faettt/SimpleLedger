@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.simpleledger.app.ui.theme.SlipShape
+import com.simpleledger.app.ui.theme.SlipStackOffset
 
 /**
  * 纸片：手账里承载内容的「一张纸」。
@@ -55,7 +56,7 @@ fun SlipCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .offset(x = 3.dp, y = 3.dp)
+                    .offset(x = SlipStackOffset, y = SlipStackOffset)
                     .background(MaterialTheme.colorScheme.surfaceDim, SlipShape),
             )
         }

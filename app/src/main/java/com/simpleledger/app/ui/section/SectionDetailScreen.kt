@@ -21,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -63,6 +62,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.graphics.Color
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 分区详情（FR-16~20）。
@@ -156,7 +156,7 @@ fun SectionDetailScreen(
 
         containerColor = Color.Transparent,
 
-        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 顶部

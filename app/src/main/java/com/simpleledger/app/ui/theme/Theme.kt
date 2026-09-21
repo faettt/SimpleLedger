@@ -208,6 +208,14 @@ val SlipShape = RoundedCornerShape(3.dp)
 /** 进度条 / 色条 / 色块专用：1dp 微圆角（规范里的「条 1」） */
 val BarShape = RoundedCornerShape(1.dp)
 
+/**
+ * 垫纸错位量：用「纸叠纸」表达层级时的固定偏移（规范 §1.4）。
+ *
+ * **纸片与 Snackbar 共用同一个数值** —— 层级语言的偏移量是全局约定，
+ * 一旦两处各写 3.dp，某天调了其中一处就会让两种浮层的"厚度"不一致。
+ */
+val SlipStackOffset = 3.dp
+
 /** 出账金额色（随明暗主题切换）—— 印章朱砂 */
 @Composable
 fun expenseColor(): Color = if (isSystemInDarkTheme()) ExpenseDark else ExpenseLight

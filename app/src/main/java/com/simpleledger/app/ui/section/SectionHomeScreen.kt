@@ -17,7 +17,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +46,7 @@ import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.SectionDialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -84,7 +84,7 @@ fun SectionHomeScreen(
     Scaffold(
 
         containerColor = Color.Transparent,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SlSnackbarHost(snackbarHostState) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0
