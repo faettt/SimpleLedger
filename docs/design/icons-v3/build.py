@@ -99,7 +99,11 @@ def write_manifest(icons):
         "caps": "round / round",
         "fill": "none；仅语义实心点显式填充（见 fillExceptions）",
         "fillExceptions": {k: sum(1 for e in i.paths if e.startswith('<circle') and 'fill="1"' in e)
-                           for k in FILL_EXCEPTIONS for i in icons if i.name == k},
+                           # ⚠️ 必须 sorted：FILL_EXCEPTIONS 是 set，字符串 set 的迭代顺序
+                           # 随进程哈希随机化 —— 不排序的话每次重跑 manifest.json 的
+                           # fillExceptions 键序都会变，入库产物与生成链就永远对不上
+                           # （实测：重跑一次 git status 就脏）。
+                           for k in sorted(FILL_EXCEPTIONS) for i in icons if i.name == k},
         "color": "单色 currentColor —— 颜色语义已被「分区身份」独占（规范 R3/F2）",
         "handFeel": "路径刻意不对称（不等角半径 rp），手工感写在几何里，运行时绝不抖动",
         "centering": "光学居中内建：生成时采样包围盒，修正量见每枚 centering 字段（±2.5 封顶）",

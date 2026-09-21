@@ -21,15 +21,15 @@
     "caps": "round / round",
     "fill": "none；仅语义实心点显式填充（见 fillExceptions）",
     "fillExceptions": {
-      "phone": 1,
-      "gamepad": 2,
-      "status-cleared": 1,
-      "grad-cap": 1,
-      "pet": 2,
       "baby": 2,
+      "banknote": 2,
+      "gamepad": 2,
+      "grad-cap": 1,
       "haircut": 1,
-      "teddy": 3,
-      "banknote": 2
+      "pet": 2,
+      "phone": 1,
+      "status-cleared": 1,
+      "teddy": 3
     },
     "color": "单色 currentColor —— 颜色语义已被「分区身份」独占（规范 R3/F2）",
     "handFeel": "路径刻意不对称（不等角半径 rp），手工感写在几何里，运行时绝不抖动",
