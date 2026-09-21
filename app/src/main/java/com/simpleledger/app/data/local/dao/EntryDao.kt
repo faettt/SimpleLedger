@@ -154,6 +154,20 @@ interface EntryDao {
     @Update
     suspend fun updateEntry(entry: EntryEntity)
 
+    /**
+     * 只改**核对**维度（v4 A2：两个维度各自独立，一次只动一个，绝不互相牵连）。
+     *
+     * 刻意用定向 `@Query` 而不是「读出 EntryEntity → copy → updateEntry」：
+     * 后者会把行内其它列一起写回，若此刻另有写入（如表单保存）就会互相覆盖。
+     * 定向 UPDATE 只碰 reconciled 这一列，天然无竞态。
+     */
+    @Query("UPDATE entries SET reconciled = :value, updatedAt = :now WHERE id = :id")
+    suspend fun updateReconciled(id: Long, value: Boolean, now: Long)
+
+    /** 只改**报销**维度，理由同上。 */
+    @Query("UPDATE entries SET reimburseState = :value, updatedAt = :now WHERE id = :id")
+    suspend fun updateReimburseState(id: Long, value: Int, now: Long)
+
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteEntry(id: Long)
 

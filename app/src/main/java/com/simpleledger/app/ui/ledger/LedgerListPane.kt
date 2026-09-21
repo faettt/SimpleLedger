@@ -70,6 +70,10 @@ internal fun LedgerListPane(
     onDuplicate: (Long) -> Unit,
     onMoveTo: (Long, Long, Long?) -> Unit,
     onDelete: (Long) -> Unit,
+    /** 长按菜单：切换核对维度（规范 §3.5 入口） */
+    onSetReconciled: (Long, Boolean) -> Unit,
+    /** 长按菜单：设置报销维度 */
+    onSetReimburse: (Long, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var moveTarget by remember { mutableStateOf<EntryFull?>(null) }
@@ -204,6 +208,8 @@ internal fun LedgerListPane(
                             onDelete = { onDelete(full.entry.id) },
                             // F4 例外：只有「全部分区」视图需要补回分区前缀（规范 §188）
                             showSectionPrefix = state.filters.sectionId == null,
+                            onToggleReconciled = { onSetReconciled(full.entry.id, it) },
+                            onSetReimburseState = { onSetReimburse(full.entry.id, it) },
                         )
                     }
                     item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(6.dp)) }

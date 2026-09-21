@@ -47,6 +47,7 @@ import com.simpleledger.app.ui.section.SectionPickerDialog
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
+import com.simpleledger.app.data.local.entity.ReimburseState
 
 /** 保存结果通过 SavedStateHandle 回传给明细页 / 分区详情页 */
 const val RESULT_SAVED_ENTRY_ID = "result_saved_entry_id"
@@ -150,6 +151,37 @@ fun LedgerScreen(
             },
             duration = SnackbarDuration.Short,
         )
+    }
+
+    /**
+     * 长按菜单：改双维状态（规范 §3.5「入口：长按账目行 → 快捷菜单改状态」）。
+     *
+     * 两个维度**各自独立提交** —— 只给非 null 的那一个发写。这不只为省一次事务：
+     * 两个字段正交（A2/D4），若每次都全量写回，用户在改核对的同时有别的写入，
+     * 就会把对方的改动覆盖掉。
+     *
+     * 必须给 Snackbar 反馈：两个 14dp 的小符号在列表里极不显眼，点完菜单若只让它
+     * 变个色，用户会怀疑自己到底点没点上。
+     */
+    suspend fun setStatusWithNotice(
+        entryId: Long,
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
+    ) {
+        if (reconciled != null) viewModel.setReconciled(entryId, reconciled)
+        if (reimburseState != null) viewModel.setReimburseState(entryId, reimburseState)
+        val message = when {
+            reconciled != null -> context.getString(
+                if (reconciled) R.string.status_reconciled_done
+                else R.string.status_reconciled_cleared
+            )
+            reimburseState == ReimburseState.PENDING ->
+                context.getString(R.string.status_reimburse_pending_done)
+            reimburseState == ReimburseState.CLEARED ->
+                context.getString(R.string.status_reimburse_cleared_done)
+            else -> context.getString(R.string.status_reimburse_none_done)
+        }
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
     }
 
     /**
@@ -280,6 +312,8 @@ fun LedgerScreen(
                             onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                             onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                             onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                            onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                            onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                             modifier = Modifier.width(listPaneWidth).then(listPaneAnchor),
                         )
                     } else {
@@ -296,6 +330,8 @@ fun LedgerScreen(
                             onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                             onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                             onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                            onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                            onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                             modifier = Modifier.width(listPaneWidth).then(listPaneAnchor),
                         )
                     }
@@ -351,6 +387,8 @@ fun LedgerScreen(
                         onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                         onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                         onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                        onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                        onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -367,6 +405,8 @@ fun LedgerScreen(
                         onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                         onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                         onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                        onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                        onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

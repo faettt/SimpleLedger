@@ -72,6 +72,10 @@ internal fun LedgerSearchPane(
     onDuplicate: (Long) -> Unit,
     onMoveTo: (Long, Long, Long?) -> Unit,
     onDelete: (Long) -> Unit,
+    /** 长按菜单：切换核对维度（规范 §3.5 入口） */
+    onSetReconciled: (Long, Boolean) -> Unit,
+    /** 长按菜单：设置报销维度 */
+    onSetReimburse: (Long, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -129,6 +133,8 @@ internal fun LedgerSearchPane(
                                 onDelete = { onDelete(full.entry.id) },
                                 // 搜索结果天然跨分区（关键词可命中任一分区），一律补前缀消歧
                                 showSectionPrefix = true,
+                                onToggleReconciled = { onSetReconciled(full.entry.id, it) },
+                                onSetReimburseState = { onSetReimburse(full.entry.id, it) },
                             )
                         }
                         item(key = "space_${day.date}") { Spacer(modifier = Modifier.height(6.dp)) }

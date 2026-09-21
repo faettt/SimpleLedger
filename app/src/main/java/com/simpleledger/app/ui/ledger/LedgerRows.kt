@@ -125,6 +125,10 @@ internal fun EntryRow(
     onMove: () -> Unit,
     onDelete: () -> Unit,
     showSectionPrefix: Boolean = false,
+    /** 长按菜单：切换核对维度（规范 §3.5 入口）。传 null 则不显示该项。 */
+    onToggleReconciled: ((Boolean) -> Unit)? = null,
+    /** 长按菜单：设置报销维度。传 null 则不显示这三项。 */
+    onSetReimburseState: ((Int) -> Unit)? = null,
 ) {
     val isIncome = full.entry.type == EntryType.INCOME
     val hidden = LocalHideAmounts.current
@@ -324,6 +328,60 @@ internal fun EntryRow(
                     onMove()
                 },
             )
+
+            // v4 双维状态入口（规范 §3.5）。两项都放在「移动」与「删除」之间：
+            // 删除是破坏性动作，必须离上面的日常动作远一点。
+            onToggleReconciled?.let { toggle ->
+                val already = full.entry.reconciled
+                DropdownMenuItem(
+                    text = {
+                        // 名词会被读成「当前状态」，动作词才读得懂点下去的结果
+                        Text(
+                            stringResource(
+                                if (already) R.string.entry_unmark_reconciled
+                                else R.string.entry_mark_reconciled,
+                            )
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        toggle(!already)
+                    },
+                )
+            }
+            onSetReimburseState?.let { setState ->
+                // 三条里只显示与当前状态不同的两条 —— 否则菜单里会出现
+                // 「标记待报销」而它已经待报销，点下去毫无反馈。
+                val current = full.entry.reimburseState
+                if (current != ReimburseState.PENDING) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.entry_mark_reimburse_pending)) },
+                        onClick = {
+                            menuOpen = false
+                            setState(ReimburseState.PENDING)
+                        },
+                    )
+                }
+                if (current != ReimburseState.CLEARED) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.entry_mark_reimburse_cleared)) },
+                        onClick = {
+                            menuOpen = false
+                            setState(ReimburseState.CLEARED)
+                        },
+                    )
+                }
+                if (current != ReimburseState.NONE) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.entry_clear_reimburse)) },
+                        onClick = {
+                            menuOpen = false
+                            setState(ReimburseState.NONE)
+                        },
+                    )
+                }
+            }
+
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                 onClick = {

@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -192,8 +193,26 @@ fun CategoryPieChart(
     }
 }
 
+/** 手绘马克笔涂条的确定性微扰（0.0 ~ 1.0）。 */
+private fun markerJitter(day: Int, salt: Int): Float {
+    // 必须是**确定性**的：随机数会让每根柱在每次重组时都换一个宽度，
+    // 看起来像画面在抖。用「日期 × 大素数」做散列，同一天永远得到同一个值。
+    val h = day * 73_856_093 xor (salt * 19_349_663)
+    return ((h and 0x7FFF_FFFF) % 1000) / 1000f
+}
+
 /**
- * 每日支出柱状图。
+ * 每日支出柱状图 —— 手绘「马克笔涂条」（规范 §2.5）。
+ *
+ * 手绘感由三件事承担，**都不许动数据本身**：
+ *  ① 柱宽轻微不等（0.62~0.78 槽宽），每根柱的宽度由日期派生 → 确定性、不抖；
+ *  ② 柱顶左右圆角**不等**（真人下笔两侧力度不同）；
+ *  ③ 柱底严格贴齐基线（数据准确性的底线，绝不做手绘抖动）。
+ *
+ * 另加两处「读图兜底」的等价物 —— 环图那三条是写给角度图的，
+ * 但「不依赖肉眼估算」的精神对柱高同样成立：本图上给出**峰值水平参考线**与
+ * **峰值金额标注**，让人一眼读出「最高那天到了多少」，而不是只看出谁高谁矮。
+ *
  * @param daily (几号, 当日支出分)，最多 daysInMonth 个点
  */
 @Composable
@@ -208,6 +227,7 @@ fun DailyBarChart(
     val axisColor = MaterialTheme.colorScheme.surfaceVariant
     val axisLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val axisLabelPx = with(LocalDensity.current) { 10.sp.toPx() }
+    val peakLabelPx = with(LocalDensity.current) { 10.5.sp.toPx() }
     val speech = barChartSpeech(daily, daysInMonth, hidden)
 
     Canvas(
@@ -219,26 +239,67 @@ fun DailyBarChart(
             .clearAndSetSemantics { contentDescription = speech },
     ) {
         if (daysInMonth <= 0) return@Canvas
+
+        val labelBand = axisLabelPx * 1.7f          // 底部日期刻度带
+        val baseline = size.height - labelBand
+        val topPad = peakLabelPx * 1.9f             // 顶部峰值金额标注带
+        val plotHeight = (baseline - topPad).coerceAtLeast(1f)
+
         val maxCents = daily.maxOfOrNull { it.second }?.coerceAtLeast(1L) ?: 1L
         val slot = size.width / daysInMonth
-        val barWidth = slot * 0.55f
-        val chartHeight = size.height * 0.86f
+        val peakDay = daily.maxByOrNull { it.second }?.first
+
+        // 峰值水平参考线：手绘里那条用铅笔轻轻拉出来的基准线。
+        // 没有它，30 根柱只有相对高低，读者无法回答「最高那天是多少」。
+        if (daily.isNotEmpty()) {
+            drawLine(
+                color = axisColor,
+                start = Offset(0f, topPad),
+                end = Offset(size.width, topPad),
+                strokeWidth = 2f,
+            )
+        }
 
         // 底部轴线
         drawLine(
             color = axisColor,
-            start = Offset(0f, chartHeight),
-            end = Offset(size.width, chartHeight),
+            start = Offset(0f, baseline),
+            end = Offset(size.width, baseline),
             strokeWidth = 2f,
         )
 
+        val barPaint = android.graphics.Paint().apply {
+            color = axisLabelColor.toArgb()
+            textSize = peakLabelPx
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+
         daily.forEach { (day, cents) ->
-            val barHeight = (cents.toFloat() / maxCents) * (chartHeight - 8f)
-            if (barHeight > 1f) {
-                drawRect(
-                    color = barColor,
-                    topLeft = Offset(slot * (day - 1) + (slot - barWidth) / 2f, chartHeight - barHeight),
-                    size = Size(barWidth, barHeight),
+            val barHeight = (cents.toFloat() / maxCents) * plotHeight
+            if (barHeight <= 1f) return@forEach
+
+            // ①② 手绘：宽度微不等 + 顶部左右圆角不等
+            val ratio = 0.62f + markerJitter(day, 1) * 0.16f
+            val barWidth = slot * ratio
+            val left = slot * (day - 1) + (slot - barWidth) / 2f
+            val top = baseline - barHeight
+            // 圆角不能超过柱高的一半，否则细柱会被削成枣核
+            val rMax = minOf(barWidth, barHeight) * 0.42f
+            val rLeft = rMax * (0.62f + markerJitter(day, 2) * 0.38f)
+            val rRight = rMax * (0.62f + markerJitter(day, 3) * 0.38f)
+            drawPath(
+                path = markerBarPath(left, top, barWidth, barHeight, rLeft, rRight),
+                color = barColor,
+            )
+
+            // 峰值金额标注：整个图里唯一一个具体数字，放在最高柱顶上
+            if (!hidden && day == peakDay) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    Money.formatCents(cents),
+                    left + barWidth / 2f,
+                    top - peakLabelPx * 0.35f,
+                    barPaint,
                 )
             }
         }
@@ -256,9 +317,32 @@ fun DailyBarChart(
             drawContext.canvas.nativeCanvas.drawText(
                 "$day",
                 x - paint.measureText("$day") / 2f,
-                chartHeight + axisLabelPx,
+                baseline + axisLabelPx,
                 paint,
             )
         }
     }
+}
+
+/**
+ * 马克笔涂条的轮廓：底边直角（严格贴基线），顶边左右各有不同圆角。
+ * 左上/右上半径分开传入 —— 这是「手画」与「矩形」在轮廓上最省力的差别。
+ */
+private fun markerBarPath(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    rLeft: Float,
+    rRight: Float,
+): Path = Path().apply {
+    val right = left + width
+    val bottom = top + height
+    moveTo(left, bottom)
+    lineTo(left, top + rLeft)
+    quadraticTo(left, top, left + rLeft, top)
+    lineTo(right - rRight, top)
+    quadraticTo(right, top, right, top + rRight)
+    lineTo(right, bottom)
+    close()
 }

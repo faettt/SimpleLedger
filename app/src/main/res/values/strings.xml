@@ -141,6 +141,23 @@
     <string name="uncategorized">未分类</string>
     <string name="no_section">无分区</string>
 
+    <!-- 长按菜单：双维状态入口（规范 §3.5「入口：长按账目行 → 快捷菜单改状态」）。
+         文案直接写「点了会发生什么」，而不是名词 —— 菜单项是动作，不是状态标签。
+         报销三项按当前状态只显示另外两个 + 一个「取消」，所以永远最多三项。 -->
+    <string name="entry_mark_reconciled">✓ 标记已核对</string>
+    <string name="entry_unmark_reconciled">取消核对</string>
+    <string name="entry_mark_reimburse_pending">○ 标记待报销</string>
+    <string name="entry_mark_reimburse_cleared">● 标记已报销</string>
+    <string name="entry_clear_reimburse">取消报销状态</string>
+
+    <!-- 状态改动后的 Snackbar：两个 14dp 小符号在列表里极不显眼，
+         点完必须给一句反馈，否则用户不知道点没点上 -->
+    <string name="status_reconciled_done">已标记核对</string>
+    <string name="status_reconciled_cleared">已取消核对</string>
+    <string name="status_reimburse_pending_done">已标记待报销</string>
+    <string name="status_reimburse_cleared_done">已标记已报销</string>
+    <string name="status_reimburse_none_done">已取消报销状态</string>
+
     <!-- 分组标题：日分组小计（DayHeader） -->
     <string name="day_summary">支 %1$s　收 %2$s</string>
     <string name="day_summary_hidden">支 ••••　收 ••••</string>

@@ -242,6 +242,19 @@ class LedgerViewModel(
         repo.restoreEntry(snapshot)
     }
 
+    /**
+     * 长按菜单：切换**核对**维度（规范 §3.5 入口）。
+     *
+     * 开关式而非只置真：账目行上的 ✓ 是「这笔跟过了」，误点了要能撤回来。
+     * 与报销维度分开两次调用 —— 两个字段正交，一次只动一个。
+     */
+    suspend fun setReconciled(entryId: Long, value: Boolean) =
+        repo.setEntryReconciled(entryId, value)
+
+    /** 长按菜单：设置**报销**维度（不适用 / 待报销 / 已报销）。 */
+    suspend fun setReimburseState(entryId: Long, value: Int) =
+        repo.setEntryReimburseState(entryId, value)
+
     /** 撤销窗口结束，清掉暂存的贴图文件 */
     suspend fun discardParkedImages() = repo.discardParkedImages()
 
