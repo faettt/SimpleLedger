@@ -332,11 +332,24 @@ private fun AppNavHost(
  * · 圆角只做上两角 7dp：下方与屏幕底边平齐，像签从纸边伸出来。
  * · **触控目标 ≥48dp**：签的视觉高度只有 42dp 不达标，因此外层 Box 撑满 54dp 承接点击，
  *   视觉签贴在底部居中。这条不满足就会踩无障碍红线。
- * · 签之间留 3dp 缝隙露出纸底，读作"4 张独立的签"而不是一条连续色带。
+ * · 签之间留 3dp 缝隙露出底栏底色，读作"4 张独立的签"而不是一条连续色带。
  *
- * ⚠️ 历史坑（此处真实回归过一次，别再犯）：`navigationBarsPadding()` 必须排在
- *    `height()` **之前**。写在之后，手势条高度会从固定高度**内部**被扣掉，
- *    内容区被压缩、标签被整条裁掉——表现为"只看得见图标"，且 TalkBack 读不出页面名。
+ * ⚠️ **三条 Modifier 顺序规则，都不能动**（前两条是真机走查实测踩出来的）：
+ *
+ *  1. `background` 必须在 `navigationBarsPadding` **之前**。
+ *     写成 `.padding().height().background()` 时 background 位于链的最内层，只铺满
+ *     `height` 那 54dp —— insets 撑出来的 24dp（手势）/ 48dp（三键）完全没铺到，
+ *     露出的是下面一层（手势模式＝页面纸、三键模式＝系统导航栏的浅色）。
+ *     实测：节点实际高 102dp，背景只覆盖 53.7dp；调序后覆盖到 0.0dp 屏底。
+ *  2. `navigationBarsPadding` 必须在 `height` **之前**。写在之后，手势条高度会从固定
+ *     高度**内部**被扣掉，内容区被压缩、标签被整条裁掉——表现为"只看得见图标"，
+ *     且 TalkBack 读不出页面名。
+ *  3. 顶边分隔线画在 `background` 之后（draw modifier 按链序叠，先写的在下）。
+ *
+ * 底栏底色＝页面纸 `background`，与内容区**同色**，靠顶边那道 0.5dp 细线分界
+ * （手账里就是页面下方拉的一道线）。这样做的原因：选中签要用 `primaryContainer`
+ * （＝凹面 `#EFE9DC`）来表达"整块卡片换色"，底栏若也用凹面，选中签就会与底栏
+ * 融为一体、选中态消失。腾出凹面给选中签，是这套配色成立的前提。
  */
 @Composable
 private fun LedgerBottomBar(
@@ -345,18 +358,28 @@ private fun LedgerBottomBar(
 ) {
     val selectedHeight = 54.dp
     val unselectedHeight = 42.dp
+    // 分隔线色必须**先在这里读出来**：drawBehind 的 lambda 是 DrawScope，
+    // 不是 @Composable 上下文，在里头读 MaterialTheme.colorScheme 会直接编译失败
+    // （@Composable invocations can only happen from the context of a @Composable function）。
+    val barRuleColor = MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // ⚠️ 顺序语义：insets 撑在固定高度**之外**，不参与高度扣减（见上方历史坑）
+            // ① 底栏底色铺满整个节点（含 insets 撑出的那一段），一直连到屏幕最底
+            .background(MaterialTheme.colorScheme.background)
+            // ② 与内容区的分界：0.5dp 细线横贯全宽。底栏与页面同色时，这是唯一的分界
+            .drawBehind { drawRect(color = barRuleColor, size = Size(size.width, 0.5.dp.toPx())) }
+            // ③ insets 撑在固定高度**之外**，不参与高度扣减（见上方规则 2）
             .navigationBarsPadding()
             .height(selectedHeight),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 6.dp),
+                // 16dp 对齐页面内容边距（硬规则「页面边距 16/24/32」）；
+                // 原来是 6dp，签几乎贴到屏幕边，在圆角屏上会被裁掉。
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
