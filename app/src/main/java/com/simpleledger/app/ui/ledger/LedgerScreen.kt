@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
@@ -46,6 +45,9 @@ import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.section.SectionPickerDialog
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
+import com.simpleledger.app.data.local.entity.ReimburseState
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /** 保存结果通过 SavedStateHandle 回传给明细页 / 分区详情页 */
 const val RESULT_SAVED_ENTRY_ID = "result_saved_entry_id"
@@ -152,6 +154,37 @@ fun LedgerScreen(
     }
 
     /**
+     * 长按菜单：改双维状态（规范 §3.5「入口：长按账目行 → 快捷菜单改状态」）。
+     *
+     * 两个维度**各自独立提交** —— 只给非 null 的那一个发写。这不只为省一次事务：
+     * 两个字段正交（A2/D4），若每次都全量写回，用户在改核对的同时有别的写入，
+     * 就会把对方的改动覆盖掉。
+     *
+     * 必须给 Snackbar 反馈：两个 14dp 的小符号在列表里极不显眼，点完菜单若只让它
+     * 变个色，用户会怀疑自己到底点没点上。
+     */
+    suspend fun setStatusWithNotice(
+        entryId: Long,
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
+    ) {
+        if (reconciled != null) viewModel.setReconciled(entryId, reconciled)
+        if (reimburseState != null) viewModel.setReimburseState(entryId, reimburseState)
+        val message = when {
+            reconciled != null -> context.getString(
+                if (reconciled) R.string.status_reconciled_done
+                else R.string.status_reconciled_cleared
+            )
+            reimburseState == ReimburseState.PENDING ->
+                context.getString(R.string.status_reimburse_pending_done)
+            reimburseState == ReimburseState.CLEARED ->
+                context.getString(R.string.status_reimburse_cleared_done)
+            else -> context.getString(R.string.status_reimburse_none_done)
+        }
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+    }
+
+    /**
      * 列表级删除：不弹确认框，直接删除并给 4 秒撤销（设计规格 §07）。
      * 贴图文件在撤销窗口内先移入暂存区，因此「撤销」能完整恢复这笔账目。
      */
@@ -175,9 +208,10 @@ fun LedgerScreen(
         }
     }
 
-    val filtersActive = state.filters.sectionId != null ||
-        state.filters.categoryId != null ||
-        state.filters.type != null
+    // 直接问筛选模型自己有没有被设过。曾经这里手工罗列三个字段，加了状态维之后
+    // 就会漏掉两个 —— 而「有没有筛选」决定空态文案与摘要条是否出现，
+    // 漏判会让用户看到「本月还没有账目」这种明显错误的提示。
+    val filtersActive = state.filters.isActive
 
     val twoPane = layout == WindowLayout.Expanded
     val inPlaceEdit = layout != WindowLayout.Compact
@@ -256,7 +290,11 @@ fun LedgerScreen(
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+
+        containerColor = Color.Transparent,
+
+        snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (twoPane) {
                 Row(modifier = Modifier.fillMaxSize()) {
@@ -275,6 +313,8 @@ fun LedgerScreen(
                             onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                             onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                             onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                            onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                            onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                             modifier = Modifier.width(listPaneWidth).then(listPaneAnchor),
                         )
                     } else {
@@ -291,6 +331,8 @@ fun LedgerScreen(
                             onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                             onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                             onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                            onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                            onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                             modifier = Modifier.width(listPaneWidth).then(listPaneAnchor),
                         )
                     }
@@ -346,6 +388,8 @@ fun LedgerScreen(
                         onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                         onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                         onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                        onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                        onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -362,6 +406,8 @@ fun LedgerScreen(
                         onDuplicate = { id -> scope.launch { duplicateWithNotice(id) } },
                         onMoveTo = { id, sectionId, newCategoryId -> scope.launch { moveWithNotice(id, sectionId, newCategoryId) } },
                         onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                        onSetReconciled = { id, v -> scope.launch { setStatusWithNotice(id, reconciled = v) } },
+                        onSetReimburse = { id, v -> scope.launch { setStatusWithNotice(id, reimburseState = v) } },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -376,6 +422,8 @@ fun LedgerScreen(
                 state = state,
                 onTypeChange = viewModel::filterType,
                 onCategoryChange = viewModel::filterCategory,
+                onReconcileChange = viewModel::setReconcileFilter,
+                onReimburseChange = viewModel::setReimburseFilter,
                 onClearAll = viewModel::clearFilters,
                 onDismiss = { showFilterSheet = false },
             )

@@ -53,15 +53,20 @@ class LedgerRepository(
         sectionId: Long? = null,
         categoryId: Long? = null,
         type: Int? = null,
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
     ): Flow<List<EntryFull>> =
-        entryDao.observeEntries(start, end, sectionId, categoryId, type)
+        entryDao.observeEntries(start, end, sectionId, categoryId, type, reconciled, reimburseState)
 
     fun observeTypeTotals(
         start: Long,
         end: Long,
         sectionId: Long? = null,
         categoryId: Long? = null,
-    ): Flow<List<TypeTotal>> = entryDao.observeTypeTotals(start, end, sectionId, categoryId)
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
+    ): Flow<List<TypeTotal>> =
+        entryDao.observeTypeTotals(start, end, sectionId, categoryId, reconciled, reimburseState)
 
     fun observeCategoryTotals(
         type: Int,
@@ -365,6 +370,19 @@ class LedgerRepository(
         entryDao.deleteEntry(id) // 图片记录级联删除
         imageStorage.deleteFiles(paths)
     }
+
+    /**
+     * 长按菜单：切换**核对**维度。
+     *
+     * 与 [setEntryReimburseState] 是两个独立事务，互不牵连 —— 这正是 v4 把「核对 / 报销」
+     * 拆成两个正交字段的目的（一笔装修支出完全可以「已核对」且「待报销」）。
+     */
+    suspend fun setEntryReconciled(id: Long, value: Boolean) =
+        entryDao.updateReconciled(id, value, System.currentTimeMillis())
+
+    /** 长按菜单：设置**报销**维度（[ReimburseState.NONE] / PENDING / CLEARED）。 */
+    suspend fun setEntryReimburseState(id: Long, value: Int) =
+        entryDao.updateReimburseState(id, value, System.currentTimeMillis())
 
     /**
      * 删除账目并返回可恢复的快照（贴图文件先移入暂存区，不直接销毁）。

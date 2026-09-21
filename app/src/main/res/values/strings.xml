@@ -141,14 +141,37 @@
     <string name="uncategorized">未分类</string>
     <string name="no_section">无分区</string>
 
-    <!-- 分组标题：日分组小计（DayHeader） -->
-    <string name="day_summary">支 %1$s　收 %2$s</string>
+    <!-- 长按菜单：双维状态入口（规范 §3.5「入口：长按账目行 → 快捷菜单改状态」）。
+         文案直接写「点了会发生什么」，而不是名词 —— 菜单项是动作，不是状态标签。
+         报销三项按当前状态只显示另外两个 + 一个「取消」，所以永远最多三项。 -->
+    <string name="entry_mark_reconciled">✓ 标记已核对</string>
+    <string name="entry_unmark_reconciled">取消核对</string>
+    <string name="entry_mark_reimburse_pending">○ 标记待报销</string>
+    <string name="entry_mark_reimburse_cleared">● 标记已报销</string>
+    <string name="entry_clear_reimburse">取消报销状态</string>
+
+    <!-- 状态改动后的 Snackbar：两个 14dp 小符号在列表里极不显眼，
+         点完必须给一句反馈，否则用户不知道点没点上 -->
+    <string name="status_reconciled_done">已标记核对</string>
+    <string name="status_reconciled_cleared">已取消核对</string>
+    <string name="status_reimburse_pending_done">已标记待报销</string>
+    <string name="status_reimburse_cleared_done">已标记已报销</string>
+    <string name="status_reimburse_none_done">已取消报销状态</string>
+
+    <!-- 分组标题：日分组小计（DayHeader）。只显示有值的半边——
+         「收 0.00」不携带信息还占宽度；文案在 DayHeader 里按值拼装 -->
     <string name="day_summary_hidden">支 ••••　收 ••••</string>
 
     <!-- 明细页：搜索 / 筛选 / 记一笔 / 概览 -->
     <string name="search">搜索</string>
     <string name="filter">筛选</string>
     <string name="all_sections">全部分区</string>
+    <!-- 快捷 chip 行首位的「全部」：规范 §2.4 的 chip 行写法。
+         它与「全部分区」不同 —— 「全部分区」只说明分区维度不限，
+         而它是「清空一切筛选」，选中态也按「有没有任何筛选」判断。 -->
+    <string name="filter_all">全部</string>
+    <string name="filter_group_reconcile">核对</string>
+    <string name="filter_group_reimburse">报销</string>
     <string name="record_entry">＋ 记一笔</string>
     <string name="filters_none_result">当前筛选条件下没有账目</string>
     <string name="go_record_in_section">去分区记账</string>
@@ -191,6 +214,16 @@
     <string name="a11y_image_count">有 %1$d 张单据</string>
     <string name="a11y_move_up">上移</string>
     <string name="a11y_move_down">下移</string>
+    <string name="a11y_pick_icon">点按选择图标</string>
+    <!-- 账目状态读屏词：视觉上是两个 14dp 符号，读屏用户看不到，必须出声 -->
+    <!-- 状态词：**单一来源** —— 账目行读屏串与筛选 chip 共用同一批字。
+         拆成两份（一份给 a11y、一份给 UI）迟早会出现「读屏念待报销、
+         筛选项写未报销」这种不一致。 -->
+    <string name="status_reconciled">已核对</string>
+    <string name="status_pending_reconcile">待核对</string>
+    <string name="status_reimburse_none">不适用</string>
+    <string name="status_reimburse_pending">待报销</string>
+    <string name="status_reimburse_cleared">已报销</string>
     <string name="a11y_move_up_section">上移分区</string>
     <string name="a11y_move_down_section">下移分区</string>
     <string name="a11y_section_month_expense">本月花销</string>

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +42,8 @@ import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.amountSpeech
+import com.simpleledger.app.ui.icon.SlIcons
+import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -71,7 +74,13 @@ internal fun EntryDetailPane(
                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(24.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("👈", fontSize = 26.sp)
+                    // v4：emoji 👈 → 手绘插图 hint-lg（32 网格 lg 档）；装饰性 → 描述置 null
+                    Icon(
+                        imageVector = SlIcons.Illustration.HintLg,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(34.dp),
+                    )
                 }
                 Text(
                     text = "从左侧选择一笔账目查看详情",
@@ -100,7 +109,13 @@ internal fun EntryDetailPane(
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(full.category?.emoji ?: "🏷️", fontSize = 19.sp)
+                    // v4：emoji → 手绘图标（兜底 43 = tag）；装饰性，读屏由下方文字承担
+                    Icon(
+                        imageVector = slCategoryIcon(full.category?.iconId ?: 43),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -114,7 +129,7 @@ internal fun EntryDetailPane(
                             append(DateTimes.dateLabel(DateTimes.toLocalDate(full.entry.entryTime)))
                             append(" ")
                             append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
-                            section?.let { append(" · ${it.emoji}${it.name}") }
+                            section?.let { append(" · ${it.name}") }
                         },
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -220,11 +235,21 @@ internal fun EntryDetailPane(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "${section.emoji} ${section.name}",
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
+                        // v4：所属分区用「图标 + 名称」渲染（emoji 退场）
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = slCategoryIcon(section.iconId),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(17.dp),
+                            )
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = section.name,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
                         if (section.note.isNotBlank()) {
                             Text(
                                 text = section.note,

@@ -28,13 +28,28 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.LocalDate
 import java.time.YearMonth
+import com.simpleledger.app.data.local.entity.ReimburseState
 
 /** 明细页筛选条件 */
 data class LedgerFilters(
     val sectionId: Long? = null,
     val categoryId: Long? = null,
     val type: Int? = null,
-)
+    /**
+     * 核对维：null = 不筛；false = 待核对（还没对的账，最该被看到的那一批）；true = 已核对。
+     *
+     * 刻意用 `Boolean?` 而非「Boolean + 一个 enabled 标志」：三态本来就是一个字段
+     * 能表达的事，多一个标志就多一处可能不同步的状态。
+     */
+    val reconciled: Boolean? = null,
+    /** 报销维：null = 不筛；其余取 [ReimburseState] 的取值（0 不适用 / 1 待报销 / 2 已报销）。 */
+    val reimburseState: Int? = null,
+) {
+    /** 是否设了任何筛选（含状态维）。快捷 chip 行的「全部」按它判断选中态。 */
+    val isActive: Boolean
+        get() = sectionId != null || categoryId != null || type != null ||
+            reconciled != null || reimburseState != null
+}
 
 /** 按天分组的账目 */
 data class DayGroup(
@@ -68,14 +83,18 @@ class LedgerViewModel(
         val (start, end) = DateTimes.monthRange(m)
         Triple(start, end, f)
     }.flatMapLatest { (start, end, f) ->
-        repo.observeEntries(start, end, f.sectionId, f.categoryId, f.type)
+        repo.observeEntries(
+                start, end, f.sectionId, f.categoryId, f.type, f.reconciled, f.reimburseState,
+            )
     }
 
     private val totalsFlow = combine(month, filters) { m, f ->
         val (start, end) = DateTimes.monthRange(m)
         Triple(start, end, f)
     }.flatMapLatest { (start, end, f) ->
-        repo.observeTypeTotals(start, end, f.sectionId, f.categoryId)
+        repo.observeTypeTotals(
+                start, end, f.sectionId, f.categoryId, f.reconciled, f.reimburseState,
+            )
     }
 
     val state: StateFlow<LedgerUiState> = combine(
@@ -208,6 +227,34 @@ class LedgerViewModel(
     fun clearFilters() = filters.update { LedgerFilters() }
 
     /**
+     * 快捷 chip：切「待核对」视图。再点一次取消。
+     *
+     * 之所以要一个专门的方法而不复用 [filterType] 那套「传值」接口：快捷 chip 是
+     * **开关**（点一下切过去、再点回来），传值接口在 UI 侧就得自己算「现在是开还是关」，
+     * 那份判断放在两处迟早不一致。
+     */
+    fun togglePendingReconcile() =
+        filters.update { it.copy(reconciled = if (it.reconciled == false) null else false) }
+
+    /** 快捷 chip：切「待报销」视图。再点一次取消。 */
+    fun togglePendingReimburse() =
+        filters.update {
+            it.copy(
+                reimburseState = if (it.reimburseState == ReimburseState.PENDING) {
+                    null
+                } else {
+                    ReimburseState.PENDING
+                }
+            )
+        }
+
+    /** 筛选面板：核对维（全部 / 待核对 / 已核对）。 */
+    fun setReconcileFilter(value: Boolean?) = filters.update { it.copy(reconciled = value) }
+
+    /** 筛选面板：报销维（全部 / 不适用 / 待报销 / 已报销）。 */
+    fun setReimburseFilter(value: Int?) = filters.update { it.copy(reimburseState = value) }
+
+    /**
      * 生成保存成功的提示文案，如「🔨 装修 · ¥2,000.00」。
      * 返回 null 表示条目不存在（例如刚被撤销删除）。
      *
@@ -219,7 +266,8 @@ class LedgerViewModel(
         val full = repo.getEntryFull(entryId) ?: return null
         val amount = if (settings.hideAmounts.value) "金额已隐藏" else Money.formatWithSymbol(full.entry.amountCents)
         val section = full.section
-        return if (section != null) "${section.emoji} ${section.name} · $amount" else amount
+        // v4：读屏文案不拼 emoji（TalkBack 念 emoji 是噪音）；分区身份由 UI 图标/色条表达
+        return if (section != null) "${section.name} · $amount" else amount
     }
 
     /** 撤销删除：把刚保存的账目删掉（提示条里的「撤销」） */
@@ -240,6 +288,19 @@ class LedgerViewModel(
     suspend fun restoreDeleted(snapshot: DeletedEntrySnapshot) {
         repo.restoreEntry(snapshot)
     }
+
+    /**
+     * 长按菜单：切换**核对**维度（规范 §3.5 入口）。
+     *
+     * 开关式而非只置真：账目行上的 ✓ 是「这笔跟过了」，误点了要能撤回来。
+     * 与报销维度分开两次调用 —— 两个字段正交，一次只动一个。
+     */
+    suspend fun setReconciled(entryId: Long, value: Boolean) =
+        repo.setEntryReconciled(entryId, value)
+
+    /** 长按菜单：设置**报销**维度（不适用 / 待报销 / 已报销）。 */
+    suspend fun setReimburseState(entryId: Long, value: Int) =
+        repo.setEntryReimburseState(entryId, value)
 
     /** 撤销窗口结束，清掉暂存的贴图文件 */
     suspend fun discardParkedImages() = repo.discardParkedImages()

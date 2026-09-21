@@ -48,11 +48,20 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.SectionMoveRules
+import com.simpleledger.app.ui.icon.SlIcons
+import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import com.simpleledger.app.data.local.entity.ReimburseState
+import com.simpleledger.app.ui.components.EntryStatusCluster
+import com.simpleledger.app.ui.theme.tapeColor
 
 /*
  * 共享的账目展示组件：日分组标题 / 账目行 / 金额文本。
@@ -63,7 +72,13 @@ import com.simpleledger.app.util.Money
  * 故所有既有引用（含跨包的 `import ...ledger.AmountText`）无需任何改动。
  */
 
-/** 日分组标题：日期 + 当日收支汇总 */
+/**
+ * 日分组标题：日期 + 当日收支汇总。
+ *
+ * 汇总**只显示有值的半边**：某天只有支出时不写「收 0.00」、只有收入时不写「支 0.00」
+ * ——「0.00」不携带任何信息，却占掉一截宽度，还让人下意识去核对是不是漏记了。
+ * 两边都有值时才并排（中间用全角空格隔开，读屏与视觉同一份文案）。
+ */
 @Composable
 internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long) {
     val hidden = LocalHideAmounts.current
@@ -85,11 +100,13 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
             text = if (hidden) {
                 stringResource(R.string.day_summary_hidden)
             } else {
-                stringResource(
-                    R.string.day_summary,
-                    Money.formatCents(expenseCents),
-                    Money.formatCents(incomeCents),
-                )
+                buildString {
+                    if (expenseCents > 0) append("支 ").append(Money.formatCents(expenseCents))
+                    if (incomeCents > 0) {
+                        if (isNotEmpty()) append("　")
+                        append("收 ").append(Money.formatCents(incomeCents))
+                    }
+                }
             },
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -115,16 +132,39 @@ internal fun EntryRow(
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
+    showSectionPrefix: Boolean = false,
+    /** 长按菜单：切换核对维度（规范 §3.5 入口）。传 null 则不显示该项。 */
+    onToggleReconciled: ((Boolean) -> Unit)? = null,
+    /** 长按菜单：设置报销维度。传 null 则不显示这三项。 */
+    onSetReimburseState: ((Int) -> Unit)? = null,
 ) {
     val isIncome = full.entry.type == EntryType.INCOME
     val hidden = LocalHideAmounts.current
     val meta = buildString {
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
-        full.section?.let { append(" · ${it.emoji}${it.name}") }
-        if (full.images.isNotEmpty()) append(" · 📷${full.images.size}")
-        if (full.entry.note.isNotBlank()) append(" · 💬")
+        // v4：分区名不再拼 emoji（F4——分区身份由色条/图标表达，文字只留名称）
+        full.section?.let { append(" · ${it.name}") }
     }
+    // v4：📷 / 💬 从「拼进字符串的 emoji」改成**渲染出来的行内图标**（SlIcons.Ui.CameraInline /
+    // NoteInline）。它们与读屏串 speech 的分工：视觉用图标，语义由 speechImageCount / speechHasNote 兜底。
+    val hasNote = full.entry.note.isNotBlank()
+    val imageCount = full.images.size
     var menuOpen by remember { mutableStateOf(false) }
+    val uncategorizedLabel = stringResource(R.string.uncategorized)
+
+    // F4 的例外（规范 §2.4 末尾 + §188）：**「全部分区」筛选视图**下补回分区文字前缀。
+    // 触发条件比「视图」更窄一层 —— 只有**分区专属分类**才补：
+    //   专属分类（category.sectionId != null）名可能在不同分区重名（PRD q-02），非消歧不可；
+    //   全局分类（sectionId == null）名字全局唯一，补前缀只是噪音。
+    // 规范 §2.4 的示意图正是这个口径：「装修·主材」「装修·人工」带前缀，而全局的「餐饮」
+    // 「工资」不带 —— 照图实现，不自作主张。
+    // ⚠️ 前缀只加在**视觉文本**上：读屏串末尾已单独念分区名，再加前缀会念两遍。
+    val plainCategoryName = full.category?.name ?: uncategorizedLabel
+    val needPrefix = showSectionPrefix &&
+        full.category?.sectionId != null &&
+        full.section != null
+    val categoryLabel =
+        if (needPrefix) "${full.section.name} · $plainCategoryName" else plainCategoryName
 
     // 读屏串：行内三个 Text 节点会被 TalkBack 分三次朗读，失去「这是一笔账」的整体语义。
     // 顺序按「最重要在前」：方向 → 分类 → 金额 → 时间 → 分区 → 备注/单据。
@@ -140,12 +180,23 @@ internal fun EntryRow(
     }
     val speechHasNote = stringResource(R.string.a11y_has_note)
     val speechImageCount = stringResource(R.string.a11y_image_count, full.images.size)
+    // v4：状态词必须进读屏串 —— 视觉上是两个 14dp 的小符号，读屏用户完全看不到
+    val speechReconciled = stringResource(R.string.status_reconciled)
+    val speechReimbursePending = stringResource(R.string.status_reimburse_pending)
+    val speechReimburseCleared = stringResource(R.string.status_reimburse_cleared)
     val speech = buildString {
         append(speechDirection)
         append("，")
         append(full.category?.name ?: speechUncategorized)
         append("，")
         append(speechAmount)
+        // 状态紧跟在金额之后：它是「这笔账还要不要跟」的可操作信息，优先级高于时间
+        if (full.entry.reconciled) append("，$speechReconciled")
+        when (full.entry.reimburseState) {
+            ReimburseState.PENDING -> append("，$speechReimbursePending")
+            ReimburseState.CLEARED -> append("，$speechReimburseCleared")
+            else -> Unit
+        }
         append("，")
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
         full.section?.let { append("，${it.name}") }
@@ -154,15 +205,29 @@ internal fun EntryRow(
     }
 
     val moreActionsLabel = stringResource(R.string.a11y_more_actions)
-    val uncategorizedLabel = stringResource(R.string.uncategorized)
 
     Box(modifier = Modifier.fillMaxWidth()) {
+        // 分区胶带色：账目行颜色的**唯一**含义（F4 —— 分区身份由色条承担，
+        // 所以分类名不再带「装修 · 」文字前缀，符号簇也不再引入第三套色彩语义）
+        // （唯一的例外是「全部分区」视图下对专属分类补前缀，见上方 categoryLabel）
+        val barColor = tapeColor(full.section?.colorIndex ?: 0)
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                 )
+                // 左侧 3dp 通高色条用 drawBehind 绘制而非加布局节点：
+                // 布局方案要让它的 fillMaxHeight 拿到确定高度，就得引入 IntrinsicSize.Min
+                // 或嵌套一层 Row；绘制方案零结构改动，边界也真正贴到行的上下沿。
+                .drawBehind {
+                    drawRect(
+                        color = barColor,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height),
+                    )
+                }
                 // mergeDescendants 把行内子文本合并成一个语义节点；下拉菜单是 Box 的兄弟节点、
                 // 不在本 Row 内，因此不会被吞进来（否则会一次念出全部菜单项）
                 .semantics(mergeDescendants = true) { contentDescription = speech }
@@ -171,9 +236,17 @@ internal fun EntryRow(
                     onLongClickLabel = moreActionsLabel,
                     onLongClick = { menuOpen = true },
                 )
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                // start 留 12dp 给色条（3dp 色条 + 9dp 呼吸）
+                .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 状态符号簇：核对 ✓ + 报销 ○/●（两个槽恒定占位 14dp，空槽不收缩，
+            // 否则同行不同账目的分类名会左右错位，流水列表的纵向节奏就断了）
+            EntryStatusCluster(
+                reconciled = full.entry.reconciled,
+                reimburseState = full.entry.reimburseState,
+            )
+            Spacer(modifier = Modifier.width(7.dp))
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -187,55 +260,148 @@ internal fun EntryRow(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(full.category?.emoji ?: "🏷️", fontSize = 17.sp)
+                // v4：emoji → 手绘图标。兜底 43 = tag，与迁移兜底一致；
+                // 装饰性 → contentDescription null，读屏由 speech 串负责
+                Icon(
+                    imageVector = slCategoryIcon(full.category?.iconId ?: 43),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp),
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = full.category?.name ?: uncategorizedLabel,
+                    text = categoryLabel,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = meta,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // v4：meta 行拆成「文本 + 行内图标」。图标 12dp（inline 档，描边 1.7），
+                // contentDescription 置 null —— 语义由 speech 串统一给出，避免重复朗读
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = meta,
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (imageCount > 0) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = SlIcons.Ui.CameraInline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(
+                            text = imageCount.toString(),
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (hasNote) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = SlIcons.Ui.NoteInline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
             AmountText(amountCents = full.entry.amountCents, isIncome = isIncome)
         }
 
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false },
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.duplicate_one)) },
-                onClick = {
-                    menuOpen = false
-                    onDuplicate()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.move_section_title)) },
-                onClick = {
-                    menuOpen = false
-                    onMove()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                onClick = {
-                    menuOpen = false
-                    onDelete()
-                },
-            )
+        // 弹出菜单锚定在行的**右上角**：DropdownMenu 内部的 align(TopEnd) 对弹出位置
+        // 无效 —— 那个 modifier 作用于弹窗内容，不是锚点；不包一层 Box 的话，
+        // 弹窗会锚定到行的左上角（实测渲染在左侧，与意图相反）。
+        Box(modifier = Modifier.align(Alignment.TopEnd)) {
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                modifier = Modifier.align(Alignment.TopEnd),
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.duplicate_one)) },
+                    onClick = {
+                        menuOpen = false
+                        onDuplicate()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.move_section_title)) },
+                    onClick = {
+                        menuOpen = false
+                        onMove()
+                    },
+                )
+
+                // v4 双维状态入口（规范 §3.5）。两项都放在「移动」与「删除」之间：
+                // 删除是破坏性动作，必须离上面的日常动作远一点。
+                onToggleReconciled?.let { toggle ->
+                    val already = full.entry.reconciled
+                    DropdownMenuItem(
+                        text = {
+                            // 名词会被读成「当前状态」，动作词才读得懂点下去的结果
+                            Text(
+                                stringResource(
+                                    if (already) R.string.entry_unmark_reconciled
+                                    else R.string.entry_mark_reconciled,
+                                )
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            toggle(!already)
+                        },
+                    )
+                }
+                onSetReimburseState?.let { setState ->
+                    // 三条里只显示与当前状态不同的两条 —— 否则菜单里会出现
+                    // 「标记待报销」而它已经待报销，点下去毫无反馈。
+                    val current = full.entry.reimburseState
+                    if (current != ReimburseState.PENDING) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_mark_reimburse_pending)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.PENDING)
+                            },
+                        )
+                    }
+                    if (current != ReimburseState.CLEARED) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_mark_reimburse_cleared)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.CLEARED)
+                            },
+                        )
+                    }
+                    if (current != ReimburseState.NONE) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_clear_reimburse)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.NONE)
+                            },
+                        )
+                    }
+                }
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
+                    },
+                )
+            }
         }
     }
 }
@@ -316,9 +482,10 @@ internal fun MoveSectionDialog(
     val uncategorized = stringResource(R.string.uncategorized)
     val noSection = stringResource(R.string.no_section)
     val hiddenAmount = stringResource(R.string.amount_hidden)
-    val currentSectionLabel = entry.section?.let { "${it.emoji}${it.name}" } ?: noSection
+    val currentSectionLabel = entry.section?.name ?: noSection
     val currentLine = stringResource(R.string.move_current_section, currentSectionLabel)
-    val categoryLabel = "${entry.category?.emoji ?: ""}${entry.category?.name ?: uncategorized}"
+    // v4：读屏/拼接文案一律不带 emoji（TalkBack 念 emoji 是噪音）
+    val categoryLabel = entry.category?.name ?: uncategorized
     val amountText = if (hidden) hiddenAmount else Money.formatWithSymbol(entry.entry.amountCents)
     val headerLine = "$categoryLabel · $amountText　$currentLine"
 
@@ -353,7 +520,15 @@ internal fun MoveSectionDialog(
                                     .padding(horizontal = 10.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("${section.emoji} ${section.name}", fontSize = 14.5.sp)
+                                // 分区选择行：图标（分区自身 iconId）+ 名称
+                                Icon(
+                                    imageVector = slCategoryIcon(section.iconId),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Text(section.name, fontSize = 14.5.sp)
                             }
                         }
                     }
@@ -363,7 +538,7 @@ internal fun MoveSectionDialog(
                     Text(
                         text = stringResource(
                             R.string.move_reselect_hint,
-                            target?.let { "${it.emoji} ${it.name}" } ?: "",
+                            target?.let { it.name } ?: "",
                         ),
                         fontSize = 12.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -392,7 +567,7 @@ internal fun MoveSectionDialog(
                                         onClick = { selectedCategoryId = candidate.id },
                                     )
                                     Text(
-                                        text = "${candidate.emoji} ${candidate.name}",
+                                        text = candidate.name,
                                         fontSize = 14.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,

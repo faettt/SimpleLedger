@@ -20,10 +20,10 @@ import org.junit.Test
 class SectionMoveRulesTest {
 
     private fun global(id: Long, name: String, type: Int = EntryType.EXPENSE) =
-        CategoryEntity(id = id, name = name, emoji = "🍚", type = type, sectionId = null, sortOrder = 0)
+        CategoryEntity(id = id, name = name, iconId = 2, type = type, sectionId = null, sortOrder = 0)
 
     private fun exclusive(id: Long, name: String, sectionId: Long, type: Int = EntryType.EXPENSE) =
-        CategoryEntity(id = id, name = name, emoji = "🧱", type = type, sectionId = sectionId, sortOrder = 0)
+        CategoryEntity(id = id, name = name, iconId = 44, type = type, sectionId = sectionId, sortOrder = 0)
 
     // -------- 判定 1：全局分类可直移 --------
 

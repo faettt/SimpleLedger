@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#0F766E</color>
+    <!-- v4 手账皮肤：窗口底（含 API 31+ 系统启动屏的默认底色）用暖纸色。
+         不设它的话会沿用 Material Light 的纯白，启动瞬间闪一下白再跳进纸色，很跳。 -->
+    <color name="paper">#F7F3E9</color>
 </resources>

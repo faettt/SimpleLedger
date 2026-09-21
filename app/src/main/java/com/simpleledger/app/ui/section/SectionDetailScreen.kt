@@ -21,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -59,6 +58,11 @@ import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import com.simpleledger.app.ui.icon.slCategoryIcon
+import androidx.compose.ui.graphics.Color
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 分区详情（FR-16~20）。
@@ -148,7 +152,11 @@ fun SectionDetailScreen(
         if (inPlaceEdit) editingEntryId = id else onEditEntry(id)
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+
+        containerColor = Color.Transparent,
+
+        snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 顶部
@@ -164,14 +172,27 @@ fun SectionDetailScreen(
                             contentDescription = stringResource(R.string.back),
                         )
                     }
-                    Text(
-                        text = "${state.section?.emoji ?: ""} ${state.section?.name ?: ""}".trim(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    // v4：标题栏改「图标 + 分区名」（设计 §2.3），emoji 退场
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f),
-                    )
+                    ) {
+                        state.section?.let {
+                            Icon(
+                                imageVector = slCategoryIcon(it.iconId),
+                                contentDescription = null,
+                                modifier = Modifier.size(19.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = state.section?.name ?: "",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     TextButton(onClick = { onManage(sectionId) }) {
                         Text(stringResource(R.string.section_manage))
                     }

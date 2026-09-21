@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +23,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import androidx.compose.ui.graphics.Color
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 手机（Compact）宿主：全屏页面。
@@ -73,6 +74,8 @@ fun EntryEditScreen(
     }
 
     Scaffold(
+
+        containerColor = Color.Transparent,
         topBar = {
             EntryFormHeader(
                 isEdit = state.isEdit,
@@ -84,7 +87,7 @@ fun EntryEditScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SlSnackbarHost(snackbarHostState) },
     ) { padding ->
         EntryEditForm(
             state = state,

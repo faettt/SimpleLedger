@@ -25,8 +25,8 @@ class ExportPrivacyTest {
         amountCents: Long,
         type: Int = EntryType.EXPENSE,
         note: String = "",
-        category: CategoryEntity? = CategoryEntity(id = 1, name = "餐饮", emoji = "🍜", type = type),
-        section: SectionEntity? = SectionEntity(id = 1, name = "日常开支", emoji = "📌"),
+        category: CategoryEntity? = CategoryEntity(id = 1, name = "餐饮", iconId = 3, type = type),
+        section: SectionEntity? = SectionEntity(id = 1, name = "日常开支", iconId = 1),
         images: List<EntryImageEntity> = emptyList(),
     ): EntryFull {
         val entry = EntryEntity(
@@ -97,11 +97,11 @@ class ExportPrivacyTest {
                 category = CategoryEntity(
                     id = 9,
                     name = "主材",
-                    emoji = "🧱",
+                    iconId = 44,
                     type = EntryType.EXPENSE,
                     sectionId = 1L,
                 ),
-                section = SectionEntity(id = 1, name = "装修", emoji = "🔨"),
+                section = SectionEntity(id = 1, name = "装修", iconId = 17),
             ),
         )
         assertEquals("主材", row.category)

@@ -2,5 +2,8 @@
 <resources>
     <style name="Theme.SimpleLedger" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- 暖纸底色：API 31+ 的系统启动屏默认取 windowBackground，
+             所以这一项同时决定了「启动屏不闪白」。深色主题见 values-night。 -->
+        <item name="android:windowBackground">@color/paper</item>
     </style>
 </resources>

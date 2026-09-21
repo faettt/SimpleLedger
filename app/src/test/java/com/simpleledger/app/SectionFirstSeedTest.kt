@@ -21,9 +21,43 @@ class SectionFirstSeedTest {
     fun `keeps the three sections including decoration with 260k budget`() {
         assertEquals(3, SectionFirstSeed.sections.size)
         val decoration = SectionFirstSeed.sections.first { it.name == "装修" }
-        assertEquals("🔨", decoration.emoji)
+        // v4：图标是 iconId（17 = hammer 手绘图标），不再是 emoji 字符串
+        assertEquals(17, decoration.iconId)
         assertEquals(26_000_000L, decoration.budgetCents)
         assertEquals(SectionFirstSeed.ZHUANGXIU_BUDGET_CENTS, decoration.budgetCents)
+        // 胶带色：装修 = 赭黄(2)，与 tokens-journal.json 的 tape.palette 顺序一致
+        assertEquals(SectionFirstSeed.TapeColor.ZHE_HUANG, decoration.colorIndex)
+    }
+
+    @Test
+    fun `seed sections carry valid icon ids and tape colors`() {
+        // 与 IconMappingTest 一起构成「种子数据 ↔ 图标集」的双向契约：
+        // iconId 越界会让 slCategoryIcon() 兜底成 tag，胶带色越界会让色条取到空
+        SectionFirstSeed.sections.forEach { section ->
+            assertTrue(
+                "分区 ${section.name} 的 iconId 越界：${section.iconId}",
+                section.iconId in 1..50,
+            )
+            assertTrue(
+                "分区 ${section.name} 的 colorIndex 越界：${section.colorIndex}",
+                section.colorIndex in 0..7,
+            )
+        }
+        // 三个初始分区的胶带色互不相同（选择网格里一眼可辨）
+        assertEquals(
+            3,
+            SectionFirstSeed.sections.map { it.colorIndex }.toSet().size,
+        )
+    }
+
+    @Test
+    fun `seed categories carry icon ids in range`() {
+        SectionFirstSeed.categories.forEach { category ->
+            assertTrue(
+                "分类 ${category.name} 的 iconId 越界：${category.iconId}",
+                category.iconId in 1..50,
+            )
+        }
     }
 
     @Test

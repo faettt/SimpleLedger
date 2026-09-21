@@ -17,7 +17,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +44,9 @@ import com.simpleledger.app.ui.components.ContentMaxWidth
 import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.SectionDialog
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.FloatingActionButtonDefaults
+import com.simpleledger.app.ui.components.SlSnackbarHost
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -80,9 +82,13 @@ fun SectionHomeScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+
+        containerColor = Color.Transparent,
+        snackbarHost = { SlSnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = {
+            ExtendedFloatingActionButton(
+                // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),onClick = {
                 editTarget = null
                 showSectionDialog = true
             }) {
@@ -189,7 +195,8 @@ private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
     impact?.blockedReason?.let { return it }
     val entryCount = impact?.entryCount ?: 0
     val exclusiveCount = impact?.exclusiveCategoryCount ?: 0
-    val fallbackName = impact?.fallback?.let { "${it.emoji}${it.name}" }
+    // v4：删除提示文案不拼 emoji（这是读给用户听的字，图标在此无信息量）
+    val fallbackName = impact?.fallback?.name
     val entriesLine = if (entryCount > 0 && fallbackName != null) {
         stringResource(R.string.delete_section_body_entries, entryCount, fallbackName)
     } else {

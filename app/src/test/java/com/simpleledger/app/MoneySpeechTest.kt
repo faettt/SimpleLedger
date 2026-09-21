@@ -4,7 +4,10 @@ import com.simpleledger.app.data.local.entity.CategoryTotal
 import com.simpleledger.app.logic.CategoryShare
 import com.simpleledger.app.ui.amountSpeech
 import com.simpleledger.app.ui.components.barChartSpeech
-import com.simpleledger.app.ui.components.pieChartSpeech
+import com.simpleledger.app.data.local.entity.SectionTotal
+import com.simpleledger.app.logic.SectionShare
+import com.simpleledger.app.ui.components.categoryBarSpeech
+import com.simpleledger.app.ui.components.sectionDonutSpeech
 import com.simpleledger.app.util.Money
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -127,52 +130,56 @@ class MoneySpeechTest {
 
     // ---------------------------------------------------------------- 图表摘要
 
-    private fun share(name: String, cents: Long, fraction: Double) =
-        CategoryShare(
-            CategoryTotal(
-                categoryId = 1L,
+    private fun sectionShare(name: String, cents: Long, fraction: Double) =
+        SectionShare(
+            section = SectionTotal(
+                sectionId = 1L,
                 name = name,
-                emoji = "🍚",
-                sectionId = null,
-                sectionName = null,
-                sectionEmoji = null,
-                total = cents,
+                iconId = 1,
+                colorIndex = 0,
+                note = "",
+                budgetCents = 0,
+                expense = cents,
+                income = 0,
                 count = 1,
             ),
-            fraction,
+            fraction = fraction,
         )
 
     @Test
-    fun `pie chart speech lists items with percent and chinese amount`() {
+    fun `section donut speech lists sections with percent and chinese amount`() {
         val shares = listOf(
-            share("餐饮", 200_000L, 0.45),
-            share("交通", 90_000L, 0.20),
+            sectionShare("装修", 92_068_00L, 0.95),
+            sectionShare("日常开支", 4_578_50L, 0.05),
         )
         assertEquals(
-            "分类占比：共 2 类，总支出 四千四百五十元整。餐饮 45%，两千元整；交通 20%，九百元整",
-            pieChartSpeech(shares, totalCents = 445_000L, hidden = false),
+            "分区占比：共 2 个分区，总支出 九万六千六百四十六元五角。" +
+                "装修 95%，九万二千零六十八元整；日常开支 5%，四千五百七十八元五角",
+            sectionDonutSpeech(shares, totalCents = 96_646_50L, hidden = false),
         )
     }
 
     @Test
-    fun `pie chart speech folds the tail into a count`() {
-        val shares = (1..7).map { share("类$it", 10_000L, 1.0 / 7) }
-        val speech = pieChartSpeech(shares, totalCents = 70_000L, hidden = false, maxItems = 5)
+    fun `section donut speech hides amounts in privacy mode`() {
+        val shares = listOf(sectionShare("装修", 92_068_00L, 1.0))
+        val speech = sectionDonutSpeech(shares, totalCents = 92_068_00L, hidden = true)
+        assertEquals("分区占比：共 1 个分区，金额已隐藏", speech)
+        assertFalse(speech.contains("九万"))
+    }
+
+    @Test
+    fun `empty section donut speech`() {
+        assertEquals("分区占比：本月暂无支出", sectionDonutSpeech(emptyList(), totalCents = 0L, hidden = false))
+    }
+
+    @Test
+    fun `category bar speech lists top items and folds the tail`() {
+        val labels = (1..7).map { "类$it" }
+        val amounts = (1..7).map { 10_000L }
+        val speech = categoryBarSpeech(labels, amounts, hidden = false, maxItems = 5)
         assertTrue(speech.contains("共 7 类"))
         assertTrue(speech.contains("等 2 类"))
-    }
-
-    @Test
-    fun `pie chart speech hides amounts in privacy mode`() {
-        val shares = listOf(share("餐饮", 200_000L, 1.0))
-        val speech = pieChartSpeech(shares, totalCents = 200_000L, hidden = true)
-        assertEquals("分类占比：共 1 类，金额已隐藏", speech)
-        assertFalse(speech.contains("两千"))
-    }
-
-    @Test
-    fun `empty pie chart speech`() {
-        assertEquals("分类占比：暂无数据", pieChartSpeech(emptyList(), totalCents = 0L, hidden = false))
+        assertFalse(speech.contains("类6"))
     }
 
     @Test

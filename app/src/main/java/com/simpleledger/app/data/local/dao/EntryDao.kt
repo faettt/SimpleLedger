@@ -16,7 +16,15 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface EntryDao {
 
-    /** 时间范围内的账目（可按分区 / 分类 / 类型过滤），带关联信息 */
+    /**
+     * 时间范围内的账目（可按分区 / 分类 / 类型 / **双维状态**过滤），带关联信息。
+     *
+     * `reconciled` / `reimburseState` 传 null 表示该维不筛。两个参数**互相独立**
+     * （A2/D4：核对与报销是两个正交字段），所以「待核对 + 待报销」这种组合天然可用。
+     *
+     * `(:x IS NULL OR col = :x)` 这个写法是为了让「不筛」与「筛值 0」可区分：
+     * 若用 `col = COALESCE(:x, col)`，筛 `reimburseState = 0`（不适用）会退化成不筛。
+     */
     @Transaction
     @Query(
         """
@@ -25,6 +33,8 @@ interface EntryDao {
           AND (:sectionId IS NULL OR sectionId = :sectionId)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
           AND (:type IS NULL OR type = :type)
+          AND (:reconciled IS NULL OR reconciled = :reconciled)
+          AND (:reimburseState IS NULL OR reimburseState = :reimburseState)
         ORDER BY entryTime DESC, id DESC
         """
     )
@@ -34,9 +44,17 @@ interface EntryDao {
         sectionId: Long?,
         categoryId: Long?,
         type: Int?,
+        reconciled: Boolean?,
+        reimburseState: Int?,
     ): Flow<List<EntryFull>>
 
-    /** 按类型汇总（不含类型过滤，两种一起返回） */
+    /**
+     * 按类型汇总（不含类型过滤，两种一起返回）。
+     *
+     * 条件与 [observeEntries] **逐项一致**：概览卡的三个数必须等于列表里那些账目
+     * 加起来的结果。若这里少一个条件，用户筛「待报销」后就会看到列表 3 笔、
+     * 概览却是整月的钱，两个数字当场互相打脸。
+     */
     @Query(
         """
         SELECT type, COALESCE(SUM(amountCents), 0) AS total
@@ -44,6 +62,8 @@ interface EntryDao {
         WHERE entryTime >= :start AND entryTime < :end
           AND (:sectionId IS NULL OR sectionId = :sectionId)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:reconciled IS NULL OR reconciled = :reconciled)
+          AND (:reimburseState IS NULL OR reimburseState = :reimburseState)
         GROUP BY type
         """
     )
@@ -52,16 +72,21 @@ interface EntryDao {
         end: Long,
         sectionId: Long?,
         categoryId: Long?,
+        reconciled: Boolean?,
+        reimburseState: Int?,
     ): Flow<List<TypeTotal>>
 
     /**
      * 分类占比：**按分类 id 聚合** + `LEFT JOIN sections` 带出归属字段（Q-09 消歧）。
-     * 专属分类会带出所属分区名 / emoji；全局分类两列为 NULL。
+     * 专属分类会带出所属分区名 / 图标 / 胶带色；全局分类三列为 NULL。
+     *
+     * v4：图标与颜色都是索引（`iconId` 1–50 / `colorIndex` 0–7），不再是 emoji 字符串。
      */
     @Query(
         """
-        SELECT e.categoryId AS categoryId, c.name AS name, c.emoji AS emoji,
-               c.sectionId AS sectionId, s.name AS sectionName, s.emoji AS sectionEmoji,
+        SELECT e.categoryId AS categoryId, c.name AS name, c.iconId AS iconId,
+               c.sectionId AS sectionId, s.name AS sectionName,
+               s.iconId AS sectionIconId, s.colorIndex AS sectionColorIndex,
                COALESCE(SUM(e.amountCents), 0) AS total, COUNT(*) AS count
         FROM entries e
         JOIN categories c ON c.id = e.categoryId
@@ -88,8 +113,8 @@ interface EntryDao {
      */
     @Query(
         """
-        SELECT s.id AS sectionId, s.name AS name, s.emoji AS emoji, s.note AS note,
-               s.budgetCents AS budgetCents,
+        SELECT s.id AS sectionId, s.name AS name, s.iconId AS iconId, s.colorIndex AS colorIndex,
+               s.note AS note, s.budgetCents AS budgetCents,
                COALESCE(SUM(CASE WHEN e.type = 0 THEN e.amountCents ELSE 0 END), 0) AS expense,
                COALESCE(SUM(CASE WHEN e.type = 1 THEN e.amountCents ELSE 0 END), 0) AS income,
                COUNT(e.id) AS count
@@ -150,6 +175,20 @@ interface EntryDao {
 
     @Update
     suspend fun updateEntry(entry: EntryEntity)
+
+    /**
+     * 只改**核对**维度（v4 A2：两个维度各自独立，一次只动一个，绝不互相牵连）。
+     *
+     * 刻意用定向 `@Query` 而不是「读出 EntryEntity → copy → updateEntry」：
+     * 后者会把行内其它列一起写回，若此刻另有写入（如表单保存）就会互相覆盖。
+     * 定向 UPDATE 只碰 reconciled 这一列，天然无竞态。
+     */
+    @Query("UPDATE entries SET reconciled = :value, updatedAt = :now WHERE id = :id")
+    suspend fun updateReconciled(id: Long, value: Boolean, now: Long)
+
+    /** 只改**报销**维度，理由同上。 */
+    @Query("UPDATE entries SET reimburseState = :value, updatedAt = :now WHERE id = :id")
+    suspend fun updateReimburseState(id: Long, value: Int, now: Long)
 
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteEntry(id: Long)

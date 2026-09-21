@@ -22,6 +22,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.SectionEntity
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import com.simpleledger.app.ui.icon.slCategoryIcon
 
 /**
  * 明细页「记一笔」的**分区选择器**（Q-13：先进此步，不可跳过）。
@@ -66,8 +71,15 @@ fun SectionPickerDialog(
                             .padding(horizontal = 10.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // v4：分区选择行改「图标 + 名称」（emoji 退场）
+                        Icon(
+                            imageVector = slCategoryIcon(section.iconId),
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp),
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
                         Text(
-                            text = "${section.emoji} ${section.name}",
+                            text = section.name,
                             fontSize = 14.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

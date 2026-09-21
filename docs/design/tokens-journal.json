@@ -1,0 +1,255 @@
+{
+  "$meta": {
+    "name": "简账 SimpleLedger · 手账风格设计令牌",
+    "version": "2.0.0",
+    "updated": "2026-09-20",
+    "supersedes": "tokens.json (温和人文派 1.0.0)",
+    "visualDirection": "手账质感派（Journal · Skin-level）",
+    "platform": "Android 手机 / 折叠屏 / 平板 / 桌面大屏",
+    "feedback": "Accumulate / Instruct / Apply（Google Feedback 六原则之三）",
+    "accessibility": "WCAG 2.2 AA（正文 ≥ 4.5:1）；对比度均以纸底 #F7F3E9 实测",
+    "note": "与 docs/design/journal-style-spec-2026-09-20.md 一一对应；机器可读副本，供 Compose 主题生成使用。"
+  },
+
+  "styleDefinition": {
+    "depth": "皮肤派 —— 布局骨架与信息架构完全不动，手账感全部来自「纸质层 + 手写体 + 手绘线条」三件事",
+    "threePillars": {
+      "paper": "暖纸底 + 极弱纸纹（≤4% 不透明度，横线或点阵，纹样不承担文字对齐职责）",
+      "handwriting": "装饰位内嵌楷体（霞鹜文楷子集），信息位系统无衬线，金额强制等宽数字",
+      "strokes": "纸片 + 0.5dp 描边替代阴影；图标全部 1.5dp 圆头手绘线稿"
+    },
+    "hardRules": [
+      "所有金额强制 tabular-nums 等宽数字，绝不用楷体渲染数字（手写数字比例宽度会破坏纵向对齐）",
+      "纸纹不透明度 ≤ 4%，且绝不压在正文行内做基线对齐（与 2.0× 字号无障碍冲突）",
+      "颜色语义在同一行内只有一个含义：分区。分类图标 / 状态符号一律不用分区色",
+      "手绘感来自路径本身的不对称，绝不在运行时抖动（滚动会闪、不同 DPI 会糊）",
+      "触控目标 ≥ 48dp（索引贴未选中签视觉 42dp，触控区向外扩到 48dp）",
+      "支出 / 收入除颜色外必须带 − / + 符号（色盲可辨）"
+    ]
+  },
+
+  "color": {
+    "paper": {
+      "paper":        { "light": "#F7F3E9", "dark": "#1C1A16", "use": "页面底色（暖纸 / 深炭纸）" },
+      "slip":         { "light": "#FDFBF6", "dark": "#262320", "use": "纸片：卡片 / 浮层（比页面更亮一层）" },
+      "slipUnder":    { "light": "#EAE3D2", "dark": "#131210", "use": "纸片背后错位 3dp 的垫纸（表达层级）" },
+      "sunken":       { "light": "#EFE9DC", "dark": "#2F2B26", "use": "次级填充：输入框底 / chip 底" },
+      "rule":         { "light": "#E4DCC8", "dark": "#3A352D", "use": "1dp 分隔线 / 纸纹线" },
+      "ruleStrong":   { "light": "#C9BFA8", "dark": "#4A4438", "use": "纸片描边 / 更强分隔" }
+    },
+    "ink": {
+      "ink":  { "light": "#17403A", "dark": "#F5F0E4", "contrastOnPaper": 10.35, "contrastOnSlip": 11.07, "use": "主墨：正文 / 标题 / 金额（深色为米白墨 15.35:1）" },
+      "ink2": { "light": "#55736B", "dark": "#C0B8A6", "contrastOnPaper": 4.67, "contrastOnSlip": 4.99, "use": "次要墨：时间 / 分区 / 元信息。**这是能用的最浅一档**" },
+      "ink3": { "light": "#7A8F87", "dark": "#8E8778", "contrastOnPaper": 3.10, "restriction": "僅 ≥18px 装饰文字；不得承载需阅读的元信息" }
+    },
+    "semantic": {
+      "expense": { "light": "#A83E33", "dark": "#E8A79C", "contrastOnPaper": 5.52, "use": "支出（印章朱砂）" },
+      "income":  { "light": "#3E6B4E", "dark": "#8FC4A4", "contrastOnPaper": 5.54, "use": "收入（松烟墨绿）" },
+      "warn":    { "light": "#92570A", "dark": "#E0A94A", "contrastOnPaper": 5.29, "use": "预算预警 / 超支" },
+      "info":    { "light": "#2B6CB0", "dark": "#8FB8E8", "contrastOnPaper": 4.89, "use": "信息提示" }
+    },
+    "tape": {
+      "note": "和纸胶带色板 8 色。**同时充当分区色与按分区的图表配色** —— 从此不会再出现「图表里的绿不是分区的绿」。全部 ≥3:1（图形元素阈值），但**不作为承载文字的底色**；需要文字时用 ink 作底。",
+      "palette": [
+        { "name": "青绿", "light": "#0F766E", "dark": "#6EE7D8", "contrastOnPaper": 4.95 },
+        { "name": "灰蓝", "light": "#4E7396", "dark": "#7FB3E8", "contrastOnPaper": 4.49 },
+        { "name": "赭黄", "light": "#A8792C", "dark": "#E0A94A", "contrastOnPaper": 3.48 },
+        { "name": "陶土", "light": "#A85C4A", "dark": "#EFA79F", "contrastOnPaper": 3.62 },
+        { "name": "藤紫", "light": "#7367A0", "dark": "#A99BE0", "contrastOnPaper": 4.21 },
+        { "name": "苔绿", "light": "#5C7A4A", "dark": "#8FCFAA", "contrastOnPaper": 4.36 },
+        { "name": "藕粉", "light": "#A86B85", "dark": "#E39BBE", "contrastOnPaper": 3.72 },
+        { "name": "灰褐", "light": "#7E7062", "dark": "#B0A392", "contrastOnPaper": 3.88 }
+      ],
+      "rules": ["色相均布、明度接近", "红绿不相邻", "每个分区一卷，用户在 8 色里自选", "自动分配仅用于用户未指定时"]
+    }
+  },
+
+  "paperTexture": {
+    "opacity": 0.04,
+    "patterns": { "ruled": "横线，间距 28dp，线宽 1dp", "dotGrid": "点阵，间距 14dp，点径 1.4dp" },
+    "default": "ruled",
+    "rule": "纹样**不承担文字对齐职责**。线与字刻意不齐 —— 这样字号任意缩放（含 2.0× 无障碍）都不受影响。"
+  },
+
+  "typography": {
+    "family": {
+      "decorative": "霞鹜文楷 LXGW WenKai（OFL 开源，可商用可内嵌）· **只取常用字子集**，约 300–800 KB",
+      "decorativeUsage": "页面标题 / 日期 / 分区名 / 空态文案 / 页码 · 仅这些位置",
+      "content": "Roboto / Noto Sans CJK（系统无衬线）· 正文 / 金额 / 元信息 / 按钮 / 表单",
+      "numericRule": "所有金额强制 font-variant-numeric: tabular-nums。**楷体数字比例宽度，禁止用于任何金额**",
+      "decorativeWeightRule": "楷体只用 Regular。楷体 bold 会失去书写感，需要强调时改用字号或墨色深浅"
+    },
+    "scale": {
+      "display":  { "size": 40, "lineHeight": 44, "weight": 700, "use": "金额输入、空态主数字" },
+      "headline": { "size": 28, "lineHeight": 34, "weight": 600, "use": "页面主标题（楷体）" },
+      "titleL":   { "size": 22, "lineHeight": 28, "weight": 600, "use": "区块标题、结余数字" },
+      "title":    { "size": 16, "lineHeight": 22, "weight": 600, "use": "卡片标题、列表主信息" },
+      "body":     { "size": 15, "lineHeight": 24, "weight": 400, "use": "正文、备注" },
+      "bodySm":   { "size": 13.5, "lineHeight": 20, "weight": 400, "use": "密集列表副文本" },
+      "label":    { "size": 12.5, "lineHeight": 18, "weight": 600, "letterSpacing": 0.02, "use": "表单标签、按钮" },
+      "meta":     { "size": 11.5, "lineHeight": 16, "weight": 400, "use": "时间、分区、笔数等元信息" }
+    }
+  },
+
+  "spacing": {
+    "base": 4,
+    "scale": [4, 8, 12, 16, 20, 24, 32, 40, 48],
+    "pageMargin": { "compact": 16, "medium": 24, "expanded": 32 },
+    "slipPadding": 20,
+    "slipGap": 12,
+    "listRowHeight": 62,
+    "listItemVertical": 10,
+    "sectionGap": 24
+  },
+
+  "radius": {
+    "slip": 3,
+    "progressBar": 1,
+    "iconTile": 3,
+    "chip": 6,
+    "input": 4,
+    "button": 4,
+    "navTab": "7 7 0 0（索引贴，上圆下平）",
+    "dialog": 8,
+    "sheet": 8,
+    "rule": "整体从「柔和」转向「纸张」。取消 999 胶囊与 20/28 大圆角。"
+  },
+
+  "elevation": {
+    "rule": "手账不用阴影。层级改由「纸叠纸」表达。",
+    "page": "纸色底，无描边",
+    "slip": "slip 填充 + 0.5dp ruleStrong 描边，无阴影",
+    "slipRaised": "slip + 背后错位 3dp 的 slipUnder 垫纸（表达「纸叠纸」）",
+    "overlay": "slip + scrim 0.32 + 无阴影（靠 scrim 分离）",
+    "darkRule": "深色主题用纸片抬升（#1C1A16 → #262320），同样不用阴影"
+  },
+
+  "navigation": {
+    "type": "索引贴 / 书签栏",
+    "slots": ["分区", "明细", "统计", "我的"],
+    "defaultDestination": "分区",
+    "tabVisualHeight": { "unselected": 42, "selected": 54 },
+    "selectedProtrusion": 12,
+    "touchTarget": "未选中签视觉 42dp，但触控区向外扩到 48dp；底栏总高 = 54 + navigationBarsPadding",
+    "tabRadius": "7dp 7dp 0 0",
+    "selectedStyle": "顶部 2dp 胶带色描边 + primaryContainer 底 + 墨青图标",
+    "centerAction": "无。4 槽扁平，杜绝任何跳过分区的记账路径",
+    "largeScreen": "≥600dp 保留 Navigation Rail；≥840dp 列表–详情双栏（判定用**窗口宽度**，内容区会被 Rail 吃掉 108dp）",
+    "historyWarning": "此处曾出现「padding 在 height 之后导致标签被裁」的回归 —— 必须 navigationBarsPadding() 在 height() 之前，且改形态后重测 TalkBack 语义"
+  },
+
+  "components": {
+    "slip": "纸片容器：slip 填充 + 3dp 圆角 + 0.5dp ruleStrong 描边 + 20dp 内边距",
+    "slipStacked": "需要强调层级时，在纸片背后加一层错位 3dp 的 slipUnder 垫纸",
+    "listRow": "62dp 行高；左侧 3dp 分区色条（通高）+ 符号簇(14+2+14dp) + 分类名 + 右对齐金额",
+    "sectionBar": "账目行左侧 3dp 分区色条，取自该分区的胶带色",
+    "chip": "6dp 圆角；选中 = ink 底 + paper 文字；未选中 = 0.5dp ruleStrong 描边 + ink2 文字",
+    "buttonPrimary": "4dp 圆角；ink 底 + paper 文字（ink 上白字 11.47:1）",
+    "buttonText": "ink2 文字，无描边",
+    "progressBar": "1dp 圆角；轨道 = sunken + 0.5dp ruleStrong 描边；填充 = 该分区胶带色；超支时填充改 expense 色",
+    "input": "4dp 圆角；sunken 底 + 0.5dp ruleStrong 描边；聚焦时描边改 ink",
+    "pageHeader": "楷体标题 + 2dp ink 手绘下划线 + 1dp rule 副线（双线是手账内页的签名）",
+    "dialog": "8dp 圆角；slip 底 + scrim 0.32"
+  },
+
+  "statusSymbols": {
+    "model": "**双维度独立字段**（可同时「已核对且待报销」）",
+    "dimensions": {
+      "reconcile": { "field": "reconciled", "states": ["未核对(默认，槽位空)", "已核对 ✓"], "color": "ink" },
+      "reimburse": { "field": "reimburseState", "states": ["不适用(默认，槽位空)", "待报销 ○", "已报销 ●"], "color": "待报销=expense，已报销=income" }
+    },
+    "slot": { "size": 14, "gap": 2, "clusterGap": 7, "note": "两个槽紧凑成簇（间距 2dp）以省宽度，簇与分类名之间才留 7dp" },
+    "entry": "长按账目行 → 快捷菜单改状态",
+    "filter": "筛选面板加两组状态维（核对 / 报销）",
+    "rowComposition": "分区色条 3dp · 符号簇 · 分类名 · 金额。**分区名不再作为文字前缀出现**（分区身份已由色条承担）；仅「全部分区」视图补回文字前缀防同名歧义。"
+  },
+
+  "icons": {
+    "generator": "docs/design/icons/_generate.py",
+    "manifest": "docs/design/icons/manifest.json",
+    "sourceDir": "docs/design/icons/",
+    "count": 72,
+    "breakdown": {
+      "category": 50, "nav": 4, "function": 9,
+      "inline": 4, "xs": 1, "illustration": 2, "status": 2
+    },
+    "grid": { "full": 24, "inline": 24, "xs": 24, "lg": 32 },
+    "stroke": { "full": 1.5, "inline": 1.7, "xs": 2.0, "lg": 1.6, "status": 1.8 },
+    "caps": "linecap=round, linejoin=round",
+    "fill": "以描边为主；仅「语义实心点」使用填充 —— 共 4 枚图标 7 条填充路径：status-cleared(1)、gamepad 按键(2)、pet 眼睛(2)、teddy 眼睛(2)",
+    "color": "单色 ink。颜色语义已被「分区身份」独占，分类图标若也上色会出现两套色彩语义",
+    "exception": "分区卡片上的图标可用该分区的胶带色（那里颜色语义就是分区自己）",
+    "opticalSizes": {
+      "full": "使用尺寸 20–24dp",
+      "inline": "使用尺寸 12–18dp：减笔画 + 描边加粗补偿，否则会糊成一团灰",
+      "xs": "使用尺寸 ≤ 16dp：极简单笔画 + 描边 2.0",
+      "lg": "使用尺寸 ≥ 28dp：32 网格，可增加细节笔触"
+    },
+    "handFeel": "路径刻意不对称（不等角半径 rp()），手工感写在几何里，运行时绝不抖动"
+  },
+
+  "migration": {
+    "database": "v3 → v4",
+    "categoryIcon": {
+      "decision": "新增 iconId INTEGER NOT NULL DEFAULT 43 列，**废弃并 DROP emoji 列**",
+      "mapping": "50 条 emoji → iconId 的迁移映射；未命中落到 43 (tag)",
+      "why": "用户选择 emoji 只能从 42 格候选网格点选、无自由输入 → emoji 是封闭集合，迁移不会丢数据"
+    },
+    "tapeColor": "sections 新增 colorIndex INTEGER NOT NULL DEFAULT 0（0-7 → 胶带色板）",
+    "status": "entries 新增 reconciled INTEGER NOT NULL DEFAULT 0 与 reimburseState INTEGER NOT NULL DEFAULT 0",
+    "emojiRemoval": [
+      "sections.emoji / categories.emoji 列 DROP",
+      "EmojiChoices.kt 的 42 项候选 → 替换为 50 枚分类图标的 iconId 选择网格",
+      "AppRoot.kt 导航 4 个 emoji → nav-section/nav-ledger/nav-stats/nav-mine",
+      "EntryEditForm 日期/时间 label 前缀 → calendar-inline/clock-inline",
+      "LedgerRows 的 💬 / 📷 → note-inline/camera-inline",
+      "Common.EmptyState 的 🗒️ → empty-lg",
+      "LedgerDetailPane 的 👈 → hint-lg",
+      "MineScreen 的 ✓ → check-xs"
+    ]
+  },
+
+  "motion": {
+    "pageTransition": { "duration": 280, "easing": "ease-out" },
+    "controlState": { "duration": 150, "easing": "ease-out" },
+    "snackbar": { "duration": 220, "easing": "ease-in-out" },
+    "undoWindow": { "duration": 4000 },
+    "chartDraw": { "duration": 600, "stagger": 40 },
+    "rules": [
+      "只动有因果关系的元素，不做装饰动画",
+      "不做翻页动效（皮肤派不引入实体隐喻，翻页会与「快速记账」节奏相冲）",
+      "不做数字滚动特效（会引起对数值准确性的怀疑）",
+      "尊重系统「减少动效」：降级为 0ms 直接切换"
+    ]
+  },
+
+  "charts": {
+    "decision": "全部手绘化",
+    "bar": "马克笔涂条：柱体为手绘不等宽矩形，长度信息不受边缘抖动影响",
+    "donut": "手绘甜甜圈：外圈抖动描边",
+    "fallbacks": [
+      "小扇区设最小可视角度（≥3°），低于则并入「其他」",
+      "占比数值直接标在图上，不依赖肉眼估角度",
+      "同时提供图例列表（含金额与百分比），图表仅作辅助"
+    ],
+    "palette": "直接取「分区胶带色板」——分区色与图表色从此是同一套"
+  },
+
+  "sizeClass": {
+    "compact":  { "range": "<600dp",    "navigation": "indexTabs4Slot", "pageMargin": 16, "contentMaxWidth": null,  "recordEntry": "fullScreen" },
+    "medium":   { "range": "600-840dp", "navigation": "navigationRail",  "pageMargin": 24, "contentMaxWidth": 640,   "recordEntry": "centeredDialog560" },
+    "expanded": { "range": ">=840dp",   "navigation": "navigationRailExpandable", "pageMargin": 32, "contentMaxWidth": 1200, "recordEntry": "sidePanel480" },
+    "phoneLandscape": { "range": "height<480dp", "navigation": "compactRail", "layout": "twoPane", "recordEntry": "splitPane" }
+  },
+
+  "touchTarget": {
+    "minimum": 48,
+    "minimumGap": 8,
+    "listRowHeight": 62,
+    "navTabVisualHeight": 42,
+    "navTabTouchHeight": 48,
+    "buttonHeights": [44, 52],
+    "chipHeight": 34,
+    "statusSlot": 14
+  }
+}

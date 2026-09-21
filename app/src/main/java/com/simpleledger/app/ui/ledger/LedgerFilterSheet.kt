@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -26,6 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.ui.icon.slCategoryIcon
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import com.simpleledger.app.data.local.entity.ReimburseState
 
 /*
  * 筛选面板：类型（全部/支出/收入）+ 分类多选 + 清除/完成。
@@ -38,6 +44,10 @@ internal fun FilterSheetContent(
     state: LedgerUiState,
     onTypeChange: (Int?) -> Unit,
     onCategoryChange: (Long?) -> Unit,
+    /** 核对维：null = 全部 / false = 待核对 / true = 已核对 */
+    onReconcileChange: (Boolean?) -> Unit,
+    /** 报销维：null = 全部 / 其余取 [ReimburseState] 取值 */
+    onReimburseChange: (Int?) -> Unit,
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -71,6 +81,70 @@ internal fun FilterSheetContent(
             }
         }
 
+        // ---- 状态维两组（规范 §3.5「筛选：面板加两组状态维」/ §559「用两组 chip 分栏」）----
+        // 两组各自独立、可自由组合（待核对 + 待报销 = 也没对也还没报），
+        // 这正是 A2/D4 把两个字段做成正交的收益 —— 面板不必再加「组合模式」。
+        // 快捷 chip 行只放最常用的两个开关，完整的四态选择收在这里。
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            stringResource(R.string.filter_group_reconcile),
+            fontSize = 12.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            listOf<Boolean?>(null, false, true).forEach { value ->
+                FilterChip(
+                    selected = state.filters.reconciled == value,
+                    onClick = { onReconcileChange(value) },
+                    label = {
+                        Text(
+                            text = when (value) {
+                                false -> "✓ " + stringResource(R.string.status_pending_reconcile)
+                                true -> stringResource(R.string.status_reconciled)
+                                else -> stringResource(R.string.filter_all)
+                            },
+                            fontSize = 12.5.sp,
+                        )
+                    },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            stringResource(R.string.filter_group_reimburse),
+            fontSize = 12.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            listOf<Int?>(null, ReimburseState.NONE, ReimburseState.PENDING, ReimburseState.CLEARED)
+                .forEach { value ->
+                    FilterChip(
+                        selected = state.filters.reimburseState == value,
+                        onClick = { onReimburseChange(value) },
+                        label = {
+                            Text(
+                                text = when (value) {
+                                    ReimburseState.PENDING -> "○ " + stringResource(R.string.status_reimburse_pending)
+                                    ReimburseState.CLEARED -> "● " + stringResource(R.string.status_reimburse_cleared)
+                                    ReimburseState.NONE -> stringResource(R.string.status_reimburse_none)
+                                    else -> stringResource(R.string.filter_all)
+                                },
+                                fontSize = 12.5.sp,
+                            )
+                        },
+                    )
+                }
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
         Text(stringResource(R.string.category), fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(8.dp))
@@ -82,7 +156,18 @@ internal fun FilterSheetContent(
                 FilterChip(
                     selected = state.filters.categoryId == category.id,
                     onClick = { onCategoryChange(category.id) },
-                    label = { Text("${category.emoji} ${category.name}", fontSize = 12.5.sp) },
+                    label = {
+                        // v4：分类筛选 chip 用「图标 + 名称」渲染（emoji 退场）
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = slCategoryIcon(category.iconId),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(category.name, fontSize = 12.5.sp)
+                        }
+                    },
                 )
             }
         }

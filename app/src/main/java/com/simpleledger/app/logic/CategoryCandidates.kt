@@ -44,17 +44,22 @@ object CategoryCandidates {
         list.filter { it.type == type }
 
     /**
-     * Q-09：分类占比标签。
-     * - 专属 →「🔨 装修 · 材料」（带所属分区 emoji + 名称消歧）
-     * - 全局 →「🍚 餐饮」（直接用分类 emoji + 名称）
+     * Q-09：分类占比标签（**只产出文字，不含图标**）。
+     * - 专属 →「装修 · 主材」（分区名 · 分类名，用于跨分区消歧）
+     * - 全局 →「餐饮」
+     *
+     * ⚠️ v4 起标签里**不再带 emoji 前缀**（原「🔨 装修 · 材料」）：
+     * 分区身份在图表里已由胶带色承担（C3：分区色即图表色），文字前缀属于冗余；
+     * 分类图标改由 [CategoryTotal.iconId] 单独渲染，文字与图标解耦后各自可独立排版。
+     *
+     * 保留分区名前缀是因为 Q-09 明确要求「按 id 聚合 + 分区名消歧」——
+     * 统计页是跨分区视图，同名分类（如两个分区都有「其他」）必须能靠文字区分。
      */
     fun shareLabel(total: CategoryTotal): String = if (total.sectionId != null) {
-        val emoji = total.sectionEmoji ?: ""
         val name = total.sectionName ?: "分区"
-        // 与设计示例「🔨 装修 · 材料」一致：分区 emoji 与名称之间保留一个空格
-        "${emoji} ${name} · ${total.name}"
+        "$name · ${total.name}"
     } else {
-        "${total.emoji} ${total.name}"
+        total.name
     }
 
     /**
