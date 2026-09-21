@@ -456,7 +456,24 @@ private fun IndexTab(
                     else MaterialTheme.colorScheme.surface,
                     shape,
                 )
-                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                // ⚠️ 内容定位两条规则（padding 必须在 border **之后**，否则纸片本身会被缩掉）：
+                //
+                // ① 选中签内容下移 12dp：**四签的图标/文字同高**。
+                //    实测（像素）：不这样做时，选中签内容底距纸片底 8.4dp、
+                //    未选中签只有 0.8dp —— 未选中的文字贴着纸片下边缘，观感「掉下去」。
+                //    下移后两者都是 2.3dp，四签文字落在同一水平线上。
+                //    凸出的 12dp 变成空白纸 —— 这正是索引贴的样子：
+                //    被抽出来的那张，露出的是没有字的纸头。
+                //
+                // ② 底部留 3dp：让文字不贴纸片底边（未选中签 42dp 里内容占 37dp，
+                //    居中后底部只剩 0.8dp）。
+                //
+                // 两条合起来的效果：选中/未选中的内容区**同为 39dp**，内容在同一位置居中。
+                .padding(
+                    top = if (selected) selectedHeight - unselectedHeight else 0.dp,
+                    bottom = 3.dp,
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {

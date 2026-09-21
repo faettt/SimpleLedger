@@ -394,6 +394,10 @@ fun CategoryBarChart(
                 quadraticTo(barX + len, centerY - barH / 2f, barX + len, centerY - barH / 2f + r)
                 lineTo(barX + len, centerY + barH / 2f - r)
                 quadraticTo(barX + len, centerY + barH / 2f, barX + len - r, centerY + barH / 2f)
+                // ⚠️ 必须补上左边缘这条竖线，再 close。
+                // 漏了它，close() 会从「右下角」直接斜连回「左上角」——
+                // 每根条都被画成左端尖、右端宽的楔形（真机截图已复现，满宽条最明显）。
+                lineTo(barX, centerY + barH / 2f)
                 close()
             }
             // 凹槽底：让「几乎为 0」的条也能看出「有这一类」，而不是空出一截
