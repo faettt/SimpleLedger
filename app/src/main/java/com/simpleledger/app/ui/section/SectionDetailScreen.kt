@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import androidx.compose.ui.graphics.Color
 
 /**
  * 分区详情（FR-16~20）。
@@ -151,7 +152,11 @@ fun SectionDetailScreen(
         if (inPlaceEdit) editingEntryId = id else onEditEntry(id)
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+
+        containerColor = Color.Transparent,
+
+        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 顶部

@@ -45,6 +45,8 @@ import com.simpleledger.app.ui.components.ContentMaxWidth
 import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.SectionDialog
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.FloatingActionButtonDefaults
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -80,9 +82,13 @@ fun SectionHomeScreen(
     }
 
     Scaffold(
+
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = {
+            ExtendedFloatingActionButton(
+                // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),onClick = {
                 editTarget = null
                 showSectionDialog = true
             }) {

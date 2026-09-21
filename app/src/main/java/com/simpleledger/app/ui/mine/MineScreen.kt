@@ -121,7 +121,11 @@ fun MineScreen(
         viewModel.clearMessage()
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+
+        containerColor = Color.Transparent,
+
+        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             // 可滚动的设置列表单独抽出：限宽外壳只切换包装，列表本体只有一份，避免两套代码走样
             val settings: @Composable () -> Unit = {
@@ -376,11 +380,12 @@ private fun PrivacyCard(countsText: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            // v4：去渐变 —— 手账是平的，不用渐变；改为实心主色（墨青）。
+            // 白色文字压在墨青上 11.47:1，无障碍无虞。
+            // TODO(M3 纸片化)：此处改为「纸片 + 墨色左边条」，与其余卡片同一套容器语言。
             .background(
-                brush = Brush.linearGradient(
-                    listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)),
-                ),
-                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(3.dp),
             )
             .padding(18.dp),
     ) {

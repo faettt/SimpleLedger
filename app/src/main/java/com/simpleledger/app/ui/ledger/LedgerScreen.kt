@@ -46,6 +46,7 @@ import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.section.SectionPickerDialog
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 
 /** 保存结果通过 SavedStateHandle 回传给明细页 / 分区详情页 */
 const val RESULT_SAVED_ENTRY_ID = "result_saved_entry_id"
@@ -256,7 +257,11 @@ fun LedgerScreen(
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+
+        containerColor = Color.Transparent,
+
+        snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (twoPane) {
                 Row(modifier = Modifier.fillMaxSize()) {

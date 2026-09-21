@@ -1,5 +1,6 @@
 package com.simpleledger.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -55,6 +56,7 @@ import com.simpleledger.app.ui.section.SectionDetailScreen
 import com.simpleledger.app.ui.section.SectionHomeScreen
 import com.simpleledger.app.ui.section.SectionManageScreen
 import com.simpleledger.app.ui.stats.StatsScreen
+import com.simpleledger.app.ui.theme.paperTexture
 
 /*
  * 应用外壳：窗口形态判定 + 4 槽一级导航 + 路由挂载。
@@ -114,7 +116,15 @@ fun AppRoot() {
     // 折叠态：真读 FoldingFeature（非分隔铰链已被过滤），带铰链矩形供明细页做避让计算
     val foldInfo = rememberFoldInfo()
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    // v4 手账皮肤：纸底 + 极弱纸纹画在最外层，Scaffold 容器置透明透出它。
+    // 放在最外层而不是 Scaffold 内部，是因为 Scaffold 会用自己的 containerColor 覆盖背景，
+    // 把纸纹画在它里面就得给每个页面各加一次，且底部栏/侧边栏会各盖一块。
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .paperTexture(),
+    ) {
         val layout = when {
             maxWidth >= EXPANDED_THRESHOLD -> WindowLayout.Expanded
             maxWidth >= RAIL_THRESHOLD -> WindowLayout.Medium
@@ -139,6 +149,8 @@ fun AppRoot() {
         }
 
         Scaffold(
+            // 透明容器：纸底与纸纹由外层 BoxWithConstraints 提供，这里不再铺一层不透明色
+            containerColor = Color.Transparent,
             bottomBar = {
                 if (effectiveLayout == WindowLayout.Compact && showNavigation) {
                     LedgerBottomBar(

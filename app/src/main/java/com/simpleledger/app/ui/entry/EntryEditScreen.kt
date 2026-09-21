@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import androidx.compose.ui.graphics.Color
 
 /**
  * 手机（Compact）宿主：全屏页面。
@@ -73,6 +74,8 @@ fun EntryEditScreen(
     }
 
     Scaffold(
+
+        containerColor = Color.Transparent,
         topBar = {
             EntryFormHeader(
                 isEdit = state.isEdit,

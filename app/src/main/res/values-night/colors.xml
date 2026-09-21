@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色主题的「纸」＝ 深炭纸。与 Theme.kt 的 DarkPaper 必须一致，
+         否则启动屏（系统取 windowBackground）会是浅纸色，切进深色界面时闪一下。 -->
+    <color name="paper">#1C1A16</color>
+</resources>

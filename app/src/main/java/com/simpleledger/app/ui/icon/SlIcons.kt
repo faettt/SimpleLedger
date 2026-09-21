@@ -147,8 +147,8 @@ object SlIcons {
                 "add",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.15f,
-                translationY = -0.15f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M12.2 5.3c-.3 4.6-.3 9.2-.1 13.7"),
                 p("M5.4 12.1c4.5.2 9.1.1 13.5-.1"),
             )
@@ -159,8 +159,8 @@ object SlIcons {
                 "close",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.15f,
-                translationY = -0.15f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M6.2 6.1c3.9 4.1 7.8 8 11.6 12.1"),
                 p("M18.1 6.3c-4 3.9-7.9 7.8-11.8 11.6"),
             )
@@ -186,8 +186,8 @@ object SlIcons {
                 "check",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.1f,
-                translationY = 0.1f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M5.2 12.7c1.5 1.4 3 2.8 4.4 4.3 2.4-3.7 5.6-7 9.4-10.2"),
             )
         }
@@ -197,8 +197,8 @@ object SlIcons {
                 "edit",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.4f,
-                translationY = 0.2f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M15.9 5.1l3.2 3.2-9.5 9.5-3.9.7.7-3.9z"),
                 p("M14.2 6.8l3.2 3.2"),
             )
@@ -209,8 +209,8 @@ object SlIcons {
                 "arrow-left",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = 0.45f,
-                translationY = -0.15f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M15.1 5.2c-2.4 2.3-4.7 4.6-7.1 7 2.4 2.3 4.7 4.6 7.1 6.9"),
             )
         }
@@ -220,8 +220,8 @@ object SlIcons {
                 "arrow-right",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.45f,
-                translationY = -0.15f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M8.9 5.2c2.4 2.3 4.7 4.6 7.1 7-2.4 2.3-4.7 4.6-7.1 6.9"),
             )
         }
@@ -231,8 +231,8 @@ object SlIcons {
                 "arrow-up",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.15f,
-                translationY = 0.45f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M5.2 15.1c2.3-2.4 4.6-4.7 7-7.1 2.3 2.4 4.6 4.7 6.9 7.1"),
             )
         }
@@ -242,8 +242,8 @@ object SlIcons {
                 "arrow-down",
                 size = 24,
                 strokeWidth = 1.5f,
-                translationX = -0.15f,
-                translationY = -0.45f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M5.2 8.9c2.3 2.4 4.6 4.7 7 7.1 2.3-2.4 4.6-4.7 6.9-7.1"),
             )
         }
@@ -253,8 +253,8 @@ object SlIcons {
                 "calendar-inline",
                 size = 24,
                 strokeWidth = 1.7f,
-                translationX = -0.0f,
-                translationY = 0.2f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M6.0 5.8h12.0a1.6 1.6 0 0 1 1.6 1.6v10.4a1.6 1.6 0 0 1 -1.6 1.6h-12.0a1.6 1.6 0 0 1 -1.6 -1.6v-10.4a1.6 1.6 0 0 1 1.6 -1.6z"),
                 p("M4.4 10.2h15.2"),
                 p("M8.6 4.2v3.2M15.4 4.2v3.2"),
@@ -278,8 +278,8 @@ object SlIcons {
                 "note-inline",
                 size = 24,
                 strokeWidth = 1.7f,
-                translationX = -0.0f,
-                translationY = -0.4f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M4.8 7.6a1.6 1.6 0 0 1 1.6-1.6h11.2a1.6 1.6 0 0 1 1.6 1.6v6.2a1.6 1.6 0 0 1-1.6 1.6h-5.8l-4.2 3.4v-3.4H6.4a1.6 1.6 0 0 1-1.6-1.6z"),
             )
         }
@@ -302,8 +302,8 @@ object SlIcons {
                 "check-xs",
                 size = 24,
                 strokeWidth = 2.0f,
-                translationX = 0.0f,
-                translationY = 0.6f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M6.2 12.4l3.3 3.6 8.3-9.2"),
             )
         }
@@ -318,8 +318,8 @@ object SlIcons {
                 "empty-lg",
                 size = 32,
                 strokeWidth = 1.6f,
-                translationX = 0.0f,
-                translationY = -0.35f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M16 9.4v17.2"),
                 p("M16 9.4C13.6 7.1 9.6 6.1 5.2 6.1v17c4.4 0 8.4 1 10.8 3.3"),
                 p("M16 9.4c2.4-2.3 6.4-3.3 10.8-3.3v17c-4.4 0-8.4 1-10.8 3.3"),
@@ -333,8 +333,8 @@ object SlIcons {
                 "hint-lg",
                 size = 32,
                 strokeWidth = 1.6f,
-                translationX = 0.2f,
-                translationY = 0.2f,
+                translationX = 0f,
+                translationY = 0f,
                 p("M6.5 12.2h7.6a1.7 1.7 0 0 1 1.7 1.7v0.1a2.0 2.0 0 0 1 -2.0 2.0h-7.4a1.8 1.8 0 0 1 -1.8 -1.8v-0.1a1.9 1.9 0 0 1 1.9 -1.9z"),
                 p("M19.6 9.6h3.2a4.2 4.2 0 0 1 4.2 4.2v4.6a5.0 5.0 0 0 1 -5.0 5.0h-2.6a4.4 4.4 0 0 1 -4.4 -4.4v-4.8a4.6 4.6 0 0 1 4.6 -4.6z"),
                 p("M18.8 12.2c.2-2.6 1.7-4.0 3.8-4.0"),

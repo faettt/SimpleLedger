@@ -245,6 +245,37 @@
 | 圆角 | 纸片 3 · 进度条 1 · chip 6 · 输入/按钮 4 · 对话框 8 |
 | 深色 | 纸 `#1C1A16` · 纸片 `#262320` · 米白墨 `#F5F0E4`（15.35:1） |
 
+### 2.11 实现注意（M2 真机走查踩到的坑）
+
+这三条都是**代码看着对、真机上不对**的问题，实现时逐条对照：
+
+**① 纸纹必须画在最外层，内层 Scaffold 必须透明。**
+
+本项目的每个页面自带一个 `Scaffold`（为了 FAB / Snackbar）。`Scaffold` 的 `containerColor`
+默认是 `MaterialTheme.colorScheme.background` —— **不透明的纸色**。若把纸纹画在 AppRoot 的
+`BoxWithConstraints` 上、而内层 Scaffold 保持默认，纸纹会被内层整片盖掉，
+表现为「页面是纯纸色、一条纹都没有」。
+
+修法：AppRoot 的 Scaffold 与**所有 8 处内层 Scaffold** 一律 `containerColor = Color.Transparent`，
+纸底与纸纹只由最外层提供一次。
+> 排查手法（值得复用）：**取一条竖线的像素值**。纸纹存在时会看到周期性的非主色行
+> （本次实测主色 `#F7F3E9` ×189 + 线色 `#EEECE2` ×6 + 3 种抗锯齿过渡色）；
+> 只有单一色值就说明被盖住了。
+
+**② 启动屏底色由 `windowBackground` 决定，不设就是纯白。**
+
+API 31+ 的系统启动屏默认取 `android:windowBackground`。项目原主题继承
+`Theme.Material.Light.NoActionBar` 且未覆盖该项 → **启动瞬间闪一下白再跳进纸色**。
+`values/themes.xml` 与 `values-night/themes.xml` **都要**设 `@color/paper`
+（深色用 `#1C1A16`），且色值必须与 `Theme.kt` 的 `Paper` / `DarkPaper` 手动保持一致
+——它们是两处独立的定义，改一处忘一处就会闪。
+
+**③ 纸纹的不透明度约束的是「不透明度」，不是指定某个颜色。**
+
+直接用分隔线色 `outline`（`#E4DCC8`）再叠 4% 几乎不可见（它本就与纸色接近）。
+正确做法是**用主墨按 4% 混**：实际线色约 `#EEECE2`，视觉上就是一条很淡的纸纹，
+而正文墨青压其上仍有 **9.68:1**，远高于 AA 门槛。
+
 ---
 
 ## §3 图标重绘规范

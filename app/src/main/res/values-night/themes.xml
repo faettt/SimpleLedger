@@ -2,5 +2,7 @@
 <resources>
     <style name="Theme.SimpleLedger" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- 深色主题的窗口底 = 深炭纸（与 Theme.kt DarkPaper 同值） -->
+        <item name="android:windowBackground">@color/paper</item>
     </style>
 </resources>
