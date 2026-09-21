@@ -1,0 +1,1 @@
+<color name="ic_launcher_background">#F7F3E9</color>

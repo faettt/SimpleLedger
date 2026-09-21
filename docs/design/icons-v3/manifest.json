@@ -1,0 +1,1125 @@
+{
+  "meta": {
+    "name": "简账 SimpleLedger · 手账风格图标集 v3「纸墨手绘」",
+    "version": "3.0.0",
+    "updated": "2026-09-22",
+    "supersedes": "docs/design/icons (v2.0.0, 72 枚) —— 保留作回滚基线",
+    "grid": {
+      "full": 24,
+      "inline": 24,
+      "xs": 24,
+      "status": 24,
+      "lg": 32
+    },
+    "stroke": {
+      "full": 1.5,
+      "inline": 1.7,
+      "xs": 2.0,
+      "status": 1.8,
+      "lg": 1.6
+    },
+    "caps": "round / round",
+    "fill": "none；仅语义实心点显式填充（见 fillExceptions）",
+    "fillExceptions": {
+      "phone": 1,
+      "gamepad": 2,
+      "status-cleared": 1,
+      "grad-cap": 1,
+      "pet": 2,
+      "baby": 2,
+      "haircut": 1,
+      "teddy": 3,
+      "banknote": 2
+    },
+    "color": "单色 currentColor —— 颜色语义已被「分区身份」独占（规范 R3/F2）",
+    "handFeel": "路径刻意不对称（不等角半径 rp），手工感写在几何里，运行时绝不抖动",
+    "centering": "光学居中内建：生成时采样包围盒，修正量见每枚 centering 字段（±2.5 封顶）",
+    "appIcon": {
+      "chosen": "concept-a「纸墨账本」",
+      "adaptive": "background=@color/ic_launcher_background(#F7F3E9) / foreground=ic_launcher_foreground / monochrome=ic_launcher_monochrome",
+      "safeZone": "108 视口，圆形可见区 r33 @(54,54)；描边 4.5 ≈ 48dp 下 2.0dp，与 1.5/24 同节奏"
+    }
+  },
+  "icons": [
+    {
+      "name": "pin",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📌",
+      "replacesType": "emoji",
+      "iconId": 1,
+      "centering": {
+        "dx": -0.1,
+        "dy": 0.3
+      },
+      "usage": "分区默认 / 图钉"
+    },
+    {
+      "name": "rice-bowl",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🍚",
+      "replacesType": "emoji",
+      "iconId": 2,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "餐饮"
+    },
+    {
+      "name": "noodle-bowl",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🍜",
+      "replacesType": "emoji",
+      "iconId": 3,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.3
+      },
+      "usage": "餐饮 / 面食"
+    },
+    {
+      "name": "coffee",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "☕",
+      "replacesType": "emoji",
+      "iconId": 4,
+      "centering": {
+        "dx": -0.5,
+        "dy": 1.5
+      },
+      "usage": "餐饮 / 饮品"
+    },
+    {
+      "name": "beer",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🍺",
+      "replacesType": "emoji",
+      "iconId": 5,
+      "centering": {
+        "dx": 0.2,
+        "dy": 0.3
+      },
+      "usage": "餐饮 / 酒水"
+    },
+    {
+      "name": "salad",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🥗",
+      "replacesType": "emoji",
+      "iconId": 6,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.3
+      },
+      "usage": "餐饮 / 轻食"
+    },
+    {
+      "name": "donut",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🍩",
+      "replacesType": "emoji",
+      "iconId": 7,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "餐饮 / 甜品"
+    },
+    {
+      "name": "bus",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🚌",
+      "replacesType": "emoji",
+      "iconId": 8,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "交通 / 公交"
+    },
+    {
+      "name": "car",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🚗",
+      "replacesType": "emoji",
+      "iconId": 9,
+      "centering": {
+        "dx": 0.0,
+        "dy": -1.5
+      },
+      "usage": "交通 / 自驾"
+    },
+    {
+      "name": "taxi",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🚕",
+      "replacesType": "emoji",
+      "iconId": 10,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.8
+      },
+      "usage": "交通 / 打车"
+    },
+    {
+      "name": "bicycle",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🚲",
+      "replacesType": "emoji",
+      "iconId": 11,
+      "centering": {
+        "dx": 0.0,
+        "dy": -1.7
+      },
+      "usage": "交通 / 骑行"
+    },
+    {
+      "name": "fuel",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "⛽",
+      "replacesType": "emoji",
+      "iconId": 12,
+      "centering": {
+        "dx": 0.8,
+        "dy": -0.4
+      },
+      "usage": "交通 / 加油"
+    },
+    {
+      "name": "plane",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "✈️",
+      "replacesType": "emoji",
+      "iconId": 13,
+      "centering": {
+        "dx": 0.1,
+        "dy": -0.6
+      },
+      "usage": "交通 / 出行"
+    },
+    {
+      "name": "hotel",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🏨",
+      "replacesType": "emoji",
+      "iconId": 14,
+      "centering": {
+        "dx": 0.0,
+        "dy": -1.4
+      },
+      "usage": "旅行 / 住宿"
+    },
+    {
+      "name": "bag",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🛍️",
+      "replacesType": "emoji",
+      "iconId": 15,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.4
+      },
+      "usage": "购物"
+    },
+    {
+      "name": "house",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🏠",
+      "replacesType": "emoji",
+      "iconId": 16,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "居住"
+    },
+    {
+      "name": "hammer",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🔨",
+      "replacesType": "emoji",
+      "iconId": 17,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.5
+      },
+      "usage": "装修"
+    },
+    {
+      "name": "tools",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🛠️",
+      "replacesType": "emoji",
+      "iconId": 18,
+      "centering": {
+        "dx": 0.2,
+        "dy": 0.3
+      },
+      "usage": "装修 / 工具"
+    },
+    {
+      "name": "bulb",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💡",
+      "replacesType": "emoji",
+      "iconId": 19,
+      "centering": {
+        "dx": 0.2,
+        "dy": -0.8
+      },
+      "usage": "水电 / 能耗"
+    },
+    {
+      "name": "pill",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💊",
+      "replacesType": "emoji",
+      "iconId": 20,
+      "centering": {
+        "dx": -0.1,
+        "dy": 0.1
+      },
+      "usage": "医疗 / 药品"
+    },
+    {
+      "name": "hospital",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🏥",
+      "replacesType": "emoji",
+      "iconId": 21,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.1
+      },
+      "usage": "医疗 / 就诊"
+    },
+    {
+      "name": "gamepad",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🎮",
+      "replacesType": "emoji",
+      "iconId": 22,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "娱乐 / 游戏"
+    },
+    {
+      "name": "film",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🎬",
+      "replacesType": "emoji",
+      "iconId": 23,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.6
+      },
+      "usage": "娱乐 / 影音"
+    },
+    {
+      "name": "ball",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "⚽",
+      "replacesType": "emoji",
+      "iconId": 24,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "运动"
+    },
+    {
+      "name": "guitar",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🎸",
+      "replacesType": "emoji",
+      "iconId": 25,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.4
+      },
+      "usage": "娱乐 / 乐器"
+    },
+    {
+      "name": "book",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📚",
+      "replacesType": "emoji",
+      "iconId": 26,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.2
+      },
+      "usage": "学习 / 书籍"
+    },
+    {
+      "name": "grad-cap",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🎓",
+      "replacesType": "emoji",
+      "iconId": 27,
+      "centering": {
+        "dx": -0.4,
+        "dy": 0.3
+      },
+      "usage": "学习 / 课程"
+    },
+    {
+      "name": "laptop",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💻",
+      "replacesType": "emoji",
+      "iconId": 28,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.7
+      },
+      "usage": "学习 / 数码"
+    },
+    {
+      "name": "phone",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📱",
+      "replacesType": "emoji",
+      "iconId": 29,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "通讯 / 数码"
+    },
+    {
+      "name": "pet",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🐱",
+      "replacesType": "emoji",
+      "iconId": 30,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "宠物"
+    },
+    {
+      "name": "gift",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🎁",
+      "replacesType": "emoji",
+      "iconId": 31,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.2
+      },
+      "usage": "礼物 / 人情"
+    },
+    {
+      "name": "red-envelope",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🧧",
+      "replacesType": "emoji",
+      "iconId": 32,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "红包"
+    },
+    {
+      "name": "baby",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "👶",
+      "replacesType": "emoji",
+      "iconId": 33,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.3
+      },
+      "usage": "育儿"
+    },
+    {
+      "name": "nail",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💅",
+      "replacesType": "emoji",
+      "iconId": 34,
+      "centering": {
+        "dx": 1.8,
+        "dy": -0.1
+      },
+      "usage": "美容"
+    },
+    {
+      "name": "haircut",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💇",
+      "replacesType": "emoji",
+      "iconId": 35,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.9
+      },
+      "usage": "理发"
+    },
+    {
+      "name": "money-bag",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💰",
+      "replacesType": "emoji",
+      "iconId": 36,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.8
+      },
+      "usage": "收入"
+    },
+    {
+      "name": "invest",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📈",
+      "replacesType": "emoji",
+      "iconId": 37,
+      "centering": {
+        "dx": -0.1,
+        "dy": 0.1
+      },
+      "usage": "理财 / 投资"
+    },
+    {
+      "name": "receipt",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🧾",
+      "replacesType": "emoji",
+      "iconId": 38,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.6
+      },
+      "usage": "账单 / 票据"
+    },
+    {
+      "name": "lotion",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🧴",
+      "replacesType": "emoji",
+      "iconId": 39,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.3
+      },
+      "usage": "日用"
+    },
+    {
+      "name": "teddy",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🧸",
+      "replacesType": "emoji",
+      "iconId": 40,
+      "centering": {
+        "dx": 0.0,
+        "dy": 2.2
+      },
+      "usage": "玩具"
+    },
+    {
+      "name": "sparkle",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "✨",
+      "replacesType": "emoji",
+      "iconId": 41,
+      "centering": {
+        "dx": -0.6,
+        "dy": -0.5
+      },
+      "usage": "其他收入"
+    },
+    {
+      "name": "box",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📦",
+      "replacesType": "emoji",
+      "iconId": 42,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "其他支出"
+    },
+    {
+      "name": "tag",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🏷️",
+      "replacesType": "emoji",
+      "iconId": 43,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.3
+      },
+      "usage": "分类默认"
+    },
+    {
+      "name": "brick",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🧱",
+      "replacesType": "emoji",
+      "iconId": 44,
+      "centering": {
+        "dx": 0.0,
+        "dy": 1.3
+      },
+      "usage": "装修 / 主材"
+    },
+    {
+      "name": "helmet",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "👷",
+      "replacesType": "emoji",
+      "iconId": 45,
+      "centering": {
+        "dx": 0.0,
+        "dy": 1.1
+      },
+      "usage": "装修 / 人工"
+    },
+    {
+      "name": "sofa",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🛋️",
+      "replacesType": "emoji",
+      "iconId": 46,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "装修 / 家具"
+    },
+    {
+      "name": "tv",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📺",
+      "replacesType": "emoji",
+      "iconId": 47,
+      "centering": {
+        "dx": 0.0,
+        "dy": 1.4
+      },
+      "usage": "装修 / 家电"
+    },
+    {
+      "name": "ruler",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📐",
+      "replacesType": "emoji",
+      "iconId": 48,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "装修 / 设计费"
+    },
+    {
+      "name": "banknote",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "💵",
+      "replacesType": "emoji",
+      "iconId": 49,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "装修 / 报销"
+    },
+    {
+      "name": "refund",
+      "group": "category",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "↩️",
+      "replacesType": "emoji",
+      "iconId": 50,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.2
+      },
+      "usage": "装修 / 退款"
+    },
+    {
+      "name": "nav-section",
+      "group": "nav",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "🗂️",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "底部导航 · 分区（首屏）"
+    },
+    {
+      "name": "nav-ledger",
+      "group": "nav",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📒",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "底部导航 · 明细"
+    },
+    {
+      "name": "nav-stats",
+      "group": "nav",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "📊",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -2.1
+      },
+      "usage": "底部导航 · 统计"
+    },
+    {
+      "name": "nav-mine",
+      "group": "nav",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "👤",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.1
+      },
+      "usage": "底部导航 · 我的"
+    },
+    {
+      "name": "add",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.Add",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "新增（新建分区 / 分类）"
+    },
+    {
+      "name": "close",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.Close",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.1,
+        "dy": 0.1
+      },
+      "usage": "关闭（表单标题栏在左）"
+    },
+    {
+      "name": "delete",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.Delete",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "删除账目 / 分区 / 分类"
+    },
+    {
+      "name": "check",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.Check",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": -0.1,
+        "dy": -0.3
+      },
+      "usage": "确认 / 保存 / 已核对"
+    },
+    {
+      "name": "edit",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.Edit",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.3,
+        "dy": -0.3
+      },
+      "usage": "编辑"
+    },
+    {
+      "name": "arrow-left",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.AutoMirrored.KeyboardArrowLeft",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.7,
+        "dy": 0.0
+      },
+      "usage": "返回 / 上一月"
+    },
+    {
+      "name": "arrow-right",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.AutoMirrored.KeyboardArrowRight",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": -0.7,
+        "dy": 0.0
+      },
+      "usage": "进入 / 下一月"
+    },
+    {
+      "name": "arrow-up",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.KeyboardArrowUp",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.7
+      },
+      "usage": "展开 / 上移排序"
+    },
+    {
+      "name": "arrow-down",
+      "group": "function",
+      "opticalSize": "full",
+      "viewBox": 24,
+      "strokeWidth": 1.5,
+      "replaces": "Icons.Filled.KeyboardArrowDown",
+      "replacesType": "material",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.7
+      },
+      "usage": "收起 / 下移排序"
+    },
+    {
+      "name": "calendar-inline",
+      "group": "inline",
+      "opticalSize": "inline",
+      "viewBox": 24,
+      "strokeWidth": 1.7,
+      "replaces": "📅",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.4
+      },
+      "usage": "日期字段 label 前缀（~15dp）· 省去日期点阵"
+    },
+    {
+      "name": "clock-inline",
+      "group": "inline",
+      "opticalSize": "inline",
+      "viewBox": 24,
+      "strokeWidth": 1.7,
+      "replaces": "🕐",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "时间字段 label 前缀（~15dp）"
+    },
+    {
+      "name": "note-inline",
+      "group": "inline",
+      "opticalSize": "inline",
+      "viewBox": 24,
+      "strokeWidth": 1.7,
+      "replaces": "💬",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.3
+      },
+      "usage": "账目行「有备注」标记（~12dp）· 气泡内不画线"
+    },
+    {
+      "name": "camera-inline",
+      "group": "inline",
+      "opticalSize": "inline",
+      "viewBox": 24,
+      "strokeWidth": 1.7,
+      "replaces": "📷",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.1
+      },
+      "usage": "账目行「有图 N 张」标记（~12dp）"
+    },
+    {
+      "name": "check-xs",
+      "group": "xs",
+      "opticalSize": "xs",
+      "viewBox": 24,
+      "strokeWidth": 2.0,
+      "replaces": "✓",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": -0.1,
+        "dy": -0.2
+      },
+      "usage": "选项已生效标记（11dp，白色）"
+    },
+    {
+      "name": "empty-lg",
+      "group": "illustration",
+      "opticalSize": "lg",
+      "viewBox": 32,
+      "strokeWidth": 1.6,
+      "replaces": "🗒️",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": -0.4
+      },
+      "usage": "空态插图（32dp）· 一本翻开的空白手账 + 书签带"
+    },
+    {
+      "name": "hint-lg",
+      "group": "illustration",
+      "opticalSize": "lg",
+      "viewBox": 32,
+      "strokeWidth": 1.6,
+      "replaces": "👈",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 2.5,
+        "dy": 1.0
+      },
+      "usage": "空态提示插图（32dp）· 指向左侧的手"
+    },
+    {
+      "name": "status-pending",
+      "group": "status",
+      "opticalSize": "status",
+      "viewBox": 24,
+      "strokeWidth": 1.8,
+      "replaces": "待报销",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "空心圆 · 14dp 符号槽，朱砂色"
+    },
+    {
+      "name": "status-cleared",
+      "group": "status",
+      "opticalSize": "status",
+      "viewBox": 24,
+      "strokeWidth": 1.8,
+      "replaces": "已报销",
+      "replacesType": "emoji",
+      "iconId": null,
+      "centering": {
+        "dx": 0.0,
+        "dy": 0.0
+      },
+      "usage": "实心圆 · 14dp 符号槽，松烟墨绿色"
+    }
+  ]
+}

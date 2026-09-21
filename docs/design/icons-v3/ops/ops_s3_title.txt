@@ -1,0 +1,1 @@
+n0=I("{{S3}}", {"type": "text", "name": "t", "content": "③ 绘图规范 · 网格 / 描边档位 / 手绘几何", "fontSize": 44, "fontName": {"family": "Noto Serif SC", "style": "SemiBold"}, "fill": "#17403A"})

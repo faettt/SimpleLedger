@@ -1,0 +1,3 @@
+n0=I("{{S0}}", {"type": "text", "name": "kicker", "content": "SimpleLedger · ICON SYSTEM V3 · 2026-09-22", "fontSize": 28, "fontName": {"family": "Source Han Sans CN", "style": "Regular"}, "fill": "#55736B"})
+n1=I("{{S0}}", {"type": "text", "name": "title", "content": "简账 · 图标系统 v3「纸墨手绘」", "fontSize": 64, "fontName": {"family": "Noto Serif SC", "style": "SemiBold"}, "fill": "#17403A"})
+n2=I("{{S0}}", {"type": "text", "name": "sub", "content": "72 枚全量重绘 + App 图标三案定稿 · 单色墨青 · 圆头手绘 · 光学居中内建 · 与手账规范 v2.1 同源", "fontSize": 30, "fontName": {"family": "Source Han Sans CN", "style": "Regular"}, "fill": "#55736B", "width": "fill_container"})

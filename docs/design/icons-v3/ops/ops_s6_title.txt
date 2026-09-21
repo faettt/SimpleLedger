@@ -1,0 +1,1 @@
+n0=I("{{S6}}", {"type": "text", "name": "t", "content": "⑥ 场景验证 · 与现有组件同框（2× 渲染）", "fontSize": 44, "fontName": {"family": "Noto Serif SC", "style": "SemiBold"}, "fill": "#17403A"})
