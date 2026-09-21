@@ -131,7 +131,6 @@ fun DonutChart(
     onSliceClick: ((Int) -> Unit)? = null,
 ) {
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val holeColor = MaterialTheme.colorScheme.surface
     val labelColor = MaterialTheme.colorScheme.surface
     // sp → px 必须经 LocalDensity 换算：Canvas 原生画笔只认像素，
     // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
@@ -200,44 +199,75 @@ fun DonutChart(
                     style = Stroke(width = g.stroke, cap = StrokeCap.Butt),
                 )
             } else {
-                var startAngle = -90f
+                // ---- 手绘环带（规范 §2.5「手绘甜甜圈：外圈抖动描边」）----
+                // 沿外缘/内缘各采样一排点，半径按角度散列微抖（确定性，同手绘隐喻与
+                // markerJitter 同源）——完美圆弧是「屏幕控件语言」，抖动才是手绘痕迹。
+                //
+                // 三条底线：
+                //  · 扇区的**起止角保持精确**（采样的起止点不抖）——数据的准确性
+                //    不许被手绘感吃掉；
+                //  · 采样点按角度分桶（每 6°），相邻扇区在公共边界上取到同一个抖动值
+                //    → 接缝处不会裂开或重叠；
+                //  · 抖动幅度 ±2.5px ≈ ±1dp，肉眼是"手画的"，不影响读数。
+                //
+                // 每个扇区画成一个「环形扇面」路径（外缘顺时针 + 内缘逆时针 + close），
+                // 环心是自然留出的空腔 —— 不再需要单独画一个挖空圆。
+                val stepDeg = 6f
+                fun ringPoint(ringDeg: Float, radius: Float) = Offset(
+                    g.cx + radius * kotlin.math.sin(Math.toRadians(ringDeg.toDouble())).toFloat(),
+                    g.cy - radius * kotlin.math.cos(Math.toRadians(ringDeg.toDouble())).toFloat(),
+                )
+                // 同一角度在同一 salt 下永远得到同一个抖动值（确定性）
+                fun wob(ringDeg: Float, salt: Int): Float =
+                    (markerJitter(kotlin.math.round(ringDeg / stepDeg).toInt(), salt) - 0.5f) * 2f * 2.5f
+                fun edge(ringDeg: Float, radius: Float, salt: Int) =
+                    ringPoint(ringDeg, radius + wob(ringDeg, salt))
+
+                var ringStart = 0f
                 slices.forEachIndexed { index, slice ->
                     val sweep = (slice.fraction * 360f).toFloat()
+                    val ringEnd = ringStart + sweep
                     // 选中扇区环带加粗（形变，见组件说明②）
                     val band = if (index == selectedIndex) g.stroke + 12f else g.stroke
-                    drawArc(
-                        color = slice.color,
-                        startAngle = startAngle,
-                        sweepAngle = sweep,
-                        useCenter = false,
-                        topLeft = g.topLeft,
-                        size = g.arcSize,
-                        style = Stroke(width = band, cap = StrokeCap.Butt),
-                    )
+                    val rOut = g.diameter / 2f + band / 2f
+                    val rIn = g.diameter / 2f - band / 2f
 
-                    // 兜底②：占比数值直接标在图上
+                    val path = Path().apply {
+                        // 外缘：起点 → 终点（顺时针）
+                        var a = ringStart
+                        moveTo(edge(a, rOut, 11).x, edge(a, rOut, 11).y)
+                        while (a < ringEnd - 0.01f) {
+                            a = minOf(a + stepDeg, ringEnd)
+                            lineTo(edge(a, rOut, 11).x, edge(a, rOut, 11).y)
+                        }
+                        // 内缘：终点 → 起点（逆时针）
+                        var b = ringEnd
+                        lineTo(edge(b, rIn, 23).x, edge(b, rIn, 23).y)
+                        while (b > ringStart + 0.01f) {
+                            b = maxOf(b - stepDeg, ringStart)
+                            lineTo(edge(b, rIn, 23).x, edge(b, rIn, 23).y)
+                        }
+                        close()
+                    }
+                    drawPath(path, color = slice.color)
+
+                    // 兜底②：占比数值直接标在图上（环带中线）
                     val text = StatsCalculator.percentLabel(slice.fraction)
                     val textWidth = paint.measureText(text)
                     // 环带中线半径 = diameter/2（Stroke 以路径为中心向两侧各扩 stroke/2）
                     val arcLength = Math.toRadians(sweep.toDouble()).toFloat() * (g.diameter / 2f)
                     if (textWidth + 10f <= arcLength) {
-                        val midRad = Math.toRadians((startAngle + sweep / 2f).toDouble())
-                        val px = g.cx + (g.diameter / 2f) * kotlin.math.cos(midRad).toFloat()
-                        val py = g.cy + (g.diameter / 2f) * kotlin.math.sin(midRad).toFloat()
+                        val midRing = ringStart + sweep / 2f
+                        val px = g.cx + (g.diameter / 2f) * kotlin.math.sin(Math.toRadians(midRing.toDouble())).toFloat()
+                        val py = g.cy - (g.diameter / 2f) * kotlin.math.cos(Math.toRadians(midRing.toDouble())).toFloat()
                         // baseline 垂直居中：加回约半行高（0.36em 是常见近似值）
                         drawContext.canvas.nativeCanvas.drawText(
                             text, px, py + labelPx * 0.36f, paint,
                         )
                     }
-                    startAngle += sweep
+                    ringStart = ringEnd
                 }
             }
-            // 中心挖空成环
-            drawCircle(
-                color = holeColor,
-                radius = (g.diameter - g.stroke * 2) / 2f,
-                center = Offset(g.cx, g.cy),
-            )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(centerLabel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -158,8 +158,8 @@
     <string name="status_reimburse_cleared_done">已标记已报销</string>
     <string name="status_reimburse_none_done">已取消报销状态</string>
 
-    <!-- 分组标题：日分组小计（DayHeader） -->
-    <string name="day_summary">支 %1$s　收 %2$s</string>
+    <!-- 分组标题：日分组小计（DayHeader）。只显示有值的半边——
+         「收 0.00」不携带信息还占宽度；文案在 DayHeader 里按值拼装 -->
     <string name="day_summary_hidden">支 ••••　收 ••••</string>
 
     <!-- 明细页：搜索 / 筛选 / 记一笔 / 概览 -->

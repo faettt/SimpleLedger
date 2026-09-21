@@ -72,7 +72,13 @@ import com.simpleledger.app.ui.theme.tapeColor
  * 故所有既有引用（含跨包的 `import ...ledger.AmountText`）无需任何改动。
  */
 
-/** 日分组标题：日期 + 当日收支汇总 */
+/**
+ * 日分组标题：日期 + 当日收支汇总。
+ *
+ * 汇总**只显示有值的半边**：某天只有支出时不写「收 0.00」、只有收入时不写「支 0.00」
+ * ——「0.00」不携带任何信息，却占掉一截宽度，还让人下意识去核对是不是漏记了。
+ * 两边都有值时才并排（中间用全角空格隔开，读屏与视觉同一份文案）。
+ */
 @Composable
 internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long) {
     val hidden = LocalHideAmounts.current
@@ -94,11 +100,13 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
             text = if (hidden) {
                 stringResource(R.string.day_summary_hidden)
             } else {
-                stringResource(
-                    R.string.day_summary,
-                    Money.formatCents(expenseCents),
-                    Money.formatCents(incomeCents),
-                )
+                buildString {
+                    if (expenseCents > 0) append("支 ").append(Money.formatCents(expenseCents))
+                    if (incomeCents > 0) {
+                        if (isNotEmpty()) append("　")
+                        append("收 ").append(Money.formatCents(incomeCents))
+                    }
+                }
             },
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -309,86 +317,91 @@ internal fun EntryRow(
             AmountText(amountCents = full.entry.amountCents, isIncome = isIncome)
         }
 
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false },
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.duplicate_one)) },
-                onClick = {
-                    menuOpen = false
-                    onDuplicate()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.move_section_title)) },
-                onClick = {
-                    menuOpen = false
-                    onMove()
-                },
-            )
-
-            // v4 双维状态入口（规范 §3.5）。两项都放在「移动」与「删除」之间：
-            // 删除是破坏性动作，必须离上面的日常动作远一点。
-            onToggleReconciled?.let { toggle ->
-                val already = full.entry.reconciled
+        // 弹出菜单锚定在行的**右上角**：DropdownMenu 内部的 align(TopEnd) 对弹出位置
+        // 无效 —— 那个 modifier 作用于弹窗内容，不是锚点；不包一层 Box 的话，
+        // 弹窗会锚定到行的左上角（实测渲染在左侧，与意图相反）。
+        Box(modifier = Modifier.align(Alignment.TopEnd)) {
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                modifier = Modifier.align(Alignment.TopEnd),
+            ) {
                 DropdownMenuItem(
-                    text = {
-                        // 名词会被读成「当前状态」，动作词才读得懂点下去的结果
-                        Text(
-                            stringResource(
-                                if (already) R.string.entry_unmark_reconciled
-                                else R.string.entry_mark_reconciled,
-                            )
-                        )
-                    },
+                    text = { Text(stringResource(R.string.duplicate_one)) },
                     onClick = {
                         menuOpen = false
-                        toggle(!already)
+                        onDuplicate()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.move_section_title)) },
+                    onClick = {
+                        menuOpen = false
+                        onMove()
+                    },
+                )
+
+                // v4 双维状态入口（规范 §3.5）。两项都放在「移动」与「删除」之间：
+                // 删除是破坏性动作，必须离上面的日常动作远一点。
+                onToggleReconciled?.let { toggle ->
+                    val already = full.entry.reconciled
+                    DropdownMenuItem(
+                        text = {
+                            // 名词会被读成「当前状态」，动作词才读得懂点下去的结果
+                            Text(
+                                stringResource(
+                                    if (already) R.string.entry_unmark_reconciled
+                                    else R.string.entry_mark_reconciled,
+                                )
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            toggle(!already)
+                        },
+                    )
+                }
+                onSetReimburseState?.let { setState ->
+                    // 三条里只显示与当前状态不同的两条 —— 否则菜单里会出现
+                    // 「标记待报销」而它已经待报销，点下去毫无反馈。
+                    val current = full.entry.reimburseState
+                    if (current != ReimburseState.PENDING) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_mark_reimburse_pending)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.PENDING)
+                            },
+                        )
+                    }
+                    if (current != ReimburseState.CLEARED) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_mark_reimburse_cleared)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.CLEARED)
+                            },
+                        )
+                    }
+                    if (current != ReimburseState.NONE) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.entry_clear_reimburse)) },
+                            onClick = {
+                                menuOpen = false
+                                setState(ReimburseState.NONE)
+                            },
+                        )
+                    }
+                }
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
                     },
                 )
             }
-            onSetReimburseState?.let { setState ->
-                // 三条里只显示与当前状态不同的两条 —— 否则菜单里会出现
-                // 「标记待报销」而它已经待报销，点下去毫无反馈。
-                val current = full.entry.reimburseState
-                if (current != ReimburseState.PENDING) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.entry_mark_reimburse_pending)) },
-                        onClick = {
-                            menuOpen = false
-                            setState(ReimburseState.PENDING)
-                        },
-                    )
-                }
-                if (current != ReimburseState.CLEARED) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.entry_mark_reimburse_cleared)) },
-                        onClick = {
-                            menuOpen = false
-                            setState(ReimburseState.CLEARED)
-                        },
-                    )
-                }
-                if (current != ReimburseState.NONE) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.entry_clear_reimburse)) },
-                        onClick = {
-                            menuOpen = false
-                            setState(ReimburseState.NONE)
-                        },
-                    )
-                }
-            }
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                onClick = {
-                    menuOpen = false
-                    onDelete()
-                },
-            )
         }
     }
 }
