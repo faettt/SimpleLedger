@@ -17,13 +17,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.logic.CategoryShare
-import com.simpleledger.app.ui.theme.chartPalette
+import com.simpleledger.app.logic.StatsCalculator
+import com.simpleledger.app.ui.theme.shareColor
 import com.simpleledger.app.util.Money
 
 /** 读屏机密模式下的统一占位串：绝不把真实金额交给 TTS */
@@ -46,8 +49,8 @@ internal fun pieChartSpeech(
 
     val shown = shares.take(maxItems)
     val items = shown.joinToString("；") { share ->
-        val percent = (share.fraction * 100).toInt()
-        "${share.total.name} $percent%，${Money.toChineseSpeech(share.total.total)}"
+        val percent = StatsCalculator.percentLabel(share.fraction)
+        "${share.total.name} $percent，${Money.toChineseSpeech(share.total.total)}"
     }
     val rest = shares.size - shown.size
     val tail = if (rest > 0) "；等 $rest 类" else ""
@@ -76,6 +79,13 @@ internal fun barChartSpeech(
 /**
  * 环形饼图：分类支出占比。
  * 中心显示当月支出总额。
+ *
+ * 两条实现约定（都来自「读图兜底」）：
+ * ① 扇区配色走 [shareColor]——与图例**共用同一个函数**，颜色不会两处各飞；
+ *    合并桶（「其他 N 类」）固定中性墨灰。
+ * ② 百分比**直接画在扇区上**（规范 §2.5 兜底②）。只在「放得下」的扇区上画：
+ *    以该扇区在环带中线处的弧长是否容得下这段文字为准，而不是拍一个固定角度阈值
+ *    ——阈值写死会在窄图上溢出、在宽图上白留空间。
  */
 @Composable
 fun CategoryPieChart(
@@ -85,9 +95,15 @@ fun CategoryPieChart(
     /** 隐私模式：真实金额不得进入读屏 */
     hidden: Boolean = false,
 ) {
-    val chartColors = chartPalette()
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val holeColor = MaterialTheme.colorScheme.surface
+    val labelColor = MaterialTheme.colorScheme.surface
+    // sp → px 必须经 LocalDensity 换算：Canvas 原生画笔只认像素，
+    // 直接写 textSize = 24f 在 3x 屏上只有 8dp，小到读不出来。
+    val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
+    // 配色必须在 Canvas 之外算好：shareColor 是 @Composable，而 Canvas 的
+    // DrawScope 只是绘制回调、不是组合上下文，在那里调用会编译失败。
+    val sliceColors = shares.mapIndexed { index, share -> shareColor(index, share.isMerged) }
     // 整块图用一个语义节点替代：clearAndSetSemantics 会清掉 Canvas/中心文字等子节点的默认语义，
     // 避免读屏把「总支出」「¥…」与摘要重复念两遍
     val speech = pieChartSpeech(shares, totalCents, hidden)
@@ -104,6 +120,15 @@ fun CategoryPieChart(
             val diameter = minOf(size.width, size.height) - stroke * 2
             val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
             val arcSize = Size(diameter, diameter)
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val paint = android.graphics.Paint().apply {
+                color = labelColor.toArgb()
+                textSize = labelPx
+                isAntiAlias = true
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
 
             if (shares.isEmpty()) {
                 drawArc(
@@ -120,7 +145,7 @@ fun CategoryPieChart(
                 shares.forEachIndexed { index, share ->
                     val sweep = (share.fraction * 360f).toFloat()
                     drawArc(
-                        color = chartColors[index % chartColors.size],
+                        color = sliceColors[index],
                         startAngle = startAngle,
                         sweepAngle = sweep,
                         useCenter = false,
@@ -128,6 +153,23 @@ fun CategoryPieChart(
                         size = arcSize,
                         style = Stroke(width = stroke, cap = StrokeCap.Butt),
                     )
+
+                    // 兜底②：占比数值直接标在图上
+                    if (!hidden) {
+                        val text = StatsCalculator.percentLabel(share.fraction)
+                        val textWidth = paint.measureText(text)
+                        // 环带中线半径 = diameter/2（Stroke 以路径为中心向两侧各扩 stroke/2）
+                        val arcLength = Math.toRadians(sweep.toDouble()).toFloat() * (diameter / 2f)
+                        if (textWidth + 10f <= arcLength) {
+                            val midRad = Math.toRadians((startAngle + sweep / 2f).toDouble())
+                            val px = cx + (diameter / 2f) * kotlin.math.cos(midRad).toFloat()
+                            val py = cy + (diameter / 2f) * kotlin.math.sin(midRad).toFloat()
+                            // baseline 垂直居中：加回约半行高（0.36em 是常见近似值）
+                            drawContext.canvas.nativeCanvas.drawText(
+                                text, px, py + labelPx * 0.36f, paint,
+                            )
+                        }
+                    }
                     startAngle += sweep
                 }
             }
@@ -135,7 +177,7 @@ fun CategoryPieChart(
             drawCircle(
                 color = holeColor,
                 radius = (diameter - stroke * 2) / 2f,
-                center = Offset(size.width / 2f, size.height / 2f),
+                center = Offset(cx, cy),
             )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -164,6 +206,8 @@ fun DailyBarChart(
 ) {
     val barColor = MaterialTheme.colorScheme.primary
     val axisColor = MaterialTheme.colorScheme.surfaceVariant
+    val axisLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val axisLabelPx = with(LocalDensity.current) { 10.sp.toPx() }
     val speech = barChartSpeech(daily, daysInMonth, hidden)
 
     Canvas(
@@ -200,9 +244,11 @@ fun DailyBarChart(
         }
 
         // 日期刻度：1 / 中旬 / 月末
+        // ⚠️ textSize 只认像素。原先写死 24f，在 3x 屏上只有 8dp —— 缩到根本读不出。
+        // 必须经 LocalDensity 换算，才能在任意密度下都是设计稿里的 10sp。
         val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(180, 128, 128, 128)
-            textSize = 24f
+            color = axisLabelColor.toArgb()
+            textSize = axisLabelPx
             isAntiAlias = true
         }
         listOf(1, daysInMonth / 2, daysInMonth).forEach { day ->
@@ -210,7 +256,7 @@ fun DailyBarChart(
             drawContext.canvas.nativeCanvas.drawText(
                 "$day",
                 x - paint.measureText("$day") / 2f,
-                size.height,
+                chartHeight + axisLabelPx,
                 paint,
             )
         }

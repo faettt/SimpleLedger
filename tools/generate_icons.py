@@ -221,8 +221,12 @@ def main() -> None:
             for item in groups.get(key, []):
                 paths = parse_svg(ICON_DIR / f"{item['name']}.svg")
                 # nav 组的成员名去掉 nav- 前缀（调用点写 SlIcons.Nav.Section，而不是 Nav.NavSection）
-                kname = (item["name"].removeprefix("nav-")
-                         if item["group"] == "nav" else item["name"])
+                # nav / status 组去掉前缀，避免调用点出现 SlIcons.Nav.NavSection、
+                # SlIcons.Status.StatusPending 这类重复命名
+                _strip = {"nav": "nav-", "status": "status-"}
+                kname = item["name"]
+                if item["group"] in _strip:
+                    kname = kname.removeprefix(_strip[item["group"]])
                 out += emit_icon(kname, item["viewBox"], float(item["strokeWidth"]),
                                  paths, "        ")
         out.append("    }")

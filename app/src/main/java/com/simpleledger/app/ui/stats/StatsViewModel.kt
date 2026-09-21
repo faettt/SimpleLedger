@@ -48,7 +48,11 @@ class StatsViewModel(private val repo: LedgerRepository) : ViewModel() {
                 month = m,
                 expenseCents = totals.firstOrNull { it.type == EntryType.EXPENSE }?.total ?: 0,
                 incomeCents = totals.firstOrNull { it.type == EntryType.INCOME }?.total ?: 0,
-                shares = StatsCalculator.categoryShares(categoryTotals),
+                // 读图兜底①在这里做，而不是在图表组件里：合并后的列表同时喂给
+                // 环图、图例和读屏串，三处共用一份数据，不会各画各的。
+                shares = StatsCalculator.mergeSmallShares(
+                    StatsCalculator.categoryShares(categoryTotals)
+                ),
                 daily = StatsCalculator.dailyExpense(entries.map { it.entry })
                     .map { (date, cents) -> date.dayOfMonth to cents },
                 daysInMonth = m.lengthOfMonth(),

@@ -202,6 +202,8 @@ internal fun LedgerListPane(
                             onDuplicate = { onDuplicate(full.entry.id) },
                             onMove = { moveTarget = full },
                             onDelete = { onDelete(full.entry.id) },
+                            // F4 例外：只有「全部分区」视图需要补回分区前缀（规范 §188）
+                            showSectionPrefix = state.filters.sectionId == null,
                         )
                     }
                     item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(6.dp)) }

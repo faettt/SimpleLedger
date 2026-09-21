@@ -42,6 +42,10 @@ import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import androidx.compose.foundation.layout.PaddingValues
+import com.simpleledger.app.ui.components.SlipCard
+import com.simpleledger.app.ui.theme.tapeColor
+import com.simpleledger.app.ui.theme.BarShape
 
 /**
  * 分区首屏卡片：emoji + 分区名 + **本月花销** + **预算进度条**（FR-10）。
@@ -71,10 +75,19 @@ fun SectionCard(
     val overspent = BudgetCalculator.isOverspent(total.expense, total.budgetCents)
     val nearLimit = BudgetCalculator.isNearLimit(total.expense, total.budgetCents)
 
+    // 该分区的胶带色。分区身份的第一识别通道 —— 比读文字或认图标都快，
+    // 也是 F4「去掉分区名文字前缀」成立的前提。
+    val sectionColor = tapeColor(total.colorIndex)
+
+    // 进度条填充三档（规范 §2.2 + §3.2 语义色表）：
+    //   常态 = **该分区的胶带色**（不是主色！原本写死 primary 是规范违背，2026-09-21 修正）
+    //   接近上限（≥90% 未超）= 预警 `#92570A`
+    //   超支 = 朱砂 `#A83E33`
+    // 三档都只改填充色，不改尺寸 —— 进度条高度恒定 6dp，避免"越紧张越跳动"。
     val barColor = when {
         overspent -> expenseColor()
         nearLimit -> warnColor()
-        else -> MaterialTheme.colorScheme.primary
+        else -> sectionColor
     }
 
     // 读屏串：buildString 的 lambda 非 Composable，先把文案解析到局部变量
@@ -99,29 +112,31 @@ fun SectionCard(
         }
     }
 
-    Card(
+    SlipCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = speech },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        edgeColor = sectionColor,
+        // 左边距 20dp：让出 4dp 色条 + 呼吸；其余三边 16dp
+        contentPadding = PaddingValues(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // v4：emoji → 手绘图标。
-                    // TODO(M2 主题重写)：此处改为「左侧 4dp 分区胶带色边 + 图标用胶带色」，
-                    //   见 tokens-journal.json 的 tape.palette 与 F4 决策。
+                    // 分区卡片上的图标用**该分区的胶带色** —— F2「图标一律单色」的唯一例外：
+                    // 这里颜色语义就是分区自己，不会与别的语义打架。
+                    // （账目行 / 分类选择网格里的图标必须中性色，见 SlIconTile 的注释）
                     Icon(
                         imageVector = slCategoryIcon(total.iconId),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = sectionColor,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -171,12 +186,14 @@ fun SectionCard(
 
             if (hasBudget) {
                 Spacer(modifier = Modifier.height(12.dp))
+                // 手账进度条：6dp 高 + 1dp 微圆角（规范 radius.progressBar）。
+                // 原来用 99dp 胶囊是「UI 感」，与纸张的直角语言冲突。
                 LinearProgressIndicator(
                     progress = { ratio },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(99.dp)),
+                        .height(6.dp)
+                        .clip(BarShape),
                     color = barColor,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     gapSize = 0.dp,

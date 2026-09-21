@@ -255,6 +255,25 @@ val TabularNums = TextStyle(fontFeatureSettings = "tnum")
 @Composable
 fun chartPalette(): List<Color> = tapePalette()
 
+/**
+ * 环比图 / 图例的扇区取色。**图表与图例必须共用这一个函数**，
+ * 否则两处各取各的，迟早会漂移成「图例的蓝不是图上那块蓝」。
+ *
+ * @param index   在已排序扇区列表里的序号（0 起）
+ * @param isMerged 是否为「其他 N 类」这个合并桶
+ *
+ * 两个约定：
+ *  ① 真实分类按序取胶带色板 —— 不新增色板（规范 §2.5）。
+ *  ② **合并桶固定中性墨灰**（`tape[7]` 暖灰 `#7E7062`），不参与轮转。
+ *     轮转会让「其他」拿到和最大扇区相同的颜色，而颜色是这张图唯一的
+ *     「类别 → 图形」映射，同色即等于没映射。
+ */
+@Composable
+fun shareColor(index: Int, isMerged: Boolean = false): Color {
+    val palette = tapePalette()
+    return if (isMerged) palette[7] else palette[index % palette.size]
+}
+
 @Composable
 fun SimpleLedgerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

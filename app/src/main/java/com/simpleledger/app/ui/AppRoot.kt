@@ -57,6 +57,16 @@ import com.simpleledger.app.ui.section.SectionHomeScreen
 import com.simpleledger.app.ui.section.SectionManageScreen
 import com.simpleledger.app.ui.stats.StatsScreen
 import com.simpleledger.app.ui.theme.paperTexture
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.clickable
 
 /*
  * 应用外壳：窗口形态判定 + 4 槽一级导航 + 路由挂载。
@@ -311,93 +321,127 @@ private fun AppNavHost(
 /* ============================================================
    手机：底部 4 槽位导航（已移除中央凸起「记一笔」，同步点 #2）
    ============================================================ */
+/**
+ * 手机：底部**索引贴**导航（M3）。
+ *
+ * 形态取自手账本侧边的索引贴：4 个色签并排，选中那个向上凸出 12dp。
+ * 规范依据 docs/design/journal-style-spec-2026-09-20.md §2.1：
+ *
+ * · 未选中视觉高 42dp / 选中 54dp（凸出 12dp）。**选中态不止变色，还有形变**
+ *   —— 形变比变色更有信息量，这也是整屏最"手账"的地方。
+ * · 圆角只做上两角 7dp：下方与屏幕底边平齐，像签从纸边伸出来。
+ * · **触控目标 ≥48dp**：签的视觉高度只有 42dp 不达标，因此外层 Box 撑满 54dp 承接点击，
+ *   视觉签贴在底部居中。这条不满足就会踩无障碍红线。
+ * · 签之间留 3dp 缝隙露出纸底，读作"4 张独立的签"而不是一条连续色带。
+ *
+ * ⚠️ 历史坑（此处真实回归过一次，别再犯）：`navigationBarsPadding()` 必须排在
+ *    `height()` **之前**。写在之后，手势条高度会从固定高度**内部**被扣掉，
+ *    内容区被压缩、标签被整条裁掉——表现为"只看得见图标"，且 TalkBack 读不出页面名。
+ */
 @Composable
 private fun LedgerBottomBar(
     currentRoute: String?,
     onNavigate: (String) -> Unit,
 ) {
-    val barHeight = 64.dp
+    val selectedHeight = 54.dp
+    val unselectedHeight = 42.dp
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // navigationBarsPadding 必须排在 height **之前**：它要撑在 64dp 内容高度之外。
-            // 若写在 height 之后，手势条高度会从 64dp 内部被扣掉，内容区只剩约 40dp，
-            // 放不下 emoji(20sp)+标签(10.5sp)，标签会被整条裁掉（只看得见图标）。
-            // 从五槽改四槽时曾丢掉旧版的 `height(barHeight + 20.dp)` 缓冲，即由此产生。
+            // ⚠️ 顺序语义：insets 撑在固定高度**之外**，不参与高度扣减（见上方历史坑）
             .navigationBarsPadding()
-            .height(barHeight),
+            .height(selectedHeight),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 8.dp,
-        ) {}
-
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             navItems.forEach { item ->
-                BottomBarSlot(
+                IndexTab(
                     item = item,
                     selected = currentRoute == item.route,
+                    selectedHeight = selectedHeight,
+                    unselectedHeight = unselectedHeight,
                     onClick = { onNavigate(item.route) },
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
     }
 }
 
+/** 单个索引签：选中时向上凸出，并在顶边压一道 2dp 主色横条。 */
 @Composable
-private fun BottomBarSlot(
+private fun IndexTab(
     item: NavItem,
     selected: Boolean,
+    selectedHeight: Dp,
+    unselectedHeight: Dp,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val color = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+    val shape = RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    val color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Box(
+        modifier = modifier
+            // 触控区撑满整条栏高（54dp ≥ 48dp）；视觉签再贴到底部
+            .fillMaxHeight()
+            .clickable(onClick = onClick)
+            // 语义：告诉读屏这是标签页且当前选中 —— 仅靠文字节点读不出"选中了几号"
+            .semantics {
+                role = Role.Tab
+                this.selected = selected
+            },
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        Surface(
-            onClick = onClick,
-            color = Color.Transparent,
-            shape = RoundedCornerShape(14.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (selected) selectedHeight else unselectedHeight)
+                .clip(shape)
+                .background(
+                    if (selected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface,
+                    shape,
+                )
+                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                // 选中签顶边的 2dp 主色横条：画在填充与描边之后、内容之前
+                .then(
+                    if (selected) {
+                        Modifier.drawBehind {
+                            drawRect(color = accent, size = Size(size.width, 2.dp.toPx()))
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                // v4：emoji → 手绘图标；选中/未选中沿用原有透明度表达（不新增变色维度）
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .alpha(if (selected) 1f else 0.72f),
-                )
-                Text(
-                    text = stringResource(item.labelRes),
-                    fontSize = 10.5.sp,
-                    color = color,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                )
-            }
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(if (selected) 22.dp else 20.dp),
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = stringResource(item.labelRes),
+                fontSize = 10.5.sp,
+                color = color,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+            )
         }
     }
 }
+
 
 /* ============================================================
    大屏：Navigation Rail（4 项，已移除「记一笔」，同步点 #2）

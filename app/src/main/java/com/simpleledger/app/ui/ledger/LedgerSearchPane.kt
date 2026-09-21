@@ -127,6 +127,8 @@ internal fun LedgerSearchPane(
                                 onDuplicate = { onDuplicate(full.entry.id) },
                                 onMove = { moveTarget = full },
                                 onDelete = { onDelete(full.entry.id) },
+                                // 搜索结果天然跨分区（关键词可命中任一分区），一律补前缀消歧
+                                showSectionPrefix = true,
                             )
                         }
                         item(key = "space_${day.date}") { Spacer(modifier = Modifier.height(6.dp)) }

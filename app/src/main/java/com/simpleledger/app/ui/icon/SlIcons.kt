@@ -348,9 +348,9 @@ object SlIcons {
     /** 账目状态符号（2 枚，报销维度） */
     object Status {
 
-        val StatusPending: ImageVector by lazy {
+        val Pending: ImageVector by lazy {
             buildIcon(
-                "status-pending",
+                "pending",
                 size = 24,
                 strokeWidth = 1.8f,
                 translationX = 0f,
@@ -359,9 +359,9 @@ object SlIcons {
             )
         }
 
-        val StatusCleared: ImageVector by lazy {
+        val Cleared: ImageVector by lazy {
             buildIcon(
-                "status-cleared",
+                "cleared",
                 size = 24,
                 strokeWidth = 1.8f,
                 translationX = 0f,

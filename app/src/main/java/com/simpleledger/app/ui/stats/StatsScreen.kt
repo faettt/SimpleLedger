@@ -41,7 +41,8 @@ import com.simpleledger.app.ui.components.DailyBarChart
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
 import com.simpleledger.app.ui.theme.TabularNums
-import com.simpleledger.app.ui.theme.chartPalette
+import com.simpleledger.app.logic.StatsCalculator
+import com.simpleledger.app.ui.theme.shareColor
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.Money
@@ -186,7 +187,6 @@ private fun CategoryShareSection(
         Column(modifier = Modifier.padding(18.dp)) {
             CategoryPieChart(shares = shares, totalCents = totalCents, hidden = hidden)
             Spacer(modifier = Modifier.height(14.dp))
-            val palette = chartPalette()
             // 图例逐项列出分类占比，与环图摘要内容完全重复；对读屏静音，避免听完摘要再逐行重念一遍
             Column(modifier = Modifier.clearAndSetSemantics {}) {
                 shares.forEachIndexed { index, share ->
@@ -197,7 +197,12 @@ private fun CategoryShareSection(
                         Box(
                             modifier = Modifier
                                 .size(9.dp)
-                                .background(palette[index % palette.size], RoundedCornerShape(3.dp)),
+                                // 与环图共用 shareColor —— 两处各取各的迟早会漂移成
+                                // 「图例的蓝不是环上那块蓝」
+                                .background(
+                                    shareColor(index, share.isMerged),
+                                    RoundedCornerShape(1.dp),
+                                ),
                         )
                         Spacer(modifier = Modifier.width(9.dp))
                         Text(
@@ -207,9 +212,10 @@ private fun CategoryShareSection(
                         )
                         Text(
                             text = if (hidden) {
-                                "${(share.fraction * 100).toInt()}%"
+                                StatsCalculator.percentLabel(share.fraction)
                             } else {
-                                "${(share.fraction * 100).toInt()}% · ${Money.formatCents(share.total.total)}"
+                                StatsCalculator.percentLabel(share.fraction) +
+                                    " · " + Money.formatCents(share.total.total)
                             },
                             fontSize = 12.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

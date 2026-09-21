@@ -56,6 +56,12 @@ import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import com.simpleledger.app.data.local.entity.ReimburseState
+import com.simpleledger.app.ui.components.EntryStatusCluster
+import com.simpleledger.app.ui.theme.tapeColor
 
 /*
  * 共享的账目展示组件：日分组标题 / 账目行 / 金额文本。
@@ -118,6 +124,7 @@ internal fun EntryRow(
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
+    showSectionPrefix: Boolean = false,
 ) {
     val isIncome = full.entry.type == EntryType.INCOME
     val hidden = LocalHideAmounts.current
@@ -131,6 +138,21 @@ internal fun EntryRow(
     val hasNote = full.entry.note.isNotBlank()
     val imageCount = full.images.size
     var menuOpen by remember { mutableStateOf(false) }
+    val uncategorizedLabel = stringResource(R.string.uncategorized)
+
+    // F4 的例外（规范 §2.4 末尾 + §188）：**「全部分区」筛选视图**下补回分区文字前缀。
+    // 触发条件比「视图」更窄一层 —— 只有**分区专属分类**才补：
+    //   专属分类（category.sectionId != null）名可能在不同分区重名（PRD q-02），非消歧不可；
+    //   全局分类（sectionId == null）名字全局唯一，补前缀只是噪音。
+    // 规范 §2.4 的示意图正是这个口径：「装修·主材」「装修·人工」带前缀，而全局的「餐饮」
+    // 「工资」不带 —— 照图实现，不自作主张。
+    // ⚠️ 前缀只加在**视觉文本**上：读屏串末尾已单独念分区名，再加前缀会念两遍。
+    val plainCategoryName = full.category?.name ?: uncategorizedLabel
+    val needPrefix = showSectionPrefix &&
+        full.category?.sectionId != null &&
+        full.section != null
+    val categoryLabel =
+        if (needPrefix) "${full.section.name} · $plainCategoryName" else plainCategoryName
 
     // 读屏串：行内三个 Text 节点会被 TalkBack 分三次朗读，失去「这是一笔账」的整体语义。
     // 顺序按「最重要在前」：方向 → 分类 → 金额 → 时间 → 分区 → 备注/单据。
@@ -146,12 +168,23 @@ internal fun EntryRow(
     }
     val speechHasNote = stringResource(R.string.a11y_has_note)
     val speechImageCount = stringResource(R.string.a11y_image_count, full.images.size)
+    // v4：状态词必须进读屏串 —— 视觉上是两个 14dp 的小符号，读屏用户完全看不到
+    val speechReconciled = stringResource(R.string.a11y_reconciled)
+    val speechReimbursePending = stringResource(R.string.a11y_reimburse_pending)
+    val speechReimburseCleared = stringResource(R.string.a11y_reimburse_cleared)
     val speech = buildString {
         append(speechDirection)
         append("，")
         append(full.category?.name ?: speechUncategorized)
         append("，")
         append(speechAmount)
+        // 状态紧跟在金额之后：它是「这笔账还要不要跟」的可操作信息，优先级高于时间
+        if (full.entry.reconciled) append("，$speechReconciled")
+        when (full.entry.reimburseState) {
+            ReimburseState.PENDING -> append("，$speechReimbursePending")
+            ReimburseState.CLEARED -> append("，$speechReimburseCleared")
+            else -> Unit
+        }
         append("，")
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
         full.section?.let { append("，${it.name}") }
@@ -160,15 +193,29 @@ internal fun EntryRow(
     }
 
     val moreActionsLabel = stringResource(R.string.a11y_more_actions)
-    val uncategorizedLabel = stringResource(R.string.uncategorized)
 
     Box(modifier = Modifier.fillMaxWidth()) {
+        // 分区胶带色：账目行颜色的**唯一**含义（F4 —— 分区身份由色条承担，
+        // 所以分类名不再带「装修 · 」文字前缀，符号簇也不再引入第三套色彩语义）
+        // （唯一的例外是「全部分区」视图下对专属分类补前缀，见上方 categoryLabel）
+        val barColor = tapeColor(full.section?.colorIndex ?: 0)
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                 )
+                // 左侧 3dp 通高色条用 drawBehind 绘制而非加布局节点：
+                // 布局方案要让它的 fillMaxHeight 拿到确定高度，就得引入 IntrinsicSize.Min
+                // 或嵌套一层 Row；绘制方案零结构改动，边界也真正贴到行的上下沿。
+                .drawBehind {
+                    drawRect(
+                        color = barColor,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height),
+                    )
+                }
                 // mergeDescendants 把行内子文本合并成一个语义节点；下拉菜单是 Box 的兄弟节点、
                 // 不在本 Row 内，因此不会被吞进来（否则会一次念出全部菜单项）
                 .semantics(mergeDescendants = true) { contentDescription = speech }
@@ -177,9 +224,17 @@ internal fun EntryRow(
                     onLongClickLabel = moreActionsLabel,
                     onLongClick = { menuOpen = true },
                 )
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                // start 留 12dp 给色条（3dp 色条 + 9dp 呼吸）
+                .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 状态符号簇：核对 ✓ + 报销 ○/●（两个槽恒定占位 14dp，空槽不收缩，
+            // 否则同行不同账目的分类名会左右错位，流水列表的纵向节奏就断了）
+            EntryStatusCluster(
+                reconciled = full.entry.reconciled,
+                reimburseState = full.entry.reimburseState,
+            )
+            Spacer(modifier = Modifier.width(7.dp))
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -205,7 +260,7 @@ internal fun EntryRow(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = full.category?.name ?: uncategorizedLabel,
+                    text = categoryLabel,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
