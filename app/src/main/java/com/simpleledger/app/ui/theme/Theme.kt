@@ -259,28 +259,16 @@ val TabularNums = TextStyle(fontFeatureSettings = "tnum")
  *
  * v4 起不再维护独立的 chartPalette —— 分区色与图表色是同一套，
  * 从此不会出现「图表里的绿不是分区的绿」这种语义割裂。
+ *
+ * ⚠️ 取色**由调用方按「身份」决定**，不再有通用的 `shareColor(index)`：
+ * 分区占比环图 / 分类金额条形图的颜色都表示「属于哪个分区」，直接用
+ * `tapeColor(分区.colorIndex)`。旧版 `shareColor(index, isMerged)` 按序号
+ * 轮转色板、还给合并桶固定墨灰，那是写给已退役的「分类占比环图」的
+ * —— 颜色在它身上要同时表达「分类」这个身份，8 色轮转必然撞色（已实测）。
+ * 拆成双图后，颜色语义回归单一的「分区身份」，取色也就回归一行 `tapeColor`。
  */
 @Composable
 fun chartPalette(): List<Color> = tapePalette()
-
-/**
- * 环比图 / 图例的扇区取色。**图表与图例必须共用这一个函数**，
- * 否则两处各取各的，迟早会漂移成「图例的蓝不是图上那块蓝」。
- *
- * @param index   在已排序扇区列表里的序号（0 起）
- * @param isMerged 是否为「其他 N 类」这个合并桶
- *
- * 两个约定：
- *  ① 真实分类按序取胶带色板 —— 不新增色板（规范 §2.5）。
- *  ② **合并桶固定中性墨灰**（`tape[7]` 暖灰 `#7E7062`），不参与轮转。
- *     轮转会让「其他」拿到和最大扇区相同的颜色，而颜色是这张图唯一的
- *     「类别 → 图形」映射，同色即等于没映射。
- */
-@Composable
-fun shareColor(index: Int, isMerged: Boolean = false): Color {
-    val palette = tapePalette()
-    return if (isMerged) palette[7] else palette[index % palette.size]
-}
 
 @Composable
 fun SimpleLedgerTheme(

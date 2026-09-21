@@ -6,7 +6,6 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.logic.CategoryShare
 import com.simpleledger.app.logic.StatsCalculator
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
@@ -74,66 +73,62 @@ class StatsCalculatorTest {
         assertEquals(0, StatsCalculator.categoryShares(emptyList()).size)
     }
 
-    /* ---------------------------------------------- 读图兜底①：小扇区合并 */
+    /* ------------------------------------- 分区占比环图 + 双图联动（§2.5 v2.1） */
 
-    private fun share(id: Long, name: String, total: Long, fraction: Double) =
+    private fun section(id: Long, name: String, expense: Long, colorIndex: Int = 0) =
+        com.simpleledger.app.data.local.entity.SectionTotal(
+            sectionId = id, name = name, iconId = 1, colorIndex = colorIndex,
+            note = "", budgetCents = 0, expense = expense, income = 0, count = 1,
+        )
+
+    private fun cat(id: Long, name: String, total: Long, sectionId: Long?) =
         CategoryShare(
             total = CategoryTotal(
                 categoryId = id, name = name, iconId = 2,
-                sectionId = null, sectionName = null, sectionIconId = null,
-                sectionColorIndex = null, total = total, count = 1,
+                sectionId = sectionId, sectionName = "分区$sectionId", sectionIconId = 1,
+                sectionColorIndex = 0, total = total, count = 1,
             ),
-            fraction = fraction,
+            fraction = 0.0,
         )
 
     @Test
-    fun `tiny slices are folded into one other bucket`() {
-        // 3° = 0.8333%。医疗 / 购物 都在线下，必须合并；人工 9.9% 必须留下。
-        val shares = listOf(
-            share(1, "主材", 9000L, 0.9000),
-            share(2, "人工", 990L, 0.0990),
-            share(3, "医疗", 6L, 0.0006),
-            share(4, "购物", 4L, 0.0004),
+    fun `section shares skip zero expense sections and keep DAO order`() {
+        val sections = listOf(
+            section(1, "日常开支", 4578_50L),
+            section(2, "装修", 92068_00L),
+            section(3, "旅行", 0L),          // 本月一分没花 → 不进环
         )
-        val merged = StatsCalculator.mergeSmallShares(shares)
+        val shares = StatsCalculator.sectionShares(sections)
 
-        assertEquals(3, merged.size)
-        assertEquals(listOf("主材", "人工", "其他 2 类"), merged.map { it.total.name })
-        // isMerged 只对合并桶为真 —— 它决定取色走中性墨灰而非色板轮转
-        assertEquals(listOf(false, false, true), merged.map { it.isMerged })
-
-        val bucket = merged.last().total
-        assertEquals(10L, bucket.total)   // 6 + 4
-        assertEquals(2, bucket.count)
-        assertEquals(-1L, bucket.categoryId)  // 哨兵：点不到任何真实分类
-        assertNull(bucket.sectionId)          // 跨分区聚合，无单一归属
+        assertEquals(2, shares.size)
+        // 保持 DAO 的分区排序（sortOrder），环上按用户自己的排布出现，不被金额打乱
+        assertEquals(listOf("日常开支", "装修"), shares.map { it.section.name })
+        val grand = (4578_50L + 92068_00L).toDouble()
+        assertEquals(4578_50L / grand, shares[0].fraction, 1e-9)
+        assertEquals(92068_00L / grand, shares[1].fraction, 1e-9)
     }
 
     @Test
-    fun `slices are capped at the tape palette size to avoid duplicate colors`() {
-        // 12 类各 8.33%（都远大于 3°）→ 小扇区规则拦不住，必须靠色板容量拦。
-        // 否则第 9 项起回头复用 8 色板，环上会出现两块同色扇区。
-        val shares = (1..12).map { share(it.toLong(), "类$it", 100L, 1.0 / 12) }
-        val merged = StatsCalculator.mergeSmallShares(shares)
-
-        assertEquals(StatsCalculator.TAPE_PALETTE_SIZE + 1, merged.size)  // 8 + 其他
-        assertEquals("其他 4 类", merged.last().total.name)
-        assertEquals(400L, merged.last().total.total)
-        // 合并后占比仍然收敛到 1，图例百分比不会加起来不等于 100%
-        assertEquals(1.0, merged.sumOf { it.fraction }, 1e-9)
+    fun `section shares return empty when nothing was spent`() {
+        val allZero = listOf(section(1, "日常开支", 0L), section(2, "装修", 0L))
+        assertEquals(0, StatsCalculator.sectionShares(allZero).size)
+        assertEquals(0, StatsCalculator.sectionShares(emptyList()).size)
     }
 
     @Test
-    fun `nothing to merge returns the very same list`() {
+    fun `filter by section keeps only that section's categories`() {
+        // 同名分类可以跨分区存在（PRD q-02），所以按「分类自身归属」过滤：
+        // 与条形图的着色规则（颜色＝分类所属分区的胶带色）是同一条口径。
         val shares = listOf(
-            share(1, "主材", 6000L, 0.60),
-            share(2, "人工", 4000L, 0.40),
+            cat(13, "主材", 30180L, sectionId = 2L),   // 装修·主材
+            cat(1, "餐饮", 291L, sectionId = 1L),      // 日常开支·餐饮
+            cat(14, "人工", 22100L, sectionId = 2L),   // 装修·人工
         )
-        val merged = StatsCalculator.mergeSmallShares(shares)
-        assertEquals(2, merged.size)
-        assertEquals(shares, merged)
-        assertEquals(0, StatsCalculator.mergeSmallShares(emptyList()).size)
-        assertEquals(1, StatsCalculator.mergeSmallShares(listOf(shares[0])).size)
+        val onlyDecor = StatsCalculator.filterBySection(shares, sectionId = 2L)
+
+        assertEquals(listOf("主材", "人工"), onlyDecor.map { it.total.name })
+        // null = 不筛选，原样返回（不复制、不重排）
+        assertEquals(shares, StatsCalculator.filterBySection(shares, sectionId = null))
     }
 
     /* ------------------------------------------------- 占比文案 */

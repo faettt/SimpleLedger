@@ -1,11 +1,13 @@
 package com.simpleledger.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,49 +21,63 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.simpleledger.app.logic.CategoryShare
+import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
-import com.simpleledger.app.ui.theme.shareColor
 import com.simpleledger.app.util.Money
+import kotlin.math.atan2
+import kotlin.math.hypot
 
 /** 读屏机密模式下的统一占位串：绝不把真实金额交给 TTS */
 private const val HIDDEN_SPEECH = "金额已隐藏"
 
 /**
- * 环形饼图的读屏摘要（纯函数，便于单测）。
+ * 分区占比环图的读屏摘要（纯函数，便于单测）。
  *
- * Canvas 绘制对读屏是一片空白，故用一段文字替代整块图：先说结论（共 N 类），
- * 再按占比从高到低列前 [maxItems] 项，其余归入「等 N 类」，避免长列表把读屏淹掉。
+ * Canvas 绘制对读屏是一片空白，故用一段文字替代整块图：先说结论（共 N 个分区），
+ * 再按占比从高到低逐个列出（分区数量受用户控制、不会太多，可全列）。
  */
-internal fun pieChartSpeech(
-    shares: List<CategoryShare>,
+internal fun sectionDonutSpeech(
+    shares: List<SectionShare>,
     totalCents: Long,
+    hidden: Boolean,
+): String {
+    if (shares.isEmpty()) return "分区占比：本月暂无支出"
+    if (hidden) return "分区占比：共 ${shares.size} 个分区，$HIDDEN_SPEECH"
+
+    val items = shares.joinToString("；") { share ->
+        "${share.section.name} ${StatsCalculator.percentLabel(share.fraction)}，" +
+            Money.toChineseSpeech(share.section.expense)
+    }
+    return "分区占比：共 ${shares.size} 个分区，总支出 ${Money.toChineseSpeech(totalCents)}。$items"
+}
+
+/** 分类金额条形图的读屏摘要（纯函数）：合计 + 前 5 类 + 其余归为「等 N 类」。 */
+internal fun categoryBarSpeech(
+    labels: List<String>,
+    amounts: List<Long>,
     hidden: Boolean,
     maxItems: Int = 5,
 ): String {
-    if (shares.isEmpty()) return "分类占比：暂无数据"
-    if (hidden) return "分类占比：共 ${shares.size} 类，$HIDDEN_SPEECH"
-
-    val shown = shares.take(maxItems)
-    val items = shown.joinToString("；") { share ->
-        val percent = StatsCalculator.percentLabel(share.fraction)
-        "${share.total.name} $percent，${Money.toChineseSpeech(share.total.total)}"
+    if (amounts.isEmpty()) return "分类金额：本月暂无支出"
+    val total = amounts.sumOf { it }
+    if (hidden) return "分类金额：共 ${amounts.size} 类，$HIDDEN_SPEECH"
+    val shown = amounts.indices.take(maxItems).joinToString("；") { i ->
+        "${labels[i]} ${Money.toChineseSpeech(amounts[i])}"
     }
-    val rest = shares.size - shown.size
+    val rest = amounts.size - maxItems
     val tail = if (rest > 0) "；等 $rest 类" else ""
-    return "分类占比：共 ${shares.size} 类，总支出 ${Money.toChineseSpeech(totalCents)}。$items$tail"
+    return "分类金额：共 ${amounts.size} 类，合计 ${Money.toChineseSpeech(total)}。$shown$tail"
 }
 
-/**
- * 每日支出柱状图的读屏摘要（纯函数）：给出总天数、峰值日与合计。
- * 逐日朗读 30 多条是噪音，峰值 + 合计才是用户真正需要的两个数。
- */
+/** 每日支出柱状图的读屏摘要（纯函数）：给出总天数、峰值日与合计。
+ * 逐日朗读 30 多条是噪音，峰值 + 合计才是用户真正需要的两个数。 */
 internal fun barChartSpeech(
     daily: List<Pair<Int, Long>>,
     daysInMonth: Int,
@@ -78,36 +94,55 @@ internal fun barChartSpeech(
 }
 
 /**
- * 环形饼图：分类支出占比。
- * 中心显示当月支出总额。
+ * 环图的一个扇区。颜色由调用方给 —— 环图只管画，不该知道「颜色代表什么」。
+ *
+ * 这个决定来自 §2.5 v2.1 的裁定：环图的扇区是**分区**、颜色是分区胶带色；
+ * 旧版「分类占比环图」把颜色借给分类，让读者把青绿扇区误读成某个分区，已被拆掉。
+ */
+data class DonutSlice(
+    /** 图例 / 读屏串用 */
+    val label: String,
+    /** 0.0 ~ 1.0 */
+    val fraction: Double,
+    val color: androidx.compose.ui.graphics.Color,
+)
+
+/**
+ * 环形图：**通用的环图绘制器**，不知道也不关心扇区代表什么。
  *
  * 两条实现约定（都来自「读图兜底」）：
- * ① 扇区配色走 [shareColor]——与图例**共用同一个函数**，颜色不会两处各飞；
- *    合并桶（「其他 N 类」）固定中性墨灰。
- * ② 百分比**直接画在扇区上**（规范 §2.5 兜底②）。只在「放得下」的扇区上画：
+ * ① 百分比**直接画在扇区上**（规范 §2.5 兜底②）。只在「放得下」的扇区上画：
  *    以该扇区在环带中线处的弧长是否容得下这段文字为准，而不是拍一个固定角度阈值
  *    ——阈值写死会在窄图上溢出、在宽图上白留空间。
+ * ② 选中扇区**加粗环带**（stroke + 12f）——规范 §2.1 的「选中态不止变色，还有形变」
+ *    同样适用于图表：形变比变色更有信息量。
+ *
+ * @param onSliceClick 点到某个扇区时回调其下标（双图联动的入口）；null = 不可点。
+ *   命中判定用环带内外半径 + 极角，与 Canvas 的几何完全共用 [DonutGeometry]。
  */
 @Composable
-fun CategoryPieChart(
-    shares: List<CategoryShare>,
-    totalCents: Long,
+fun DonutChart(
+    slices: List<DonutSlice>,
+    centerLabel: String,
+    centerValue: String,
+    speech: String,
     modifier: Modifier = Modifier,
-    /** 隐私模式：真实金额不得进入读屏 */
-    hidden: Boolean = false,
+    selectedIndex: Int? = null,
+    onSliceClick: ((Int) -> Unit)? = null,
 ) {
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val holeColor = MaterialTheme.colorScheme.surface
     val labelColor = MaterialTheme.colorScheme.surface
     // sp → px 必须经 LocalDensity 换算：Canvas 原生画笔只认像素，
-    // 直接写 textSize = 24f 在 3x 屏上只有 8dp，小到读不出来。
+    // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
-    // 配色必须在 Canvas 之外算好：shareColor 是 @Composable，而 Canvas 的
-    // DrawScope 只是绘制回调、不是组合上下文，在那里调用会编译失败。
-    val sliceColors = shares.mapIndexed { index, share -> shareColor(index, share.isMerged) }
-    // 整块图用一个语义节点替代：clearAndSetSemantics 会清掉 Canvas/中心文字等子节点的默认语义，
-    // 避免读屏把「总支出」「¥…」与摘要重复念两遍
-    val speech = pieChartSpeech(shares, totalCents, hidden)
+    // 配色已在调用方算好（[DonutSlice.color]）。这里只取与主题相关、与数据无关的颜色。
+    //
+    // ⚠️ 手势处理要用「最新值」而不是闭包捕获：pointerInput 的 key 若传每次重组
+    // 都新建的 List（slices），手势协程会随重组不断取消重启 —— 真机上实测
+    // 点扇区毫无反应。标准写法是 key 传 Unit，数据经 rememberUpdatedState 注入。
+    val currentSlices = androidx.compose.runtime.rememberUpdatedState(slices)
+    val currentOnSliceClick = androidx.compose.runtime.rememberUpdatedState(onSliceClick)
 
     Box(
         modifier = modifier
@@ -116,13 +151,36 @@ fun CategoryPieChart(
             .clearAndSetSemantics { contentDescription = speech },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = 56f
-            val diameter = minOf(size.width, size.height) - stroke * 2
-            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-            val arcSize = Size(diameter, diameter)
-            val cx = size.width / 2f
-            val cy = size.height / 2f
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                // key 传 Unit：手势协程只启动一次，数据经上面的 rememberUpdatedState 注入
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val g = DonutGeometry(size.width.toFloat(), size.height.toFloat())
+                        val dx = offset.x - g.cx
+                        val dy = offset.y - g.cy
+                        val dist = hypot(dx.toDouble(), dy.toDouble())
+                        // 只认环带本身：点到环心（那是总额数字）或环外都不算
+                        if (dist < g.innerR || dist > g.outerR) return@detectTapGestures
+                        // Canvas 的 drawArc 以 3 点方向为 0°、顺时针增；
+                        // 环的起点在 12 点方向，故先把极角转成「从环起点顺时针」的相对角
+                        val deg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble()))
+                        val rel = ((deg - 270.0) + 360.0) % 360.0
+                        var acc = 0.0
+                        var hit = currentSlices.value.lastIndex
+                        for ((i, s) in currentSlices.value.withIndex()) {
+                            acc += s.fraction * 360.0
+                            if (rel <= acc) {
+                                hit = i
+                                break
+                            }
+                        }
+                        currentOnSliceClick.value?.invoke(hit)
+                    }
+                },
+        ) {
+            val g = DonutGeometry(size.width, size.height)
             val paint = android.graphics.Paint().apply {
                 color = labelColor.toArgb()
                 textSize = labelPx
@@ -131,45 +189,45 @@ fun CategoryPieChart(
                 textAlign = android.graphics.Paint.Align.CENTER
             }
 
-            if (shares.isEmpty()) {
+            if (slices.isEmpty()) {
                 drawArc(
                     color = trackColor,
                     startAngle = 0f,
                     sweepAngle = 360f,
                     useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = stroke, cap = StrokeCap.Butt),
+                    topLeft = g.topLeft,
+                    size = g.arcSize,
+                    style = Stroke(width = g.stroke, cap = StrokeCap.Butt),
                 )
             } else {
                 var startAngle = -90f
-                shares.forEachIndexed { index, share ->
-                    val sweep = (share.fraction * 360f).toFloat()
+                slices.forEachIndexed { index, slice ->
+                    val sweep = (slice.fraction * 360f).toFloat()
+                    // 选中扇区环带加粗（形变，见组件说明②）
+                    val band = if (index == selectedIndex) g.stroke + 12f else g.stroke
                     drawArc(
-                        color = sliceColors[index],
+                        color = slice.color,
                         startAngle = startAngle,
                         sweepAngle = sweep,
                         useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(width = stroke, cap = StrokeCap.Butt),
+                        topLeft = g.topLeft,
+                        size = g.arcSize,
+                        style = Stroke(width = band, cap = StrokeCap.Butt),
                     )
 
                     // 兜底②：占比数值直接标在图上
-                    if (!hidden) {
-                        val text = StatsCalculator.percentLabel(share.fraction)
-                        val textWidth = paint.measureText(text)
-                        // 环带中线半径 = diameter/2（Stroke 以路径为中心向两侧各扩 stroke/2）
-                        val arcLength = Math.toRadians(sweep.toDouble()).toFloat() * (diameter / 2f)
-                        if (textWidth + 10f <= arcLength) {
-                            val midRad = Math.toRadians((startAngle + sweep / 2f).toDouble())
-                            val px = cx + (diameter / 2f) * kotlin.math.cos(midRad).toFloat()
-                            val py = cy + (diameter / 2f) * kotlin.math.sin(midRad).toFloat()
-                            // baseline 垂直居中：加回约半行高（0.36em 是常见近似值）
-                            drawContext.canvas.nativeCanvas.drawText(
-                                text, px, py + labelPx * 0.36f, paint,
-                            )
-                        }
+                    val text = StatsCalculator.percentLabel(slice.fraction)
+                    val textWidth = paint.measureText(text)
+                    // 环带中线半径 = diameter/2（Stroke 以路径为中心向两侧各扩 stroke/2）
+                    val arcLength = Math.toRadians(sweep.toDouble()).toFloat() * (g.diameter / 2f)
+                    if (textWidth + 10f <= arcLength) {
+                        val midRad = Math.toRadians((startAngle + sweep / 2f).toDouble())
+                        val px = g.cx + (g.diameter / 2f) * kotlin.math.cos(midRad).toFloat()
+                        val py = g.cy + (g.diameter / 2f) * kotlin.math.sin(midRad).toFloat()
+                        // baseline 垂直居中：加回约半行高（0.36em 是常见近似值）
+                        drawContext.canvas.nativeCanvas.drawText(
+                            text, px, py + labelPx * 0.36f, paint,
+                        )
                     }
                     startAngle += sweep
                 }
@@ -177,19 +235,194 @@ fun CategoryPieChart(
             // 中心挖空成环
             drawCircle(
                 color = holeColor,
-                radius = (diameter - stroke * 2) / 2f,
-                center = Offset(cx, cy),
+                radius = (g.diameter - g.stroke * 2) / 2f,
+                center = Offset(g.cx, g.cy),
             )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("总支出", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(centerLabel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                // 隐私模式：环心是屏幕正中最醒目的一处，真实金额绝不能落在视觉上；与图例/概览卡写法一致
-                text = if (hidden) "••••" else Money.formatWithSymbol(totalCents),
+                text = centerValue,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+}
+
+/** 环图的几何：**绘制与点击命中判定必须共用这一份**，否则点到的扇区和看到的不一致。 */
+private class DonutGeometry(width: Float, height: Float) {
+    val stroke = 56f
+    val diameter = minOf(width, height) - stroke * 2
+    val cx = width / 2f
+    val cy = height / 2f
+    /** 环带内沿 / 外沿半径（Stroke 以路径为中心向两侧各扩 stroke/2） */
+    val innerR = (diameter - stroke) / 2f
+    val outerR = (diameter + stroke) / 2f
+    val topLeft = Offset((width - diameter) / 2f, (height - diameter) / 2f)
+    val arcSize = Size(diameter, diameter)
+}
+
+/**
+ * 分区占比环图（规范 §2.5 v2.1）。
+ *
+ * 扇区 = 分区、颜色 = 该分区的胶带色 —— **颜色语义在这里回归分区身份**。
+ * 旧版「分类占比环图」让颜色兼任分类标识，8 色板循环到第 9 类必然撞色，
+ * 且读者会把青绿扇区误读成某个分区；拆成「分区环图 + 分类条形图」后两个问题都消失。
+ *
+ * 不做「小扇区并入其他」（规范兜底①的原机制）：分区是用户亲手建的一级对象，
+ * 把它藏进一个无名的桶里，比藏掉一个分类伤害更大；且分区数天然 ≤ 色板容量，
+ * 不存在撞色问题。小扇区的可读性由兜底②（环上百分比）与完整图例承担。
+ *
+ * @param selectedIndex 当前被点选的分区下标（双图联动），null = 未选中
+ */
+@Composable
+fun SectionDonutChart(
+    shares: List<SectionShare>,
+    totalCents: Long,
+    hidden: Boolean,
+    selectedIndex: Int? = null,
+    onSliceClick: ((Int) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    // 颜色必须在调用方（这里是本包装）算好：tapeColor 是 @Composable，
+    // 而 Canvas / pointerInput 的 lambda 都不是组合上下文，在那里读会编译失败。
+    val slices = shares.map { share ->
+        com.simpleledger.app.ui.theme.tapeColor(share.section.colorIndex).let { color ->
+            DonutSlice(
+                label = share.section.name,
+                fraction = share.fraction,
+                color = color,
+            )
+        }
+    }
+    DonutChart(
+        slices = slices,
+        centerLabel = "总支出",
+        centerValue = if (hidden) "••••" else Money.formatWithSymbol(totalCents),
+        speech = sectionDonutSpeech(shares, totalCents, hidden),
+        selectedIndex = selectedIndex,
+        onSliceClick = onSliceClick,
+        modifier = modifier,
+    )
+}
+
+/** 分类金额条形图的一根条。颜色由调用方给（＝该分类所属分区的胶带色）。 */
+data class BarRow(
+    val label: String,
+    val amountCents: Long,
+    val color: androidx.compose.ui.graphics.Color,
+)
+
+/**
+ * 分类金额横向条形图（规范 §2.5 v2.1）。
+ *
+ * **颜色不参与区分类别** —— 条形图是「长度编码」，颜色在它身上是冗余通道；
+ * 每根条的颜色表示它**属于哪个分区**（与环图同一条颜色通道），类别靠标签区分。
+ *
+ * 「读图兜底②」（数值直接标在图上）在这里是**必须项而不是装饰**：
+ * 线性刻度下 21 元与 18,000 元的条长差近三个数量级，尾部的条必然接近 0，
+ * 数值标注是让尾条仍可读的唯一办法。
+ *
+ * @param rows 已按金额降序排列（调用方负责排序），条形图不重排
+ */
+@Composable
+fun CategoryBarChart(
+    rows: List<BarRow>,
+    modifier: Modifier = Modifier,
+    hidden: Boolean = false,
+) {
+    if (rows.isEmpty()) return
+    val barColorTrack = MaterialTheme.colorScheme.surfaceVariant
+    val labelColor = MaterialTheme.colorScheme.onSurface
+    val amountColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val axisColor = MaterialTheme.colorScheme.outlineVariant
+    val labelPx = with(LocalDensity.current) { 12.sp.toPx() }
+    val amountPx = with(LocalDensity.current) { 11.sp.toPx() }
+
+    val rowPitch = 30.dp
+    // 全部展开（用户裁定）：条数 = 分类数，高度随条数走，不做限高/折叠
+    val height = rowPitch * rows.size + 6.dp
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .clearAndSetSemantics {
+                contentDescription = categoryBarSpeech(
+                    rows.map { it.label }, rows.map { it.amountCents }, hidden,
+                )
+            },
+    ) {
+        val labelPaint = android.graphics.Paint().apply {
+            color = labelColor.toArgb()
+            textSize = labelPx
+            isAntiAlias = true
+        }
+        val amountPaint = android.graphics.Paint().apply {
+            color = amountColor.toArgb()
+            textSize = amountPx
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.RIGHT
+        }
+
+        // 标签列宽随最长的标签走（中文 1 字 ≈ 1em），金额列宽随最长的金额走。
+        // 写死会要么截断「装修·设计费」，要么在只有两三个分类时留出大片空白。
+        val maxLabelW = rows.maxOf { labelPaint.measureText(it.label) }
+        val maxAmountW = rows.maxOf { amountPaint.measureText(Money.formatCents(it.amountCents)) }
+        val labelW = maxLabelW + 10f
+        val amountW = maxAmountW + 10f
+        val gap = 10f
+        val barW = (size.width - labelW - amountW - gap * 2).coerceAtLeast(20f)
+        val barX = labelW + gap
+        val maxCents = rows.maxOf { it.amountCents }.coerceAtLeast(1L)
+
+        rows.forEachIndexed { index, row ->
+            val centerY = index * rowPitch.toPx() + rowPitch.toPx() / 2f
+            val labelY = centerY + labelPx * 0.36f
+            drawContext.canvas.nativeCanvas.drawText(
+                row.label, 0f, labelY, labelPaint,
+            )
+
+            val barH = 16.dp.toPx()
+            val len = (row.amountCents.toFloat() / maxCents) * barW
+            // 马克笔涂条：左端整齐（都在同一条起跑线上才可比），右端微不规则 + 圆角
+            val r = minOf(barH / 2f, 4f)
+            val path = Path().apply {
+                moveTo(barX, centerY - barH / 2f)
+                lineTo(barX + len - r, centerY - barH / 2f)
+                quadraticTo(barX + len, centerY - barH / 2f, barX + len, centerY - barH / 2f + r)
+                lineTo(barX + len, centerY + barH / 2f - r)
+                quadraticTo(barX + len, centerY + barH / 2f, barX + len - r, centerY + barH / 2f)
+                close()
+            }
+            // 凹槽底：让「几乎为 0」的条也能看出「有这一类」，而不是空出一截
+            drawRect(
+                color = barColorTrack,
+                topLeft = Offset(barX, centerY - barH / 2f),
+                size = Size(barW, barH),
+            )
+            drawPath(path = path, color = row.color)
+
+            // 兜底②：金额标在条右侧 —— 尾部条长接近 0 时，数值是唯一的可读通道
+            if (!hidden) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    Money.formatCents(row.amountCents),
+                    size.width - amountW * 0.1f,
+                    centerY + amountPx * 0.36f,
+                    amountPaint,
+                )
+            }
+            // 隐私模式下金额不能上屏，但「这一类有多长」仍可用条长读出（长度不含敏感数字）
+        }
+
+        // 与下方区块的分隔（分类金额图没有自己的轴线，用一条细线收尾）
+        drawLine(
+            color = axisColor,
+            start = Offset(0f, size.height - 1f),
+            end = Offset(size.width, size.height - 1f),
+            strokeWidth = 1f,
+        )
     }
 }
 

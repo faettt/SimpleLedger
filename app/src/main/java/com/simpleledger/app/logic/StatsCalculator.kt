@@ -3,6 +3,7 @@ package com.simpleledger.app.logic
 import com.simpleledger.app.data.local.entity.CategoryTotal
 import com.simpleledger.app.data.local.entity.EntryEntity
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.data.local.entity.SectionTotal
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -22,18 +23,54 @@ object StatsCalculator {
 
     fun balance(incomeCents: Long, expenseCents: Long): Long = incomeCents - expenseCents
 
-    /** 分类占比（用于饼图），总额为 0 时返回空 */
+    /** 分类金额（用于横向条形图），总额为 0 时返回空 */
     fun categoryShares(totals: List<CategoryTotal>): List<CategoryShare> {
         val grand = totals.sumOf { it.total }
         if (grand <= 0) return emptyList()
         return totals.map { CategoryShare(it, it.total.toDouble() / grand) }
     }
 
-    /** 和纸胶带色板容量：环上一张图最多几个真实分类 */
-    const val TAPE_PALETTE_SIZE = 8
+    /**
+     * 分区占比（用于分区占比环图，规范 §2.5 v2.1）。
+     *
+     * 两条口径：
+     * - **只按支出聚合**：这张环图回答的是「钱花在哪个分区」，收入不计入；
+     * - **支出为 0 的分区不进环**：一个 0 元的分区是几何上不存在的扇区，
+     *   画出来只会得到一条发丝。它仍会出现在图例里吗？也不会——图例与环图
+     *   必须是同一份数据（否则「图例里有个分区、环上却找不到」）。
+     *   「这个月一分没花的分区」这个事实由分区首屏的卡片承载，不在统计页。
+     *
+     * 输入保持 DAO 的分区排序（`sortOrder`），环上扇区按用户自己的排布出现，
+     * 而不是按金额大小重排 —— 分区顺序是用户亲手定的，不该被金额悄悄打乱。
+     *
+     * @return 支出合计为 0 时返回空列表（环图画成整圈灰环，由调用方判空态）。
+     */
+    fun sectionShares(sections: List<SectionTotal>): List<SectionShare> {
+        val grand = sections.sumOf { it.expense }
+        if (grand <= 0) return emptyList()
+        return sections
+            .filter { it.expense > 0 }
+            .map { SectionShare(it, it.expense.toDouble() / grand) }
+    }
 
-    /** 环上最小可视角度 3° 对应的占比 */
-    const val MIN_SLICE_FRACTION = 3.0 / 360.0
+    /**
+     * 双图联动（规范 §2.5 G4）：点环图某分区后，条形图只保留该分区内的分类。
+     *
+     * 分类是否属于某分区，看的是**分类自身的归属**（`CategoryTotal.sectionId`），
+     * 而不是账目的分区 —— 因为这张图的每个分类金额是**按分类 id 跨账目聚合**的，
+     * 同一个全局分类（如「餐饮」）的账目可能散在多个分区里。按「分类归属」过滤
+     * 与条形图的着色规则（颜色＝分类所属分区的胶带色）是同一条口径，不会出现
+     * 「条的颜色是 A 分区、却被归进了 B 分区」的自相矛盾。
+     *
+     * @param sectionId null = 不筛选（全部分类）。
+     */
+    fun filterBySection(
+        shares: List<CategoryShare>,
+        sectionId: Long?,
+    ): List<CategoryShare> {
+        if (sectionId == null) return shares
+        return shares.filter { it.total.sectionId == sectionId }
+    }
 
     /**
      * 占比文案（图例 / 环上标注 / 读屏串共用一份）。
@@ -50,61 +87,6 @@ object StatsCalculator {
         return if (percent <= 0) "<1%" else "$percent%"
     }
 
-    /**
-     * 读图兜底①（规范 §2.5）：把「看不清」的扇区并成一个「其他」桶。
-     *
-     * 两条合并规则**都必须做**，它们解决的是两个不同的问题：
-     *
-     * ① **最小可视角度**：占比 < 3° 的扇区在环上只剩一条发丝。它不只是
-     *    「自己看不见」——它把两侧扇区的角度也挤歪了，让人误判相邻两项的比例。
-     * ② **色板容量**：和纸胶带色板只有 8 色。真实分类多于 8 个时，第 9 个起
-     *    只能回头复用色板 → 环上出现两块同色扇区。而颜色是这张图**唯一**的
-     *    「类别 → 图形」映射（另外两条通道是图例文字和读屏串），同色即等于没映射。
-     *
-     * 输入须已按金额降序（[categoryShares] 保持 DAO 的排序），
-     * 这样「保留前面的、合并后面的」天然等价于「保大弃小」。
-     *
-     * 合并桶的名字是 **「其他 N 类」**，不是规范原文的「其他」——这是刻意的：
-     * 支出分类里本来就有一个叫「其他支出」的，两者在同一个图例里并排时，
-     * 「其他」会被误读成它。加个数量后缀既消除歧义，又补上了「合并掉了几个」这个信息。
-     *
-     * @return 合并后的列表；无项可并时**原样返回**（不构造多余的空桶）。
-     */
-    fun mergeSmallShares(
-        shares: List<CategoryShare>,
-        minFraction: Double = MIN_SLICE_FRACTION,
-        maxSlices: Int = TAPE_PALETTE_SIZE,
-    ): List<CategoryShare> {
-        if (shares.size <= 1) return shares
-
-        val keep = ArrayList<CategoryShare>(shares.size)
-        val merged = ArrayList<CategoryShare>(4)
-        for (share in shares) {
-            if (share.fraction >= minFraction && keep.size < maxSlices) keep += share else merged += share
-        }
-        if (merged.isEmpty()) return shares
-        if (keep.isEmpty()) return shares  // 极端数据（全是极小项）时不做无意义的合并
-
-        val mergedTotal = merged.sumOf { it.total.total }
-        val mergedCount = merged.sumOf { it.total.count }
-        val grand = keep.sumOf { it.total.total } + mergedTotal
-        val bucket = CategoryTotal(
-            // 哨兵 id：负数不可能与真实分类冲突，点击也定位不到任何分类
-            categoryId = -1L,
-            name = "其他 ${merged.size} 类",
-            // 兜底 43 = tag，与数据库迁移的兜底图标一致
-            iconId = 43,
-            // 跨多个分区聚合 → 没有单一归属，故分区字段全为 null
-            sectionId = null,
-            sectionName = null,
-            sectionIconId = null,
-            sectionColorIndex = null,
-            total = mergedTotal,
-            count = mergedCount,
-        )
-        return keep + CategoryShare(bucket, mergedTotal.toDouble() / grand, isMerged = true)
-    }
-
     fun toLocalDate(epochMillis: Long, zone: ZoneId): LocalDate =
         java.time.Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate()
 }
@@ -113,11 +95,18 @@ data class CategoryShare(
     val total: CategoryTotal,
     /** 0.0 ~ 1.0 */
     val fraction: Double,
-    /**
-     * 是否为「其他 N 类」合并桶（见 [StatsCalculator.mergeSmallShares]）。
-     *
-     * 图表与图例据此分配颜色 —— 合并桶固定中性墨灰，不参与色板轮转。
-     * 默认 false，使既有构造点与单测无需改动。
-     */
-    val isMerged: Boolean = false,
+)
+
+/**
+ * 分区占比环图的一个扇区。
+ *
+ * 与 [CategoryShare] 分开成两个类型，是因为两者的「身份维度」不同：
+ * [CategoryShare] 的身份是**分类**（可多于色板容量、需要消歧），
+ * [SectionShare] 的身份是**分区**（用户建的一级对象，数量天然 ≤ 色板容量）。
+ * 合成一个泛型类型会让调用方各自写一堆 if 来区分。
+ */
+data class SectionShare(
+    val section: SectionTotal,
+    /** 0.0 ~ 1.0（分母 = 全部分区的支出合计） */
+    val fraction: Double,
 )
