@@ -173,9 +173,9 @@ internal fun EntryRow(
     val speechHasNote = stringResource(R.string.a11y_has_note)
     val speechImageCount = stringResource(R.string.a11y_image_count, full.images.size)
     // v4：状态词必须进读屏串 —— 视觉上是两个 14dp 的小符号，读屏用户完全看不到
-    val speechReconciled = stringResource(R.string.a11y_reconciled)
-    val speechReimbursePending = stringResource(R.string.a11y_reimburse_pending)
-    val speechReimburseCleared = stringResource(R.string.a11y_reimburse_cleared)
+    val speechReconciled = stringResource(R.string.status_reconciled)
+    val speechReimbursePending = stringResource(R.string.status_reimburse_pending)
+    val speechReimburseCleared = stringResource(R.string.status_reimburse_cleared)
     val speech = buildString {
         append(speechDirection)
         append("，")

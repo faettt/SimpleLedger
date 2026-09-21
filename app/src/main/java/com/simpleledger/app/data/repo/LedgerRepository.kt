@@ -53,15 +53,20 @@ class LedgerRepository(
         sectionId: Long? = null,
         categoryId: Long? = null,
         type: Int? = null,
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
     ): Flow<List<EntryFull>> =
-        entryDao.observeEntries(start, end, sectionId, categoryId, type)
+        entryDao.observeEntries(start, end, sectionId, categoryId, type, reconciled, reimburseState)
 
     fun observeTypeTotals(
         start: Long,
         end: Long,
         sectionId: Long? = null,
         categoryId: Long? = null,
-    ): Flow<List<TypeTotal>> = entryDao.observeTypeTotals(start, end, sectionId, categoryId)
+        reconciled: Boolean? = null,
+        reimburseState: Int? = null,
+    ): Flow<List<TypeTotal>> =
+        entryDao.observeTypeTotals(start, end, sectionId, categoryId, reconciled, reimburseState)
 
     fun observeCategoryTotals(
         type: Int,

@@ -16,7 +16,15 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface EntryDao {
 
-    /** 时间范围内的账目（可按分区 / 分类 / 类型过滤），带关联信息 */
+    /**
+     * 时间范围内的账目（可按分区 / 分类 / 类型 / **双维状态**过滤），带关联信息。
+     *
+     * `reconciled` / `reimburseState` 传 null 表示该维不筛。两个参数**互相独立**
+     * （A2/D4：核对与报销是两个正交字段），所以「待核对 + 待报销」这种组合天然可用。
+     *
+     * `(:x IS NULL OR col = :x)` 这个写法是为了让「不筛」与「筛值 0」可区分：
+     * 若用 `col = COALESCE(:x, col)`，筛 `reimburseState = 0`（不适用）会退化成不筛。
+     */
     @Transaction
     @Query(
         """
@@ -25,6 +33,8 @@ interface EntryDao {
           AND (:sectionId IS NULL OR sectionId = :sectionId)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
           AND (:type IS NULL OR type = :type)
+          AND (:reconciled IS NULL OR reconciled = :reconciled)
+          AND (:reimburseState IS NULL OR reimburseState = :reimburseState)
         ORDER BY entryTime DESC, id DESC
         """
     )
@@ -34,9 +44,17 @@ interface EntryDao {
         sectionId: Long?,
         categoryId: Long?,
         type: Int?,
+        reconciled: Boolean?,
+        reimburseState: Int?,
     ): Flow<List<EntryFull>>
 
-    /** 按类型汇总（不含类型过滤，两种一起返回） */
+    /**
+     * 按类型汇总（不含类型过滤，两种一起返回）。
+     *
+     * 条件与 [observeEntries] **逐项一致**：概览卡的三个数必须等于列表里那些账目
+     * 加起来的结果。若这里少一个条件，用户筛「待报销」后就会看到列表 3 笔、
+     * 概览却是整月的钱，两个数字当场互相打脸。
+     */
     @Query(
         """
         SELECT type, COALESCE(SUM(amountCents), 0) AS total
@@ -44,6 +62,8 @@ interface EntryDao {
         WHERE entryTime >= :start AND entryTime < :end
           AND (:sectionId IS NULL OR sectionId = :sectionId)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:reconciled IS NULL OR reconciled = :reconciled)
+          AND (:reimburseState IS NULL OR reimburseState = :reimburseState)
         GROUP BY type
         """
     )
@@ -52,6 +72,8 @@ interface EntryDao {
         end: Long,
         sectionId: Long?,
         categoryId: Long?,
+        reconciled: Boolean?,
+        reimburseState: Int?,
     ): Flow<List<TypeTotal>>
 
     /**

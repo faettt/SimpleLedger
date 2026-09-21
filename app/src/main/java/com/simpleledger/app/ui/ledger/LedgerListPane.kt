@@ -53,6 +53,7 @@ import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.time.YearMonth
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.simpleledger.app.data.local.entity.ReimburseState
 
 /* 列表栏：月份头 + 概览 + 分区筛选 + 账目列表 + 移动到分区对话框的挂载点。 */
 
@@ -125,11 +126,45 @@ internal fun LedgerListPane(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // 首位「全部」= 清空一切筛选（含状态维）。用 isActive 而不是
+            // 「sectionId == null」判断选中 —— 后者在「筛了待报销」时仍显示选中，
+            // 而列表明明被筛过，chip 与列表会互相矛盾。
             item {
                 FilterChip(
-                    selected = state.filters.sectionId == null,
-                    onClick = { viewModel.filterSection(null) },
-                    label = { Text(stringResource(R.string.all_sections), fontSize = 12.5.sp) },
+                    selected = !state.filters.isActive,
+                    onClick = { viewModel.clearFilters() },
+                    label = { Text(stringResource(R.string.filter_all), fontSize = 12.5.sp) },
+                )
+            }
+            // 两个状态快捷入口（规范 §2.4 的 chip 行：全部 / 待报销 / 待核对 / 分区…）。
+            // 放在分区之前：对「装修季一天十几笔」的场景，先看「还要跟哪几笔钱」
+            // 比先看「钱花在哪个分区」更日常。
+            // 它们是开关：与分区 chip 可叠加（待报销 + 装修 = 装修里还要报的），
+            // 两个状态维也互相独立（待核对 + 待报销 = 也没对也还没报）。
+            item {
+                FilterChip(
+                    selected = state.filters.reimburseState == ReimburseState.PENDING,
+                    onClick = viewModel::togglePendingReimburse,
+                    label = {
+                        // 用账目行上同一个符号：○ —— 让 chip 与行内符号建立对应，
+                        // 比再画一个图标更省，也更不容易看错
+                        Text(
+                            "○ " + stringResource(R.string.status_reimburse_pending),
+                            fontSize = 12.5.sp,
+                        )
+                    },
+                )
+            }
+            item {
+                FilterChip(
+                    selected = state.filters.reconciled == false,
+                    onClick = viewModel::togglePendingReconcile,
+                    label = {
+                        Text(
+                            "✓ " + stringResource(R.string.status_pending_reconcile),
+                            fontSize = 12.5.sp,
+                        )
+                    },
                 )
             }
             items(state.sections, key = { it.id }) { section ->
@@ -317,6 +352,20 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
     ) {
         state.filters.type?.let { type ->
             SmallTag(stringResource(if (type == EntryType.EXPENSE) R.string.expense else R.string.income))
+        }
+        // 状态维也要在摘要条里出现，否则用户看不出列表被状态筛过 ——
+        // 快捷 chip 行会被横向滚动遮住，摘要条是唯一常在的提示。
+        if (state.filters.reconciled == false) {
+            SmallTag(stringResource(R.string.status_pending_reconcile))
+        }
+        state.filters.reimburseState?.let { value ->
+            SmallTag(
+                when (value) {
+                    ReimburseState.PENDING -> stringResource(R.string.status_reimburse_pending)
+                    ReimburseState.CLEARED -> stringResource(R.string.status_reimburse_cleared)
+                    else -> stringResource(R.string.status_reimburse_none)
+                }
+            )
         }
         selectedCategory?.let {
             // v4：激活筛选摘要用「图标 + 名称」

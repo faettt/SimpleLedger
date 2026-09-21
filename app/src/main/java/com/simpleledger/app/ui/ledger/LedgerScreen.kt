@@ -208,9 +208,10 @@ fun LedgerScreen(
         }
     }
 
-    val filtersActive = state.filters.sectionId != null ||
-        state.filters.categoryId != null ||
-        state.filters.type != null
+    // 直接问筛选模型自己有没有被设过。曾经这里手工罗列三个字段，加了状态维之后
+    // 就会漏掉两个 —— 而「有没有筛选」决定空态文案与摘要条是否出现，
+    // 漏判会让用户看到「本月还没有账目」这种明显错误的提示。
+    val filtersActive = state.filters.isActive
 
     val twoPane = layout == WindowLayout.Expanded
     val inPlaceEdit = layout != WindowLayout.Compact
@@ -421,6 +422,8 @@ fun LedgerScreen(
                 state = state,
                 onTypeChange = viewModel::filterType,
                 onCategoryChange = viewModel::filterCategory,
+                onReconcileChange = viewModel::setReconcileFilter,
+                onReimburseChange = viewModel::setReimburseFilter,
                 onClearAll = viewModel::clearFilters,
                 onDismiss = { showFilterSheet = false },
             )
