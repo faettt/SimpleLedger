@@ -397,7 +397,30 @@ private fun LedgerBottomBar(
     }
 }
 
-/** 单个索引签：选中时向上凸出，并在顶边压一道 2dp 主色横条。 */
+/**
+ * 单个索引签。
+ *
+ * **选中态不用任何"标记"元素**（2026-09-21 改）。此前在签顶边压了一道 2dp 主色实心横条，
+ * 用户反馈"有些 AI 感"——诊断下来是因为**它是整套设计里唯一用「屏幕控件语言」表达的东西**：
+ * 纯色横条横贯签宽、两端硬切，正是 Material `TabRow` indicator 的形态；
+ * 而其余元素（纸片、0.5dp 描边、纸纹、手绘图标）都在说"纸与笔"。
+ *
+ * 去掉后选中态由 5 个信号共同承担，**全部属于「纸与字」的语言**，选中感并不因此变弱
+ * （其中①是强形变）：
+ *
+ * | | 信号 | 语言 |
+ * |---|---|---|
+ * | ① | 凸出 12dp | 纸 —— 索引贴被翻到前面 |
+ * | ② | 填充 凹面 / 纸片 | 纸 —— 三层纸的明暗 |
+ * | ③ | 内容色 主墨 / 次墨 | 字 |
+ * | ④ | 字重 SemiBold / Normal | 字 |
+ * | ⑤ | 图标 22dp / 20dp | 字 |
+ *
+ * ⚠️ 配色**不可反转**（选中＝亮纸片）：未选中签若改用凹面填充，其内容色次墨 `#55736B`
+ * 在凹面 `#EFE9DC` 上的对比度只有 **4.28:1**，低于硬规则「正文 ≥4.5:1」。
+ * 现有配对之所以成立，正是因为**深色填充配深色内容**（主墨 9.48:1）、
+ * **浅色填充配浅色内容**（次墨 5.01:1）—— 反转会把这个配对拆散。
+ */
 @Composable
 private fun IndexTab(
     item: NavItem,
@@ -433,17 +456,7 @@ private fun IndexTab(
                     else MaterialTheme.colorScheme.surface,
                     shape,
                 )
-                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                // 选中签顶边的 2dp 主色横条：画在填充与描边之后、内容之前
-                .then(
-                    if (selected) {
-                        Modifier.drawBehind {
-                            drawRect(color = accent, size = Size(size.width, 2.dp.toPx()))
-                        }
-                    } else {
-                        Modifier
-                    }
-                ),
+                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
