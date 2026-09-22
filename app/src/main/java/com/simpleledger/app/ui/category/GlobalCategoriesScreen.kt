@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,12 +39,14 @@ import com.simpleledger.app.ui.components.CategoryList
 import com.simpleledger.app.ui.components.ConfirmDialog
 import com.simpleledger.app.ui.components.ContentMaxWidth
 import com.simpleledger.app.ui.components.ContentWidth
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.section.categoryDeleteMessage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
  * 全局分类管理页（N12 / Q-03）。
@@ -88,11 +87,13 @@ fun GlobalCategoriesScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0
-                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),onClick = {
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                shape = SlButtonShape,
+                onClick = {
                 categoryEditTarget = null
                 showCategoryDialog = true
             }) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+                Icon(SlIcons.Ui.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(stringResource(R.string.new_category))
             }
@@ -108,7 +109,7 @@ fun GlobalCategoriesScreen(
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            SlIcons.Ui.ArrowLeft,
                             contentDescription = stringResource(R.string.back),
                         )
                     }

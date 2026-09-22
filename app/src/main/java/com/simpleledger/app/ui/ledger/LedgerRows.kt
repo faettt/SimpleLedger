@@ -51,6 +51,7 @@ import com.simpleledger.app.logic.SectionMoveRules
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -253,7 +254,7 @@ internal fun EntryRow(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(SlButtonShape)
                     .background(
                         if (isIncome) {
                             MaterialTheme.colorScheme.surfaceVariant
@@ -512,7 +513,7 @@ internal fun MoveSectionDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(SlButtonShape)
                                     .clickable {
                                         if (SectionMoveRules.canKeepCategory(currentCategory, section.id)) {
                                             onConfirm(section.id, null)
@@ -560,7 +561,7 @@ internal fun MoveSectionDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(SlButtonShape)
                                         .clickable { selectedCategoryId = candidate.id }
                                         .padding(horizontal = 4.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,

@@ -21,13 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -43,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -71,7 +65,10 @@ import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.ui.components.CategoryDialog
+import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.incomeColor
+import com.simpleledger.app.ui.theme.slSegmentShape
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.io.File
@@ -121,12 +118,12 @@ fun EntryEditForm(
                 SegmentedButton(
                     selected = state.type == EntryType.EXPENSE,
                     onClick = { viewModel.setType(EntryType.EXPENSE) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    shape = slSegmentShape(index = 0, count = 2),
                 ) { Text(stringResource(R.string.expense)) }
                 SegmentedButton(
                     selected = state.type == EntryType.INCOME,
                     onClick = { viewModel.setType(EntryType.INCOME) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    shape = slSegmentShape(index = 1, count = 2),
                 ) {
                     Text(
                         stringResource(R.string.income),
@@ -292,7 +289,7 @@ fun EntryEditForm(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, SlipShape)
                                 .clickable { enlargedPath = image.localPath },
                         )
                         IconButton(
@@ -305,9 +302,8 @@ fun EntryEditForm(
                                 .size(24.dp),
                         ) {
                             Icon(
-                                Icons.Filled.Close,
+                                SlIcons.Ui.Close,
                                 contentDescription = "移除图片",
-                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -317,7 +313,7 @@ fun EntryEditForm(
                     Box(
                         modifier = Modifier
                             .size(84.dp)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+                            .border(1.dp, MaterialTheme.colorScheme.outline, SlButtonShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         TextButton(onClick = onPickImages) {
@@ -337,6 +333,8 @@ fun EntryEditForm(
                 Button(
                     onClick = viewModel::save,
                     enabled = !state.saving,
+                    // M3 Button 默认胶囊，显式收 4dp（规范 D2，P1-1）
+                    shape = SlButtonShape,
                     modifier = Modifier
                         .weight(if (state.isEdit) 1f else 1.4f)
                         // heightIn 而非 height：2.0× 字号下固定高度会把按钮文字竖向裁掉
@@ -349,7 +347,7 @@ fun EntryEditForm(
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
                     } else {
-                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(SlIcons.Ui.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (state.isEdit) "保存修改" else stringResource(R.string.save))
                     }
@@ -358,6 +356,7 @@ fun EntryEditForm(
                     OutlinedButton(
                         onClick = viewModel::saveAndContinue,
                         enabled = !state.saving,
+                        shape = SlButtonShape,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp),
@@ -463,7 +462,7 @@ private fun ReadOnlySectionRow(state: EntryEditUiState) {
     val section = state.section
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
+        shape = SlButtonShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -562,7 +561,7 @@ fun EntryFormHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onClose) {
-            Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
+            Icon(SlIcons.Ui.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
         }
         Text(
             text = stringResource(if (isEdit) R.string.edit_entry else R.string.add_entry),
@@ -574,9 +573,9 @@ fun EntryFormHeader(
         if (isEdit && onDelete != null) {
             IconButton(onClick = onDelete) {
                 Icon(
-                    Icons.Filled.Delete,
+                    // 手绘描边墨青（P1-5）：不再用红实心垃圾桶双重强调，破坏性语义交给确认对话框
+                    SlIcons.Ui.Delete,
                     contentDescription = stringResource(R.string.delete),
-                    tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(19.dp),
                 )
             }

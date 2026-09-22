@@ -132,6 +132,9 @@ fun DonutChart(
 ) {
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val labelColor = MaterialTheme.colorScheme.surface
+    // 小扇区引出线与环外标签（P2-1）：线用弱墨、字用主墨
+    val leadColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val leadTextColor = MaterialTheme.colorScheme.onSurface
     // sp → px 必须经 LocalDensity 换算：Canvas 原生画笔只认像素，
     // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
@@ -186,6 +189,13 @@ fun DonutChart(
                 isAntiAlias = true
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 textAlign = android.graphics.Paint.Align.CENTER
+            }
+            // 环外标签画笔：与 [paint] 同字号同字重（P2-1「统一」：数字样式只有一套）
+            val leadPaint = android.graphics.Paint().apply {
+                color = leadTextColor.toArgb()
+                textSize = labelPx
+                isAntiAlias = true
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
 
             if (slices.isEmpty()) {
@@ -251,19 +261,39 @@ fun DonutChart(
                     }
                     drawPath(path, color = slice.color)
 
-                    // 兜底②：占比数值直接标在图上（环带中线）
+                    // 兜底②：占比数值直接标在图上 —— 放得下 → 环带中线内标（反白）；
+                    // 放不下（小扇区）→ 引出线 + 环外标（P2-1）。两种落点同一套字体字号，
+                    // 数字样式完全一致，只是位置随空间走，不再出现「有的扇区有数、有的没有」。
                     val text = StatsCalculator.percentLabel(slice.fraction)
                     val textWidth = paint.measureText(text)
                     // 环带中线半径 = diameter/2（Stroke 以路径为中心向两侧各扩 stroke/2）
                     val arcLength = Math.toRadians(sweep.toDouble()).toFloat() * (g.diameter / 2f)
+                    val midRing = ringStart + sweep / 2f
                     if (textWidth + 10f <= arcLength) {
-                        val midRing = ringStart + sweep / 2f
                         val px = g.cx + (g.diameter / 2f) * kotlin.math.sin(Math.toRadians(midRing.toDouble())).toFloat()
                         val py = g.cy - (g.diameter / 2f) * kotlin.math.cos(Math.toRadians(midRing.toDouble())).toFloat()
                         // baseline 垂直居中：加回约半行高（0.36em 是常见近似值）
                         drawContext.canvas.nativeCanvas.drawText(
                             text, px, py + labelPx * 0.36f, paint,
                         )
+                    } else {
+                        // 手绘标注式引出线：径向短线从环外沿指向标签
+                        val rad = Math.toRadians(midRing.toDouble())
+                        val sin = kotlin.math.sin(rad).toFloat()
+                        val cos = kotlin.math.cos(rad).toFloat()
+                        val p1 = Offset(g.cx + (g.outerR + 3f) * sin, g.cy - (g.outerR + 3f) * cos)
+                        val p2 = Offset(g.cx + (g.outerR + 13f) * sin, g.cy - (g.outerR + 13f) * cos)
+                        drawLine(leadColor, p1, p2, strokeWidth = 1.5f)
+                        // 右半环向右排、左半向左排；顶部扇区文字落线**下方**，
+                        // 避开 Canvas 上沿（否则 11sp 的字会被裁掉半个头）
+                        val isRight = sin >= 0f
+                        leadPaint.textAlign =
+                            if (isRight) android.graphics.Paint.Align.LEFT else android.graphics.Paint.Align.RIGHT
+                        val tx = p2.x + if (isRight) 4f else -4f
+                        val baseline =
+                            if (cos > 0.5f) p2.y + labelPx * 1.15f
+                            else p2.y + labelPx * 0.36f
+                        drawContext.canvas.nativeCanvas.drawText(text, tx, baseline, leadPaint)
                     }
                     ringStart = ringEnd
                 }

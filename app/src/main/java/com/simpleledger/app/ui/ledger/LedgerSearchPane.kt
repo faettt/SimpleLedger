@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +39,8 @@ import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.ui.components.EmptyHint
+import com.simpleledger.app.ui.components.slFilterChipColors
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.util.DateTimes
 import java.time.YearMonth
 
@@ -103,7 +103,7 @@ internal fun LedgerSearchPane(
 
         when {
             !hasKeyword -> EmptyHint(
-                text = "输入关键词搜索全部账目\n可搜：备注 · 分类名 · 分区名或备注 · 金额数字",
+                text = "输入关键词搜索全部账目\n可搜：备注 · 分类名 · 分区名（含分区备注） · 金额数字",
                 modifier = Modifier.fillMaxSize(),
             )
 
@@ -182,7 +182,7 @@ private fun SearchHeader(
     val clearButton: (@Composable () -> Unit)? = if (keyword.isNotEmpty()) {
         {
             IconButton(onClick = { onQueryChange("") }) {
-                Icon(Icons.Filled.Close, contentDescription = "清除关键词")
+                Icon(SlIcons.Ui.Close, contentDescription = "清除关键词")
             }
         }
     } else {
@@ -196,7 +196,7 @@ private fun SearchHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.back))
+            Icon(SlIcons.Ui.ArrowLeft, contentDescription = stringResource(R.string.back))
         }
         OutlinedTextField(
             value = keyword,
@@ -214,6 +214,8 @@ private fun SearchHeader(
         FilterChip(
             selected = filterType != null,
             onClick = onToggleType,
+            modifier = Modifier.minimumInteractiveComponentSize(),
+            colors = slFilterChipColors(),
             label = { Text(filterLabel(filterType), fontSize = 12.5.sp) },
         )
     }

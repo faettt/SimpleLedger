@@ -11,10 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -42,11 +38,13 @@ import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.foundation.layout.PaddingValues
 import com.simpleledger.app.ui.components.SlipCard
 import com.simpleledger.app.ui.theme.tapeColor
 import com.simpleledger.app.ui.theme.BarShape
+import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
  * 分区首屏卡片：emoji + 分区名 + **本月花销** + **预算进度条**（FR-10）。
@@ -127,7 +125,7 @@ fun SectionCard(
                 Box(
                     modifier = Modifier
                         .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(SlButtonShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -164,7 +162,7 @@ fun SectionCard(
                 if (reorderMode) {
                     IconButton(onClick = onMoveUp, enabled = canMoveUp) {
                         Icon(
-                            Icons.Filled.KeyboardArrowUp,
+                            SlIcons.Ui.ArrowUp,
                             contentDescription = stringResource(R.string.a11y_move_up_section),
                             tint = if (canMoveUp) {
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -175,7 +173,7 @@ fun SectionCard(
                     }
                     IconButton(onClick = onMoveDown, enabled = canMoveDown) {
                         Icon(
-                            Icons.Filled.KeyboardArrowDown,
+                            SlIcons.Ui.ArrowDown,
                             contentDescription = stringResource(R.string.a11y_move_down_section),
                             tint = if (canMoveDown) {
                                 MaterialTheme.colorScheme.onSurfaceVariant

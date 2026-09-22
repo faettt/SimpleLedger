@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,12 +30,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -65,7 +64,7 @@ fun MonthHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onPrev) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上个月")
+            Icon(SlIcons.Ui.ArrowLeft, contentDescription = "上个月")
         }
         Text(
             text = DateTimes.monthLabel(month),
@@ -77,7 +76,7 @@ fun MonthHeader(
             textAlign = TextAlign.Center,
         )
         IconButton(onClick = onNext) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下个月")
+            Icon(SlIcons.Ui.ArrowRight, contentDescription = "下个月")
         }
         if (todayVisible) {
             TextButton(
@@ -90,6 +89,17 @@ fun MonthHeader(
         trailing?.invoke()
     }
 }
+
+/**
+ * 筛选 chip 统一选中样式（P2-3）：选中态 = primaryContainer 浅底 + onPrimaryContainer 文字，
+ * 对比拉开同幅度。此前「浅底」与「✓ 前缀」两套选中语言并存，用户分不清哪个是选中标记 ——
+ * 现在**浅底是唯一选中语言**，chip 文案里的 ✓/○/● 只表语义（对齐账目行的状态符号）。
+ */
+@Composable
+fun slFilterChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+)
 
 /**
  * 手账内页**签名笔触**（规范 §2.2）：标题下的双线 —— 2dp 主墨主线 + 1dp 弱线（宽约 76%）。
@@ -135,7 +145,8 @@ fun MoneyText(
 ) {
     val hidden = LocalHideAmounts.current
     val color = if (isIncome) incomeColor() else MaterialTheme.colorScheme.onSurface
-    val sign = if (isIncome) "+" else "-"
+    // 负号用真减号 U+2212（规范 R1）：ASCII hyphen 在等宽数字下过短，与「+」不平衡
+    val sign = if (isIncome) "+" else "−"
     Text(
         text = if (hidden) "$sign••••" else sign + Money.formatWithSymbol(kotlin.math.abs(amountCents)),
         color = color,
@@ -183,6 +194,8 @@ fun EmptyHint(
             if (actionLabel != null && onAction != null) {
                 Button(
                     onClick = onAction,
+                    // M3 Button 默认胶囊，显式收 4dp（规范 D2，P1-1）
+                    shape = SlButtonShape,
                     modifier = Modifier.padding(top = 16.dp),
                 ) {
                     Text(actionLabel)

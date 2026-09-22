@@ -210,6 +210,34 @@ val SlipShape = RoundedCornerShape(3.dp)
 val BarShape = RoundedCornerShape(1.dp)
 
 /**
+ * 按钮 / 输入框圆角：4dp（规范「按钮·输入 4」）。
+ *
+ * ⚠️ M3 的 Button/OutlinedButton 默认走 `CornerFull` 胶囊，**必须**在每个调用点
+ * 显式传它（P1-1 修复的就是满地 999 胶囊）。输入框走 shapes.extraSmall，同值。
+ */
+val SlButtonShape = RoundedCornerShape(4.dp)
+
+/** chip 圆角：6dp（规范「chip 6」），与 shapes.small 同值，给不便读 Shapes 的调用点用 */
+val SlChipShape = RoundedCornerShape(6.dp)
+
+/**
+ * 分段控件（SegmentedButton）端头形状：只圆**外侧**端头、内侧共享直角。
+ *
+ * M3 的 `SegmentedButtonDefaults.itemShape(baseShape)` 会把 baseShape 套到每一段上，
+ * 胶囊端头由此而来（P1-3）。这里手写：首段圆左、末段圆右、其余直角，
+ * 圆角量取「按钮 4」——分段控件本质是并排的按钮。
+ *
+ * @param index 第几段（0 起）
+ * @param count 总段数
+ */
+fun slSegmentShape(index: Int, count: Int): RoundedCornerShape = when {
+    count <= 1 -> SlButtonShape
+    index == 0 -> RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp)
+    index == count - 1 -> RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)
+    else -> RoundedCornerShape(0.dp)
+}
+
+/**
  * 垫纸错位量：用「纸叠纸」表达层级时的固定偏移（规范 §1.4）。
  *
  * **纸片与 Snackbar 共用同一个数值** —— 层级语言的偏移量是全局约定，

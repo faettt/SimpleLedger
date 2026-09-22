@@ -12,10 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,7 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.EntryType
+import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.slSegmentShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
@@ -67,7 +70,7 @@ internal fun FilterSheetContent(
                 SegmentedButton(
                     selected = state.filters.type == type,
                     onClick = { onTypeChange(type) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                    shape = slSegmentShape(index = index, count = options.size),
                 ) {
                     Text(
                         text = when (type) {
@@ -100,11 +103,15 @@ internal fun FilterSheetContent(
                 FilterChip(
                     selected = state.filters.reconciled == value,
                     onClick = { onReconcileChange(value) },
+                    // M3 1.4 的 Chip 不内置 48dp 触控（已解包核实），显式补（R5 / P1-8）
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = {
                         Text(
                             text = when (value) {
-                                false -> "✓ " + stringResource(R.string.status_pending_reconcile)
-                                true -> stringResource(R.string.status_reconciled)
+                                // 符号对齐账目行语义（P2-3）：✓=已核对、待核对空槽无符号
+                                true -> "✓ " + stringResource(R.string.status_reconciled)
+                                false -> stringResource(R.string.status_pending_reconcile)
                                 else -> stringResource(R.string.filter_all)
                             },
                             fontSize = 12.5.sp,
@@ -130,6 +137,8 @@ internal fun FilterSheetContent(
                     FilterChip(
                         selected = state.filters.reimburseState == value,
                         onClick = { onReimburseChange(value) },
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                        colors = slFilterChipColors(),
                         label = {
                             Text(
                                 text = when (value) {
@@ -156,6 +165,8 @@ internal fun FilterSheetContent(
                 FilterChip(
                     selected = state.filters.categoryId == category.id,
                     onClick = { onCategoryChange(category.id) },
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = {
                         // v4：分类筛选 chip 用「图标 + 名称」渲染（emoji 退场）
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -182,7 +193,7 @@ internal fun FilterSheetContent(
             TextButton(onClick = onClearAll, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.filter_clear_all))
             }
-            Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+            Button(onClick = onDismiss, shape = SlButtonShape, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.section_sort_done))
             }
         }

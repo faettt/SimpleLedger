@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,7 +47,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -57,7 +57,7 @@ import com.simpleledger.app.ui.theme.KaitiFont
  * - 卡片列表：emoji + 名 + 本月花销 + 预算进度条（FR-10~13）
  * - 顶部右上「排序」按钮切换排序态（Q-14 / 裁定 C-3：上下移，不做长按拖拽）
  * - 空态（0 分区）与「新建分区」入口（空 / 非空均有，EC-04 / EC-11a）
- * - Expanded 限宽 [ContentMaxWidth.Standard]
+ * - Expanded 限宽 [ContentMaxWidth.Narrow]（640dp，P2-4：分区卡密度）
  */
 @Composable
 fun SectionHomeScreen(
@@ -91,11 +91,14 @@ fun SectionHomeScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 // 手账不用阴影：层级由「纸叠纸」表达，FAB 也拉到 0
-                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),onClick = {
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                // M3 FAB 默认 16dp 圆角，收进「按钮 4」体系（P1-1 延伸收口）
+                shape = SlButtonShape,
+                onClick = {
                 editTarget = null
                 showSectionDialog = true
             }) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+                Icon(SlIcons.Ui.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(stringResource(R.string.new_section))
             }
@@ -163,7 +166,7 @@ fun SectionHomeScreen(
         }
 
         if (layout == WindowLayout.Expanded) {
-            ContentWidth(maxWidth = ContentMaxWidth.Standard) { body() }
+            ContentWidth(maxWidth = ContentMaxWidth.Narrow) { body() }
         } else {
             body()
         }

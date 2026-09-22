@@ -194,7 +194,17 @@ fun AppRoot() {
                         editingEntryId = null
                         editingSectionId = Routes.NEW_SECTION
                     },
-                    modifier = Modifier.weight(1f),
+                    // P1-7：大屏内容边距收进规范 24/32dp —— 页面内已有 16dp，
+                    // 这里补 8/16dp（相加 = 24/32）；Compact 保持 16dp（即规范值，不补）
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            when (effectiveLayout) {
+                                WindowLayout.Expanded -> Modifier.padding(horizontal = 16.dp)
+                                WindowLayout.Medium -> Modifier.padding(horizontal = 8.dp)
+                                WindowLayout.Compact -> Modifier
+                            },
+                        ),
                 )
             }
         }

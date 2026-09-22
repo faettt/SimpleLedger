@@ -12,8 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,12 +54,14 @@ import com.simpleledger.app.ui.ledger.DayHeader
 import com.simpleledger.app.ui.ledger.EntryRow
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.graphics.Color
 import com.simpleledger.app.ui.components.SlSnackbarHost
@@ -170,7 +171,7 @@ fun SectionDetailScreen(
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            SlIcons.Ui.ArrowLeft,
                             contentDescription = stringResource(R.string.back),
                         )
                     }
@@ -242,6 +243,7 @@ fun SectionDetailScreen(
                 // 底部「记一笔」：拇指可达
                 Button(
                     onClick = startCreate,
+                    shape = SlButtonShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp)

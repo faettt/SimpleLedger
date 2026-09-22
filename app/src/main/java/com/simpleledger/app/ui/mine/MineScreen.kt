@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -28,7 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -69,6 +67,9 @@ import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlipShape
+import com.simpleledger.app.ui.theme.SlChipShape
+import com.simpleledger.app.ui.theme.slSegmentShape
 
 /**
  * 「我的」页。
@@ -171,7 +172,7 @@ fun MineScreen(
                                     SegmentedButton(
                                         selected = themeMode == mode,
                                         onClick = { viewModel.setThemeMode(mode) },
-                                        shape = SegmentedButtonDefaults.itemShape(
+                                        shape = slSegmentShape(
                                             index = index,
                                             count = AppSettings.ThemeMode.all.size,
                                         ),
@@ -391,7 +392,7 @@ private fun PrivacyCard(countsText: String) {
             // TODO(M3 纸片化)：此处改为「纸片 + 墨色左边条」，与其余卡片同一套容器语言。
             .background(
                 color = MaterialTheme.colorScheme.primary,
-                shape = RoundedCornerShape(3.dp),
+                shape = SlipShape,
             )
             .padding(18.dp),
     ) {
@@ -400,7 +401,7 @@ private fun PrivacyCard(countsText: String) {
                 Box(
                     modifier = Modifier
                         .size(18.dp)
-                        .background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)),
+                        .background(Color.White.copy(alpha = 0.22f), SlChipShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     // v4：字符 ✓ → 手绘 check-xs（xs 档描边 2.0，专为 11dp 白色小位设计）

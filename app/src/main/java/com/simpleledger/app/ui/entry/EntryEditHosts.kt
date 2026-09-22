@@ -3,6 +3,7 @@ package com.simpleledger.app.ui.entry
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import com.simpleledger.app.ui.theme.SlipShape
 
 /** 记一笔 / 编辑账目在列表页内的两种承载形态 */
 enum class EntryEditHostStyle {
@@ -147,7 +148,8 @@ fun EntryEditHost(
                         .width(560.dp)
                         .heightIn(max = maxPopupHeight)
                         .padding(vertical = 16.dp),
-                    shape = RoundedCornerShape(28.dp),
+                    // 对话框档 8dp（规范 D2，P1-2）：居中浮层是「对话框」性质，不再用 28dp 大圆角
+                    shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 12.dp,
                 ) {
@@ -165,9 +167,12 @@ fun EntryEditHost(
                     .widthIn(max = if (dense) 420.dp else 480.dp)
                     .fillMaxHeight()
                     .padding(end = 16.dp, top = 8.dp, bottom = 8.dp),
-                shape = RoundedCornerShape(20.dp),
+                // 纸片档 3dp + 0.5dp 描边（规范 §1.4「纸叠纸」，P1-2）：
+                // 侧栏是贴在列表旁的纸片，不是浮层 —— 去阴影改描边，层级语言与 SlipCard 一致
+                shape = SlipShape,
                 color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 6.dp,
+                shadowElevation = 0.dp,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
                 form(Modifier.fillMaxSize())
             }

@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,7 +46,10 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
+import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlChipShape
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -133,6 +137,8 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = !state.filters.isActive,
                     onClick = { viewModel.clearFilters() },
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = { Text(stringResource(R.string.filter_all), fontSize = 12.5.sp) },
                 )
             }
@@ -145,6 +151,8 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = state.filters.reimburseState == ReimburseState.PENDING,
                     onClick = viewModel::togglePendingReimburse,
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = {
                         // 用账目行上同一个符号：○ —— 让 chip 与行内符号建立对应，
                         // 比再画一个图标更省，也更不容易看错
@@ -159,9 +167,13 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = state.filters.reconciled == false,
                     onClick = viewModel::togglePendingReconcile,
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = {
+                        // 待核对 = 空槽无符号（P2-3 语义对齐）：✓ 是「已核对」的符号，
+                        // 挂在「待核对」上会跟账目行的 ✓ 打架
                         Text(
-                            "✓ " + stringResource(R.string.status_pending_reconcile),
+                            stringResource(R.string.status_pending_reconcile),
                             fontSize = 12.5.sp,
                         )
                     },
@@ -171,6 +183,8 @@ internal fun LedgerListPane(
                 FilterChip(
                     selected = state.filters.sectionId == section.id,
                     onClick = { viewModel.filterSection(section.id) },
+                    modifier = Modifier.minimumInteractiveComponentSize(),
+                    colors = slFilterChipColors(),
                     label = {
                         // v4：筛选 chip 用「图标 + 名称」渲染（emoji 退场）
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -201,6 +215,7 @@ internal fun LedgerListPane(
             Spacer(modifier = Modifier.weight(1f))
             Button(
                 onClick = onRecord,
+                shape = SlButtonShape,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 modifier = Modifier.heightIn(min = 40.dp),
             ) {
@@ -382,7 +397,7 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
 private fun SmallTag(text: String, icon: ImageVector? = null) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SlChipShape)
             .background(MaterialTheme.colorScheme.primaryContainer)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {

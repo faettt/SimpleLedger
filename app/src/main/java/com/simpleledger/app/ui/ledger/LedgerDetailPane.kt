@@ -44,6 +44,9 @@ import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.amountSpeech
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.theme.BarShape
+import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -105,7 +108,7 @@ internal fun EntryDetailPane(
                 Box(
                     modifier = Modifier
                         .size(42.dp)
-                        .clip(RoundedCornerShape(13.dp))
+                        .clip(SlButtonShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -135,7 +138,7 @@ internal fun EntryDetailPane(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                OutlinedButton(onClick = { onEdit(full.entry.id) }) { Text(stringResource(R.string.edit)) }
+                OutlinedButton(onClick = { onEdit(full.entry.id) }, shape = SlButtonShape) { Text(stringResource(R.string.edit)) }
                 Spacer(modifier = Modifier.width(8.dp))
                 // 与列表长按一致：直接删除 + 4 秒撤销，不弹确认框
                 TextButton(onClick = { onDelete(full.entry.id) }) {
@@ -214,7 +217,7 @@ internal fun EntryDetailPane(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(96.dp)
-                                        .clip(RoundedCornerShape(14.dp)),
+                                        .clip(SlipShape),
                                 )
                             }
                         }
@@ -291,7 +294,7 @@ internal fun EntryDetailPane(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp)
-                                    .clip(RoundedCornerShape(99.dp)),
+                                    .clip(BarShape),
                                 gapSize = 0.dp,
                                 drawStopIndicator = {},
                             )

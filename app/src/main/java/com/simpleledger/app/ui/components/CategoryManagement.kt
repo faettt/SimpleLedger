@@ -17,14 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -32,7 +26,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,7 +53,10 @@ import com.simpleledger.app.data.local.IconMapping
 import com.simpleledger.app.ui.icon.SlCategoryIcons
 import com.simpleledger.app.ui.icon.SlIconGrid
 import com.simpleledger.app.ui.icon.SlIconTile
+import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.slSegmentShape
 import com.simpleledger.app.util.Money
 
 /*
@@ -125,14 +121,15 @@ fun SectionManageList(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    IconActionButton(Icons.Filled.KeyboardArrowUp, stringResource(R.string.a11y_move_up), enabled = index > 0) {
+                    IconActionButton(SlIcons.Ui.ArrowUp, stringResource(R.string.a11y_move_up), enabled = index > 0) {
                         onMove(section.id, -1)
                     }
-                    IconActionButton(Icons.Filled.KeyboardArrowDown, stringResource(R.string.a11y_move_down), enabled = index < sections.lastIndex) {
+                    IconActionButton(SlIcons.Ui.ArrowDown, stringResource(R.string.a11y_move_down), enabled = index < sections.lastIndex) {
                         onMove(section.id, +1)
                     }
-                    IconActionButton(Icons.Filled.Edit, stringResource(R.string.edit)) { onEdit(section) }
-                    IconActionButton(Icons.Filled.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) {
+                    IconActionButton(SlIcons.Ui.Edit, stringResource(R.string.edit)) { onEdit(section) }
+                    // 手绘描边墨青（P1-5）：不再红实心垃圾桶双重强调，破坏性语义交给确认对话框
+                    IconActionButton(SlIcons.Ui.Delete, stringResource(R.string.delete)) {
                         onDelete(section)
                     }
                 }
@@ -167,12 +164,12 @@ fun CategoryList(
             SegmentedButton(
                 selected = typeFilter == EntryType.EXPENSE,
                 onClick = { onTypeFilterChange(EntryType.EXPENSE) },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                shape = slSegmentShape(index = 0, count = 2),
             ) { Text(stringResource(R.string.category_type_expense)) }
             SegmentedButton(
                 selected = typeFilter == EntryType.INCOME,
                 onClick = { onTypeFilterChange(EntryType.INCOME) },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                shape = slSegmentShape(index = 1, count = 2),
             ) { Text(stringResource(R.string.category_type_income)) }
         }
 
@@ -214,14 +211,14 @@ fun CategoryList(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            IconActionButton(Icons.Filled.KeyboardArrowUp, stringResource(R.string.a11y_move_up), enabled = index > 0) {
+                            IconActionButton(SlIcons.Ui.ArrowUp, stringResource(R.string.a11y_move_up), enabled = index > 0) {
                                 onMove(category.id, -1)
                             }
-                            IconActionButton(Icons.Filled.KeyboardArrowDown, stringResource(R.string.a11y_move_down), enabled = index < categories.lastIndex) {
+                            IconActionButton(SlIcons.Ui.ArrowDown, stringResource(R.string.a11y_move_down), enabled = index < categories.lastIndex) {
                                 onMove(category.id, +1)
                             }
-                            IconActionButton(Icons.Filled.Edit, stringResource(R.string.edit)) { onEdit(category) }
-                            IconActionButton(Icons.Filled.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) {
+                            IconActionButton(SlIcons.Ui.Edit, stringResource(R.string.edit)) { onEdit(category) }
+                            IconActionButton(SlIcons.Ui.Delete, stringResource(R.string.delete)) {
                                 onDelete(category)
                             }
                         }
@@ -279,7 +276,7 @@ fun SectionDialog(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, SlButtonShape)
                             .clickable { showIconPicker = !showIconPicker },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -389,7 +386,7 @@ fun CategoryDialog(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, SlButtonShape)
                             .clickable { showIconPicker = !showIconPicker },
                         contentAlignment = Alignment.Center,
                     ) {
