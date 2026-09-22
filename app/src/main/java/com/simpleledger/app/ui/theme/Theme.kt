@@ -11,6 +11,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -216,21 +217,30 @@ val BarShape = RoundedCornerShape(1.dp)
  */
 val SlipStackOffset = 3.dp
 
+/**
+ * 当前**实际渲染**的明暗主题（由 [SimpleLedgerTheme] 的 `darkTheme` 参数下发）。
+ *
+ * ⚠️ 语义色/胶带色的明暗分支**必须读它，不能读 `isSystemInDarkTheme()`** ——
+ * 「我的 → 外观」可手动选深/浅色，与系统设置可以不一致。读系统值会在
+ * 「系统浅色 + 手动深色」时取到浅色板（暗红配暗底，对比度跌破 4.5:1）全局色崩。
+ */
+val LocalAppIsDark = staticCompositionLocalOf { false }
+
 /** 出账金额色（随明暗主题切换）—— 印章朱砂 */
 @Composable
-fun expenseColor(): Color = if (isSystemInDarkTheme()) ExpenseDark else ExpenseLight
+fun expenseColor(): Color = if (LocalAppIsDark.current) ExpenseDark else ExpenseLight
 
 /** 入账金额色 —— 松烟墨绿 */
 @Composable
-fun incomeColor(): Color = if (isSystemInDarkTheme()) IncomeDark else IncomeLight
+fun incomeColor(): Color = if (LocalAppIsDark.current) IncomeDark else IncomeLight
 
 /** 预算预警 / 超支色 */
 @Composable
-fun warnColor(): Color = if (isSystemInDarkTheme()) WarnDark else WarnLight
+fun warnColor(): Color = if (LocalAppIsDark.current) WarnDark else WarnLight
 
 /** 信息提示色 */
 @Composable
-fun infoColor(): Color = if (isSystemInDarkTheme()) InfoDark else InfoLight
+fun infoColor(): Color = if (LocalAppIsDark.current) InfoDark else InfoLight
 
 /**
  * 取分区胶带色。
@@ -240,13 +250,13 @@ fun infoColor(): Color = if (isSystemInDarkTheme()) InfoDark else InfoLight
  */
 @Composable
 fun tapeColor(index: Int): Color {
-    val palette = if (isSystemInDarkTheme()) TapeDark else TapeLight
+    val palette = if (LocalAppIsDark.current) TapeDark else TapeLight
     return palette.getOrElse(index) { palette[0] }
 }
 
 /** 当前主题下完整的胶带色板（供选择器枚举；顺序即 colorIndex 0–7） */
 @Composable
-fun tapePalette(): List<Color> = if (isSystemInDarkTheme()) TapeDark else TapeLight
+fun tapePalette(): List<Color> = if (LocalAppIsDark.current) TapeDark else TapeLight
 
 /**
  * 金额文本一律启用等宽数字（tabular figures）。
@@ -297,7 +307,12 @@ fun SimpleLedgerTheme(
     // 动效偏好必须在 MaterialTheme 之外下发：Material3 的内置动画走的是 Compose 内部的
     // MotionDurationScale（已自动跟随系统 ANIMATOR_DURATION_SCALE），与本 local 是两条并行通道，
     // 本 local 只服务应用自研动效；放在外层保证主题内外都能读到同一个值。
-    CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+    CompositionLocalProvider(
+        LocalReduceMotion provides reduceMotion,
+        // 语义色/胶带色的明暗分支读的是它（见 LocalAppIsDark 注释），
+        // 必须与 colorScheme 用**同一个** darkTheme 判定，两者不允许脱节
+        LocalAppIsDark provides darkTheme,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = LedgerShapes,

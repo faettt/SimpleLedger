@@ -67,6 +67,8 @@ import java.io.File
 import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.theme.KaitiFont
 
 /**
  * 「我的」页。
@@ -139,7 +141,11 @@ fun MineScreen(
                         text = stringResource(R.string.nav_mine),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
+                        // 楷体页眉 + 签名双线（规范 §2.6）；bottom 14dp 给双线留出呼吸
+                        fontFamily = KaitiFont,
+                        modifier = Modifier
+                            .padding(top = 12.dp, bottom = 14.dp)
+                            .slTitleRule(),
                     )
 
                     PrivacyCard(

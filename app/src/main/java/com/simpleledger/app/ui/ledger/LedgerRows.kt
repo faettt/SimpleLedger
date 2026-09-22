@@ -50,6 +50,7 @@ import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.SectionMoveRules
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.theme.KaitiFont
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -93,6 +94,8 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
             text = dateLabel,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
+            // 「日期」装饰位用楷体（规范 D1）；右侧金额汇总不在此列（R1 禁楷体数字）
+            fontFamily = KaitiFont,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.weight(1f))

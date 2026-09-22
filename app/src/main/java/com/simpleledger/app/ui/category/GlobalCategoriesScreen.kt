@@ -46,6 +46,8 @@ import com.simpleledger.app.ui.section.categoryDeleteMessage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.theme.KaitiFont
 
 /**
  * 全局分类管理页（N12 / Q-03）。
@@ -110,12 +112,16 @@ fun GlobalCategoriesScreen(
                             contentDescription = stringResource(R.string.back),
                         )
                     }
-                    Text(
-                        text = stringResource(R.string.global_categories_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
+                    // 楷体页眉 + 签名双线（规范 §2.2）
+                    Box(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.global_categories_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = KaitiFont,
+                            modifier = Modifier.slTitleRule(),
+                        )
+                    }
                 }
                 Text(
                     text = stringResource(R.string.global_categories_hint),

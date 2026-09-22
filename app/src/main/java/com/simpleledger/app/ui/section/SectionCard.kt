@@ -37,6 +37,7 @@ import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.BudgetCalculator
+import com.simpleledger.app.ui.theme.KaitiFont
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.warnColor
@@ -146,6 +147,8 @@ fun SectionCard(
                         text = total.name,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
+                        // 「分区名」装饰位用楷体（规范 D1）
+                        fontFamily = KaitiFont,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +48,8 @@ import com.simpleledger.app.ui.components.SectionDialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.theme.KaitiFont
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -106,12 +109,16 @@ fun SectionHomeScreen(
                         .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = stringResource(R.string.nav_sections),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
+                    // 楷体页眉 + 签名双线（规范 §2.2）：双线跟标题文字宽，外包 Box 占位
+                    Box(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.nav_sections),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = KaitiFont,
+                            modifier = Modifier.slTitleRule(),
+                        )
+                    }
                     if (!state.isEmpty) {
                         TextButton(onClick = viewModel::toggleReorder) {
                             Text(

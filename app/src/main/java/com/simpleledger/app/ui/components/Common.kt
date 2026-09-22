@@ -20,6 +20,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.ui.theme.KaitiFont
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -67,6 +71,8 @@ fun MonthHeader(
             text = DateTimes.monthLabel(month),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            // 「页码」装饰位（规范 D1）：手账翻月即翻页
+            fontFamily = KaitiFont,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center,
         )
@@ -82,6 +88,40 @@ fun MonthHeader(
             }
         }
         trailing?.invoke()
+    }
+}
+
+/**
+ * 手账内页**签名笔触**（规范 §2.2）：标题下的双线 —— 2dp 主墨主线 + 1dp 弱线（宽约 76%）。
+ *
+ * 挂在标题 [Text] 上，双线宽度因此**跟标题文字走**（不是横贯整行），像手写划线。
+ * 手绘感来自**固定的几何不对称**（硬规则 R4）：主线右端略出、弱线左端略缩 ——
+ * 写死的偏移，不随重组抖动。
+ *
+ * ⚠️ 双线画在 Text 布局边界之外，父级若有 `clip` 会被裁掉；标题容器不要加 clip。
+ */
+@Composable
+fun Modifier.slTitleRule(): Modifier {
+    // 颜色必须在这里取好再传进 drawBehind —— drawBehind 的 lambda 不是 @Composable
+    val ink = MaterialTheme.colorScheme.onSurface
+    val weak = MaterialTheme.colorScheme.onSurfaceVariant
+    return drawBehind {
+        val y = size.height + 1.dp.toPx()
+        drawLine(
+            color = ink,
+            start = Offset(0f, y),
+            // 主线右端出 0.5dp：收笔不对称
+            end = Offset(size.width + 0.5.dp.toPx(), y),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Square,
+        )
+        drawLine(
+            color = weak,
+            start = Offset(0.8.dp.toPx(), y + 3.dp.toPx()),
+            end = Offset(size.width * 0.76f, y + 3.dp.toPx()),
+            strokeWidth = 1.dp.toPx(),
+            cap = StrokeCap.Square,
+        )
     }
 }
 
@@ -134,6 +174,8 @@ fun EmptyHint(
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
+                // 「空态」装饰位（规范 D1）用楷体
+                fontFamily = KaitiFont,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 14.dp, start = 32.dp, end = 32.dp),
                 textAlign = TextAlign.Center,

@@ -53,6 +53,8 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.theme.KaitiFont
 
 /**
  * 分区管理页（N10 / FR-18/19）。
@@ -123,12 +125,16 @@ fun SectionManageScreen(
                             contentDescription = stringResource(R.string.back),
                         )
                     }
-                    Text(
-                        text = stringResource(R.string.section_manage_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
+                    // 楷体页眉 + 签名双线（规范 §2.2）
+                    Box(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.section_manage_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = KaitiFont,
+                            modifier = Modifier.slTitleRule(),
+                        )
+                    }
                 }
 
                 // 分区信息卡（编辑入口）

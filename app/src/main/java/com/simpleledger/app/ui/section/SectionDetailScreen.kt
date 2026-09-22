@@ -54,6 +54,7 @@ import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.ledger.DayHeader
 import com.simpleledger.app.ui.ledger.EntryRow
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
+import com.simpleledger.app.ui.theme.KaitiFont
 import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -63,6 +64,7 @@ import androidx.compose.foundation.layout.width
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.graphics.Color
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import com.simpleledger.app.ui.components.slTitleRule
 
 /**
  * 分区详情（FR-16~20）。
@@ -189,8 +191,11 @@ fun SectionDetailScreen(
                             text = state.section?.name ?: "",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
+                            // 分区名装饰位用楷体 + 页眉双线（规范 §2.3）
+                            fontFamily = KaitiFont,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.slTitleRule(),
                         )
                     }
                     TextButton(onClick = { onManage(sectionId) }) {
