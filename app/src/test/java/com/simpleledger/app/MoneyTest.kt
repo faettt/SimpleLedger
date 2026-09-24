@@ -43,5 +43,7 @@ class MoneyTest {
     @Test
     fun `format with symbol`() {
         assertEquals("¥1,234.56", Money.formatWithSymbol(123456L))
+        // 符号语序统一「−¥」（字体规范 §5 挂账清扫）：负值绝不出现「¥−」
+        assertEquals("−¥12.34", Money.formatWithSymbol(-1234L))
     }
 }

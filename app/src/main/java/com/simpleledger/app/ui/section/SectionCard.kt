@@ -33,8 +33,8 @@ import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.BudgetCalculator
-import com.simpleledger.app.ui.theme.KaitiFont
-import com.simpleledger.app.ui.theme.TabularNums
+import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.SlStatus
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
@@ -143,19 +143,15 @@ fun SectionCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = total.name,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        // 「分区名」装饰位用楷体（规范 D1）
-                        fontFamily = KaitiFont,
+                        // 「分区名」位：title（楷体，字族一元）
+                        style = SlType.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = if (hidden) "••••" else Money.formatWithSymbol(total.expense),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
+                        style = SlType.bodySm,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = TabularNums,
                         maxLines = 1,
                     )
                 }
@@ -212,9 +208,8 @@ fun SectionCard(
                                 Money.formatWithSymbol(total.budgetCents),
                             )
                         },
-                        fontSize = 11.5.sp,
+                        style = SlType.meta,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = TabularNums,
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
@@ -229,10 +224,10 @@ fun SectionCard(
                                 Money.formatWithSymbol(total.budgetCents - total.expense),
                             )
                         },
-                        fontSize = 11.5.sp,
-                        fontWeight = if (overspent) FontWeight.SemiBold else FontWeight.Normal,
+                        // 超支 = 错误态（决策三）：meta 11.5sp 禁合成粗（决策一），
+                        // 强调走 errorSm 字距 + 朱砂，不再用野字重
+                        style = if (overspent) SlType.meta.merge(SlStatus.errorSm) else SlType.meta,
                         color = if (overspent) expenseColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = TabularNums,
                     )
                 }
             }

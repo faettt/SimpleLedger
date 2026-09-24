@@ -47,7 +47,7 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.BarShape
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlipShape
-import com.simpleledger.app.ui.theme.TabularNums
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -82,14 +82,14 @@ internal fun EntryDetailPane(
                         imageVector = SlIcons.Illustration.HintLg,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(34.dp),
+                        modifier = Modifier.size(32.dp),
                     )
                 }
                 Text(
                     text = "从左侧选择一笔账目查看详情",
-                    fontSize = 13.5.sp,
+                    style = SlType.bodySm,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 14.dp),
+                    modifier = Modifier.padding(top = 12.dp),
                 )
             }
             return@Box
@@ -124,8 +124,7 @@ internal fun EntryDetailPane(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = full.category?.name ?: stringResource(R.string.uncategorized),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        style = SlType.title,
                     )
                     Text(
                         text = buildString {
@@ -134,7 +133,7 @@ internal fun EntryDetailPane(
                             append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
                             section?.let { append(" · ${it.name}") }
                         },
-                        fontSize = 12.sp,
+                        style = SlType.meta,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -153,19 +152,19 @@ internal fun EntryDetailPane(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("金额", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("金额", style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = if (hidden) {
                             "••••"
                         } else {
+                            // 符号语序统一「−¥」/「+¥」；真减号 U+2212（楷体子集 v2 已收录）
                             (if (isIncome) "+" else "−") +
                                 Money.formatWithSymbol(full.entry.amountCents)
                         },
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
+                        // 主金额展示 = display（40/44/700，字族一元楷体）
+                        style = SlType.display,
                         color = if (isIncome) incomeColor() else expenseColor(),
-                        style = TabularNums,
                         // 视觉靠 −/+ 与颜色表达方向，读屏两条都拿不到；这里显式给出方向词+中文金额。
                         // 隐私模式下 clearAndSetSemantics 用「支出，金额已隐藏」覆盖，不泄露真值。
                         modifier = Modifier.clearAndSetSemantics {
@@ -182,11 +181,11 @@ internal fun EntryDetailPane(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("备注", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("备注", style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = full.entry.note.ifBlank { "无备注" },
-                        fontSize = 14.sp,
+                        style = SlType.body,
                         color = if (full.entry.note.isBlank()) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
@@ -205,7 +204,7 @@ internal fun EntryDetailPane(
                     Column(modifier = Modifier.padding(20.dp)) {
                         Text(
                             "贴图 ${full.images.size} 张",
-                            fontSize = 11.5.sp,
+                            style = SlType.meta,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.height(10.dp))
@@ -234,7 +233,7 @@ internal fun EntryDetailPane(
                     Column(modifier = Modifier.padding(20.dp)) {
                         Text(
                             "所属分区",
-                            fontSize = 11.5.sp,
+                            style = SlType.meta,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -244,19 +243,19 @@ internal fun EntryDetailPane(
                                 imageVector = slCategoryIcon(section.iconId),
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(17.dp),
+                                modifier = Modifier.size(18.dp),
                             )
                             Spacer(modifier = Modifier.width(7.dp))
                             Text(
                                 text = section.name,
-                                fontSize = 14.5.sp,
-                                fontWeight = FontWeight.Medium,
+                                // 分区名装饰位：titleK（楷体 Regular）
+                                style = SlType.title,
                             )
                         }
                         if (section.note.isNotBlank()) {
                             Text(
                                 text = section.note,
-                                fontSize = 12.sp,
+                                style = SlType.bodySm,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
@@ -266,7 +265,7 @@ internal fun EntryDetailPane(
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     "月度预算",
-                                    fontSize = 12.sp,
+                                    style = SlType.meta,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Spacer(modifier = Modifier.weight(1f))
@@ -276,9 +275,7 @@ internal fun EntryDetailPane(
                                     } else {
                                         Money.formatWithSymbol(section.budgetCents)
                                     },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    style = TabularNums,
+                                    style = SlType.bodySm,
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -300,7 +297,7 @@ internal fun EntryDetailPane(
                             )
                             Text(
                                 "本笔占预算的 ${percentOf(full.entry.amountCents, section.budgetCents)}",
-                                fontSize = 11.sp,
+                                style = SlType.meta,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 6.dp),
                             )

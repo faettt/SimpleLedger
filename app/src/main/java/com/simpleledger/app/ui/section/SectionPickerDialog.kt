@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlType
 
 /**
  * 明细页「记一笔」的**分区选择器**（Q-13：先进此步，不可跳过）。
@@ -75,12 +76,13 @@ fun SectionPickerDialog(
                         Icon(
                             imageVector = slCategoryIcon(section.iconId),
                             contentDescription = null,
-                            modifier = Modifier.size(17.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(7.dp))
                         Text(
                             text = section.name,
-                            fontSize = 14.5.sp,
+                            // 分区名 = 装饰位（楷体 Regular），与分区卡片同款 titleK
+                            style = SlType.title,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

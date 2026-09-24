@@ -286,11 +286,8 @@ fun tapeColor(index: Int): Color {
 @Composable
 fun tapePalette(): List<Color> = if (LocalAppIsDark.current) TapeDark else TapeLight
 
-/**
- * 金额文本一律启用等宽数字（tabular figures）。
- * 比例数字会让 ¥1,111.00 比 ¥999.00 更宽，破坏流水列表的纵向对齐节奏。
- */
-val TabularNums = TextStyle(fontFeatureSettings = "tnum")
+// （2026-09-24 决策二·案 B：字族一元制全楷体，楷体无 tnum 特性，
+//  R1 等宽数字规则作废 —— 旧 TabularNums 已移除，长列表金额列宽窄不齐是知情取舍。）
 
 /**
  * 图表配色 = **分区胶带色板**。
@@ -344,6 +341,9 @@ fun SimpleLedgerTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = LedgerShapes,
+            // M3 组件内部文字（AlertDialog 标题、TextField、SegmentedButton 等）
+            // 的兜底收口；显式调用点一律用 SlType（见 Type.kt）。
+            typography = SlTypography,
             content = content,
         )
     }

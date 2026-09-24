@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,7 +49,7 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.icon.SlIcons
-import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
@@ -85,7 +86,10 @@ fun SectionHomeScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 的 Scaffold 已消费 systemBars insets，内层必须显式归零 ——
+        // M3 Scaffold 默认 contentWindowInsets=systemBars 会把状态栏再扣一次，
+        // 标题上方多出 ~52dp 空隙（实测标题距屏顶 124dp 而非 72dp）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
         snackbarHost = { SlSnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -116,9 +120,8 @@ fun SectionHomeScreen(
                     Box(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.nav_sections),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = KaitiFont,
+                            // 页面主标题装饰位：headlineK（楷体 Regular）
+                            style = SlType.headline,
                             modifier = Modifier.slTitleRule(),
                         )
                     }
@@ -130,7 +133,7 @@ fun SectionHomeScreen(
                                 } else {
                                     stringResource(R.string.section_sort)
                                 },
-                                fontSize = 13.sp,
+                                style = SlType.label,
                             )
                         }
                     }
@@ -156,7 +159,7 @@ fun SectionHomeScreen(
                                 onClick = { onOpenSection(total.sectionId) },
                                 onMoveUp = { viewModel.moveSection(total.sectionId, -1) },
                                 onMoveDown = { viewModel.moveSection(total.sectionId, +1) },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                             )
                         }
                         item { Spacer(modifier = Modifier.height(96.dp)) }

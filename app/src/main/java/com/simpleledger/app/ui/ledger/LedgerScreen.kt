@@ -5,11 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -291,9 +293,9 @@ fun LedgerScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 已消费 systemBars insets，内层归零防双重避让（详见 SectionHomeScreen 注释）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
-
         snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (twoPane) {
@@ -417,7 +419,13 @@ fun LedgerScreen(
     }
 
     if (showFilterSheet) {
-        ModalBottomSheet(onDismissRequest = { showFilterSheet = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilterSheet = false },
+            // ⚠️ 必须 skipPartiallyExpanded（P0-C1 真根因）：默认半展开态下 sheet 只有半屏高，
+            // 内容按全高排布后 sticky 操作条（清除/完成）被裁在半屏外，滚到底才够得着。
+            // 跳过半展开 → 短内容直接全高贴底，操作条首屏可达。
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
             FilterSheetContent(
                 state = state,
                 onTypeChange = viewModel::filterType,

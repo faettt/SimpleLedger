@@ -16,7 +16,14 @@ object Money {
 
     fun formatCents(cents: Long): String = format.format(cents / 100.0)
 
-    fun formatWithSymbol(cents: Long): String = "¥" + formatCents(cents)
+    /**
+     * 带 ¥ 金额：**符号在货币符之前**（「−¥18,545.00」），与账目行的「−¥ / +¥」语序统一。
+     *
+     * 负号用真减号 U+2212 —— 楷体子集 v2 已收录（见 Fonts.kt）；
+     * 旧子集缺字才用 ASCII hyphen 的做法随子集重建作废。
+     */
+    fun formatWithSymbol(cents: Long): String =
+        if (cents < 0) "−¥" + formatCents(-cents) else "¥" + formatCents(cents)
 
     /** "12.5" / "12" / "0.99" -> 1250 / 1200 / 99，非法输入返回 null */
     fun parseToCents(input: String): Long? {

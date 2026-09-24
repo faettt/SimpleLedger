@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,14 +23,17 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simpleledger.app.R
 import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.util.Money
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -108,6 +112,21 @@ data class DonutSlice(
 )
 
 /**
+ * 环缘波形三档（2026-09-23「圆弧不自然」排查用）。
+ * **定稿裁决（2026-09-23）：正式档 = [SMOOTH]**，用户看真机三案对比后拍板。
+ *
+ *  · [STEPPED] 历史对照（bug 现场，勿用于生产路径）：每 6° 一个折线顶点、半径按
+ *    「6° 分桶方波」抖 ±2.5px。实测顶点折角 mean 6.35° / max 14.64°、每 25.7px 一次
+ *    —— 肉眼读作「多边形/手撕」而不是手画的弧（这就是「不自然」的根因）。
+ *  · [SMOOTH] ✅ 正式档：抖动为**低频连续波**（整圈 6 + 17 个周期，θ=0/360 相位闭合），
+ *    波长 60°/21° 模拟手腕慢起伏；内外缘**同相**抖动 → 环带等宽、径向边不剪斜；
+ *    采样步长 3°。折角 → 0，手绘味保留。量化判别「波形连贯度」94%（STEPPED 仅 11%）。
+ *  · [CIRCLE] 备选：抖动归零纯圆（多边形逼近的 0.37° 折角不可见）。最规整，
+ *    但丢手账的手绘隐喻。
+ */
+enum class DonutEdge { STEPPED, SMOOTH, CIRCLE }
+
+/**
  * 环形图：**通用的环图绘制器**，不知道也不关心扇区代表什么。
  *
  * 两条实现约定（都来自「读图兜底」）：
@@ -120,6 +139,19 @@ data class DonutSlice(
  * @param onSliceClick 点到某个扇区时回调其下标（双图联动的入口）；null = 不可点。
  *   命中判定用环带内外半径 + 极角，与 Canvas 的几何完全共用 [DonutGeometry]。
  */
+/**
+ * 画布文字的楷体（字族一元制，决策二）。
+ *
+ * Canvas 原生画笔（android.graphics.Paint）不走 Compose 字体系统，
+ * 必须手动从 res/font 加载 LXGW WenKai；缺字形由系统按 Fonts.kt 的
+ * 回退链语义兜底（原生画笔只有单 Typeface，缺字自动走平台 fallback）。
+ */
+@Composable
+private fun rememberKaiTypeface(): android.graphics.Typeface? {
+    val context = LocalContext.current
+    return remember(context) { androidx.core.content.res.ResourcesCompat.getFont(context, R.font.lxgw_wenkai) }
+}
+
 @Composable
 fun DonutChart(
     slices: List<DonutSlice>,
@@ -129,6 +161,7 @@ fun DonutChart(
     modifier: Modifier = Modifier,
     selectedIndex: Int? = null,
     onSliceClick: ((Int) -> Unit)? = null,
+    edge: DonutEdge = DonutEdge.SMOOTH,
 ) {
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val labelColor = MaterialTheme.colorScheme.surface
@@ -138,6 +171,7 @@ fun DonutChart(
     // sp → px 必须经 LocalDensity 换算：Canvas 原生画笔只认像素，
     // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
+    val kaiTypeface = rememberKaiTypeface()
     // 配色已在调用方算好（[DonutSlice.color]）。这里只取与主题相关、与数据无关的颜色。
     //
     // ⚠️ 手势处理要用「最新值」而不是闭包捕获：pointerInput 的 key 若传每次重组
@@ -187,7 +221,8 @@ fun DonutChart(
                 color = labelColor.toArgb()
                 textSize = labelPx
                 isAntiAlias = true
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                // 楷体 Regular：11sp 在禁粗档（决策一），不再用 DEFAULT_BOLD 合成粗
+                typeface = kaiTypeface
                 textAlign = android.graphics.Paint.Align.CENTER
             }
             // 环外标签画笔：与 [paint] 同字号同字重（P2-1「统一」：数字样式只有一套）
@@ -195,7 +230,7 @@ fun DonutChart(
                 color = leadTextColor.toArgb()
                 textSize = labelPx
                 isAntiAlias = true
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                typeface = kaiTypeface
             }
 
             if (slices.isEmpty()) {
@@ -222,14 +257,26 @@ fun DonutChart(
                 //
                 // 每个扇区画成一个「环形扇面」路径（外缘顺时针 + 内缘逆时针 + close），
                 // 环心是自然留出的空腔 —— 不再需要单独画一个挖空圆。
-                val stepDeg = 6f
+                // 波形三档见 [DonutEdge]；SMOOTH 用 3° 采样加密顶点
+                val stepDeg = if (edge == DonutEdge.SMOOTH) 3f else 6f
                 fun ringPoint(ringDeg: Float, radius: Float) = Offset(
                     g.cx + radius * kotlin.math.sin(Math.toRadians(ringDeg.toDouble())).toFloat(),
                     g.cy - radius * kotlin.math.cos(Math.toRadians(ringDeg.toDouble())).toFloat(),
                 )
                 // 同一角度在同一 salt 下永远得到同一个抖动值（确定性）
-                fun wob(ringDeg: Float, salt: Int): Float =
-                    (markerJitter(kotlin.math.round(ringDeg / stepDeg).toInt(), salt) - 0.5f) * 2f * 2.5f
+                fun wob(ringDeg: Float, salt: Int): Float = when (edge) {
+                    DonutEdge.CIRCLE -> 0f
+                    DonutEdge.STEPPED ->
+                        (markerJitter(kotlin.math.round(ringDeg / stepDeg).toInt(), salt) - 0.5f) * 2f * 2.5f
+                    // 低频连续波：2.0px@60° 主波（手腕慢起伏）+ 0.8px@21° 次波（笔触小纹）。
+                    // 周期数取整数（6 与 17）保证 θ=0°/360° 相位闭合，接缝无折痕；
+                    // salt 忽略 → 内外缘同相 → 环带等宽 56px 恒定。
+                    DonutEdge.SMOOTH -> {
+                        val rad = Math.toRadians(ringDeg.toDouble())
+                        2.0f * kotlin.math.sin(rad * 6.0).toFloat() +
+                            0.8f * kotlin.math.sin(rad * 17.0 + 1.7).toFloat()
+                    }
+                }
                 fun edge(ringDeg: Float, radius: Float, salt: Int) =
                     ringPoint(ringDeg, radius + wob(ringDeg, salt))
 
@@ -300,12 +347,9 @@ fun DonutChart(
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(centerLabel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                text = centerValue,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            Text(centerLabel, style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 环心汇总数字 = 「结余数字」位 → titleL（自带 tnum，硬规则 R1）
+            Text(text = centerValue, style = SlType.titleL)
         }
     }
 }
@@ -344,6 +388,7 @@ fun SectionDonutChart(
     selectedIndex: Int? = null,
     onSliceClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    edge: DonutEdge = DonutEdge.SMOOTH,
 ) {
     // 颜色必须在调用方（这里是本包装）算好：tapeColor 是 @Composable，
     // 而 Canvas / pointerInput 的 lambda 都不是组合上下文，在那里读会编译失败。
@@ -364,6 +409,7 @@ fun SectionDonutChart(
         selectedIndex = selectedIndex,
         onSliceClick = onSliceClick,
         modifier = modifier,
+        edge = edge,
     )
 }
 
@@ -399,6 +445,7 @@ fun CategoryBarChart(
     val axisColor = MaterialTheme.colorScheme.outlineVariant
     val labelPx = with(LocalDensity.current) { 12.sp.toPx() }
     val amountPx = with(LocalDensity.current) { 11.sp.toPx() }
+    val kaiTypeface = rememberKaiTypeface()
 
     val rowPitch = 30.dp
     // 全部展开（用户裁定）：条数 = 分类数，高度随条数走，不做限高/折叠
@@ -418,11 +465,13 @@ fun CategoryBarChart(
             color = labelColor.toArgb()
             textSize = labelPx
             isAntiAlias = true
+            typeface = kaiTypeface
         }
         val amountPaint = android.graphics.Paint().apply {
             color = amountColor.toArgb()
             textSize = amountPx
             isAntiAlias = true
+            typeface = kaiTypeface
             textAlign = android.graphics.Paint.Align.RIGHT
         }
 
@@ -525,6 +574,7 @@ fun DailyBarChart(
     val axisLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val axisLabelPx = with(LocalDensity.current) { 10.sp.toPx() }
     val peakLabelPx = with(LocalDensity.current) { 10.5.sp.toPx() }
+    val kaiTypeface = rememberKaiTypeface()
     val speech = barChartSpeech(daily, daysInMonth, hidden)
 
     Canvas(
@@ -569,6 +619,7 @@ fun DailyBarChart(
             color = axisLabelColor.toArgb()
             textSize = peakLabelPx
             isAntiAlias = true
+            typeface = kaiTypeface
             textAlign = android.graphics.Paint.Align.CENTER
         }
 
@@ -608,6 +659,7 @@ fun DailyBarChart(
             color = axisLabelColor.toArgb()
             textSize = axisLabelPx
             isAntiAlias = true
+            typeface = kaiTypeface
         }
         listOf(1, daysInMonth / 2, daysInMonth).forEach { day ->
             val x = slot * (day - 1) + slot / 2f

@@ -56,6 +56,7 @@ import com.simpleledger.app.ui.icon.SlIconTile
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.slSegmentShape
 import com.simpleledger.app.util.Money
 
@@ -78,7 +79,7 @@ fun SectionManageList(
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(sections, key = { _, section -> section.id }) { index, section ->
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -100,8 +101,8 @@ fun SectionManageList(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             section.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
+                            // 分区名装饰位：titleK（楷体 Regular）
+                            style = SlType.title,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -115,7 +116,7 @@ fun SectionManageList(
                                 append(budgetLine)
                                 if (section.note.isNotBlank()) append(" · ${section.note}")
                             },
-                            fontSize = 11.5.sp,
+                            style = SlType.meta,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -177,7 +178,7 @@ fun CategoryList(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = emptyText,
-                    fontSize = 13.5.sp,
+                    style = SlType.bodySm,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 32.dp),
                 )
@@ -185,7 +186,7 @@ fun CategoryList(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -205,8 +206,8 @@ fun CategoryList(
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         category.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium,
+                                // 分类名 = 列表主信息：title（16/22/600）
+                                style = SlType.title,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -243,7 +244,7 @@ fun IconActionButton(
             icon,
             contentDescription = contentDescription,
             tint = if (enabled) tint else tint.copy(alpha = 0.28f),
-            modifier = Modifier.size(19.dp),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -285,7 +286,7 @@ fun SectionDialog(
                         Icon(
                             imageVector = slCategoryIcon(iconId),
                             contentDescription = stringResource(R.string.a11y_pick_icon),
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -393,7 +394,7 @@ fun CategoryDialog(
                         Icon(
                             imageVector = slCategoryIcon(iconId),
                             contentDescription = stringResource(R.string.a11y_pick_icon),
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -434,7 +435,7 @@ fun CategoryDialog(
                                 }
                             ),
                         ),
-                        fontSize = 12.5.sp,
+                        style = SlType.bodySm,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

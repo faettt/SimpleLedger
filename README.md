@@ -15,7 +15,7 @@
 
 ## 界面预览
 
-> 视觉方向为「手账风格 v2.1」：纸墨质感、和纸胶带分区色、楷体点缀、等宽数字、3/1/6/4/8 圆角体系。
+> 视觉方向为「手账风格 v2.1」：纸墨质感、和纸胶带分区色、全楷体一元制排版（层级仅靠字重/字号/字距/墨色区分）、3/1/6/4/8 圆角体系。
 > 设计规范唯一真源见 [`docs/design/journal-style-spec-2026-09-20.md`](docs/design/journal-style-spec-2026-09-20.md)；机器可读令牌 [`tokens-journal.json`](docs/design/tokens-journal.json)、图标生成链 [`icons-v3/`](docs/design/icons-v3/)。
 
 **「分区优先」主流程**（手机 · 底部四槽导航：分区 · 明细 · 统计 · 我的）
@@ -39,7 +39,7 @@
 | 维度 | 选型 |
 |---|---|
 | 语言 / UI | Kotlin 2.4 + Jetpack Compose（Material 3，支持 Material You 动态取色） |
-| 字体 / 图标 | 内嵌 LXGW WenKai（楷体点缀位）· 自绘手账图标集（`docs/design/icons-v3/` 生成链产出，勿手改工程内图标文件） |
+| 字体 / 图标 | 内嵌 LXGW WenKai 楷体子集 v2（全界面一元制，7713 字形，生成链 [`font-subset/`](docs/design/font-subset/)）· 自绘手账图标集（`docs/design/icons-v3/` 生成链产出，勿手改工程内图标文件） |
 | 构建 | AGP 9.4.0（内置 Kotlin）+ Gradle 9.7.1 + KSP 2.3.12 |
 | 目标平台 | compileSdk / targetSdk **37**（Android 17），minSdk 26（Android 8.0） |
 | 数据库 | Room 2.8.5（金额以「分」为单位的 Long 存储，避免浮点误差） |
@@ -57,7 +57,7 @@
 
 要求：JDK 17+，Android SDK Platform 37。也可以直接从 GitHub Actions 下载每次构建的 APK。
 
-发布签名（可选）：在仓库根目录放 `keystore.properties`（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`）指向签名证书；**缺失时自动退回 debug 签名**，本地调试不受影响。正式版 APK 按约定固化到 [`dist/`](dist/)（如 `SimpleLedger-v1.2.1-release.apk`）并打同名 tag 发布。
+发布签名（可选）：在仓库根目录放 `keystore.properties`（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`）指向签名证书；**缺失时自动退回 debug 签名**，本地调试不受影响。正式版 APK 按约定固化到 [`dist/`](dist/)（如 `SimpleLedger-v1.2.2-release.apk`）并打同名 tag 发布。
 
 ## 项目结构
 
@@ -76,7 +76,7 @@ app/src/main/java/com/simpleledger/app/
 ├── util/                            # 金额与时间格式化（Formatters.kt）
 └── ui/
     ├── Routes.kt                    # 路由契约（唯一真源）
-    ├── theme/                       # 设计令牌：纸墨色彩 / 3-1-6-4-8 圆角 / 楷体点缀位
+    ├── theme/                       # 设计令牌：纸墨色彩 / 3-1-6-4-8 圆角 / 全楷体排版（SlType / SlStatus）
     ├── icon/                        # SlIcons 手账图标集（生成产物，勿手改）
     ├── section/                     # 分区首屏 / 分区详情 / 分区管理 / 分区选择器
     ├── category/                    # 全局分类管理

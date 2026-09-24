@@ -50,9 +50,9 @@ import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.logic.SectionMoveRules
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
-import com.simpleledger.app.ui.theme.KaitiFont
+import androidx.compose.ui.text.TextStyle
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
-import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -93,10 +93,8 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
     ) {
         Text(
             text = dateLabel,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            // 「日期」装饰位用楷体（规范 D1）；右侧金额汇总不在此列（R1 禁楷体数字）
-            fontFamily = KaitiFont,
+            // 「日期」位：meta（楷体，字族一元）
+            style = SlType.meta,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.weight(1f))
@@ -112,9 +110,8 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
                     }
                 }
             },
-            fontSize = 11.5.sp,
+            style = SlType.meta,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = TabularNums,
         )
     }
 }
@@ -277,8 +274,8 @@ internal fun EntryRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = categoryLabel,
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Medium,
+                    // 列表主信息 = title（16/22/600）
+                    style = SlType.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -287,13 +284,13 @@ internal fun EntryRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = meta,
-                        fontSize = 11.5.sp,
+                        style = SlType.meta,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (imageCount > 0) {
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = SlIcons.Ui.CameraInline,
                             contentDescription = null,
@@ -302,12 +299,12 @@ internal fun EntryRow(
                         )
                         Text(
                             text = imageCount.toString(),
-                            fontSize = 11.5.sp,
+                            style = SlType.meta,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (hasNote) {
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = SlIcons.Ui.NoteInline,
                             contentDescription = null,
@@ -412,24 +409,24 @@ internal fun EntryRow(
 
 /* ---------------------------------------------------------------- 金额 */
 
-/** 列表内金额：语义色 + 正负号 + 等宽数字，保证纵向可扫视 */
+/** 列表内金额：语义色 + 正负号，保证纵向可扫视 */
 @Composable
 fun AmountText(
     amountCents: Long,
     isIncome: Boolean,
-    fontSize: TextUnit = 15.sp,
+    style: TextStyle = SlType.title,
 ) {
     val hidden = LocalHideAmounts.current
     Text(
         text = if (hidden) {
             "••••"
         } else {
+            // 符号语序统一「−¥」/「+¥」；真减号 U+2212（楷体子集 v2 已收录）
             (if (isIncome) "+" else "−") + Money.formatWithSymbol(kotlin.math.abs(amountCents))
         },
-        fontSize = fontSize,
-        fontWeight = FontWeight.SemiBold,
+        // 金额：token（字族一元楷体；R1 等宽数字已随决策二作废）
+        style = style,
         color = if (isIncome) incomeColor() else expenseColor(),
-        style = TabularNums,
         textAlign = TextAlign.End,
         maxLines = 1,
     )
@@ -500,14 +497,14 @@ internal fun MoveSectionDialog(
             Column {
                 Text(
                     text = headerLine,
-                    fontSize = 12.5.sp,
+                    style = SlType.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 if (reselectSectionId == null) {
                     // 第一步：选目标分区。兼容则直接完成，不兼容则进入第二步。
                     if (targets.isEmpty()) {
-                        Text(stringResource(R.string.move_no_other_section), fontSize = 13.sp)
+                        Text(stringResource(R.string.move_no_other_section), style = SlType.bodySm)
                     } else {
                         targets.forEach { section ->
                             Row(
@@ -529,10 +526,11 @@ internal fun MoveSectionDialog(
                                     imageVector = slCategoryIcon(section.iconId),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(17.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(7.dp))
-                                Text(section.name, fontSize = 14.5.sp)
+                                // 分区名位：title（楷体，字族一元）
+                                Text(section.name, style = SlType.title)
                             }
                         }
                     }
@@ -544,7 +542,7 @@ internal fun MoveSectionDialog(
                             R.string.move_reselect_hint,
                             target?.let { it.name } ?: "",
                         ),
-                        fontSize = 12.5.sp,
+                        style = SlType.bodySm,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -552,7 +550,7 @@ internal fun MoveSectionDialog(
                         // 目标分区没有可用的同类型分类 → 禁止确认（不静默兜底）
                         Text(
                             text = stringResource(R.string.move_no_candidate),
-                            fontSize = 13.sp,
+                            style = SlType.bodySm,
                             color = MaterialTheme.colorScheme.error,
                         )
                     } else {
@@ -572,7 +570,7 @@ internal fun MoveSectionDialog(
                                     )
                                     Text(
                                         text = candidate.name,
-                                        fontSize = 14.sp,
+                                        style = SlType.body,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )

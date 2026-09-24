@@ -98,8 +98,8 @@ fun SlIconGrid(
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         modifier = modifier.height(gridHeight),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(2.dp),
     ) {
         items(items = SlCategoryIcons.allIcons, key = { it.first }) { (iconId, icon) ->

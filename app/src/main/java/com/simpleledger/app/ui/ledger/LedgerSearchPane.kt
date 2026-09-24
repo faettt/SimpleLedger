@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import com.simpleledger.app.ui.theme.SlType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -137,7 +137,7 @@ internal fun LedgerSearchPane(
                                 onSetReimburseState = { onSetReimburse(full.entry.id, it) },
                             )
                         }
-                        item(key = "space_${day.date}") { Spacer(modifier = Modifier.height(6.dp)) }
+                        item(key = "space_${day.date}") { Spacer(modifier = Modifier.height(8.dp)) }
                     }
                 }
                 // 截断提示独立于月份分组：它是整份结果的终点说明，不属于任何一个月。
@@ -204,19 +204,19 @@ private fun SearchHeader(
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focusRequester),
-            placeholder = { Text("搜索备注 / 分类 / 分区 / 金额", fontSize = 13.5.sp, maxLines = 1) },
+            placeholder = { Text("搜索备注 / 分类 / 分区 / 金额", style = SlType.bodySm, maxLines = 1) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             trailingIcon = clearButton,
         )
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         // 三态循环（不限 → 仅支出 → 仅收入），一次点击即可收敛到想要的类型
         FilterChip(
             selected = filterType != null,
             onClick = onToggleType,
             modifier = Modifier.minimumInteractiveComponentSize(),
             colors = slFilterChipColors(),
-            label = { Text(filterLabel(filterType), fontSize = 12.5.sp) },
+            label = { Text(filterLabel(filterType), style = SlType.label) },
         )
     }
 }
@@ -226,12 +226,12 @@ private fun SearchHeader(
 private fun SearchMonthHeader(month: YearMonth) {
     Text(
         text = "%04d年%02d月".format(month.year, month.monthValue),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
+        // 搜索结果分组头 = label（12.5/18/600）
+        style = SlType.label,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
     )
 }
 
@@ -244,7 +244,7 @@ private fun SearchMonthHeader(month: YearMonth) {
 private fun TruncatedNotice() {
     Text(
         text = "结果较多，仅显示前 200 条 · 试试更具体的关键词",
-        fontSize = 12.sp,
+        style = SlType.bodySm,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .fillMaxWidth()

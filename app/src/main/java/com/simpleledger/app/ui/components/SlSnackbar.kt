@@ -22,11 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.simpleledger.app.ui.theme.SlipShape
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipStackOffset
 
 /*
@@ -115,7 +114,7 @@ private fun SlSnackbar(data: SnackbarData) {
         ) {
             Text(
                 text = data.visuals.message,
-                fontSize = 13.sp,
+                style = SlType.bodySm,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -132,7 +131,7 @@ private fun SlSnackbar(data: SnackbarData) {
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 ) {
-                    Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(label, style = SlType.label)
                 }
             }
         }

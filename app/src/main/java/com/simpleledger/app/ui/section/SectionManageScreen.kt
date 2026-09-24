@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
@@ -52,7 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
-import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
@@ -94,7 +95,8 @@ fun SectionManageScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 已消费 systemBars insets，内层归零防双重避让（详见 SectionHomeScreen 注释）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
         snackbarHost = { SlSnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -117,7 +119,7 @@ fun SectionManageScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
+                        .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
@@ -130,9 +132,8 @@ fun SectionManageScreen(
                     Box(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.section_manage_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = KaitiFont,
+                            // 页面主标题装饰位：headlineK（楷体 Regular，decorativeWeightRule）
+                            style = SlType.headline,
                             modifier = Modifier.slTitleRule(),
                         )
                     }
@@ -162,8 +163,8 @@ fun SectionManageScreen(
                                 }
                                 Text(
                                     text = state.section?.name ?: "",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
+                                    // 分区名装饰位：titleK（楷体 Regular）
+                                    style = SlType.title,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -179,7 +180,7 @@ fun SectionManageScreen(
                                     append(budgetLine)
                                     state.section?.note?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
                                 },
-                                fontSize = 11.5.sp,
+                                style = SlType.meta,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
@@ -194,8 +195,7 @@ fun SectionManageScreen(
                 // 该分区专属分类
                 Text(
                     text = stringResource(R.string.section_manage_exclusive_categories),
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    style = SlType.label,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 20.dp, top = 10.dp),
                 )

@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -32,11 +35,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import com.simpleledger.app.ui.theme.SlType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -59,7 +65,10 @@ import com.simpleledger.app.ui.stats.StatsScreen
 import com.simpleledger.app.ui.theme.paperTexture
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -346,15 +355,23 @@ private fun AppNavHost(
  *
  * ⚠️ **三条 Modifier 顺序规则，都不能动**（前两条是真机走查实测踩出来的）：
  *
- *  1. `background` 必须在 `navigationBarsPadding` **之前**。
+ *  1. `background` 必须在链的**最外层**，铺满「视觉高 + bottomBleed」的整个节点。
  *     写成 `.padding().height().background()` 时 background 位于链的最内层，只铺满
- *     `height` 那 54dp —— insets 撑出来的 24dp（手势）/ 48dp（三键）完全没铺到，
- *     露出的是下面一层（手势模式＝页面纸、三键模式＝系统导航栏的浅色）。
- *     实测：节点实际高 102dp，背景只覆盖 53.7dp；调序后覆盖到 0.0dp 屏底。
- *  2. `navigationBarsPadding` 必须在 `height` **之前**。写在之后，手势条高度会从固定
- *     高度**内部**被扣掉，内容区被压缩、标签被整条裁掉——表现为"只看得见图标"，
- *     且 TalkBack 读不出页面名。
+ *     `height` 那 54dp —— 手势/三键 inset 撑出来的 24dp / 48dp 完全没铺到，
+ *     露出的是下面一层的纸纹（表现为手势区里横着几道纸纹线）。
+ *  2. inset **不走 `navigationBarsPadding`，显式加进高度**（`height(视觉高 + navInset)`）
+ *     并把同一个 `navInset` 作为 `bottomBleed` 传给签块。原因见下方「融为一体」条：
+ *     签块必须**穿进 inset 区直抵屏幕底边**，`navigationBarsPadding` 的 padding 语义
+ *     做不到（签块被 clamp 在 padding 之上，止步于 inset 上沿）。
+ *     （旧坑仍有效：若把 inset 写成 `height` 之后的 padding，手势条高度会从固定高度
+ *     **内部**被扣掉，内容被压缩、标签被整条裁掉——"只看得见图标"。）
  *  3. 顶边分隔线画在 `background` 之后（draw modifier 按链序叠，先写的在下）。
+ *
+ * **「tab 栏与手势指示条融为一体」（2026-09-23）**：签的 `border(0.5.dp)` 是全周描边，
+ * 签块若止于 inset 上沿，4 张签的下缘 border 会连成一条近全宽横线（实测 y2336，
+ * 243/270 采样点），把 tab 栏与手势指示条切成两块。修法＝签块（含 border）经
+ * `bottomBleed` 延伸穿 inset 直抵屏幕底边，下缘 border 落在屏幕边缘之外，
+ * 手势条浮在签根上——这才兑现「下方与屏幕底边平齐，像签从纸边伸出来」。
  *
  * 底栏底色＝页面纸 `background`，与内容区**同色**，靠顶边那道 0.5dp 细线分界
  * （手账里就是页面下方拉的一道线）。这样做的原因：选中签要用 `primaryContainer`
@@ -372,17 +389,18 @@ private fun LedgerBottomBar(
     // 不是 @Composable 上下文，在里头读 MaterialTheme.colorScheme 会直接编译失败
     // （@Composable invocations can only happen from the context of a @Composable function）。
     val barRuleColor = MaterialTheme.colorScheme.outlineVariant
+    // inset 显式进高度（见上方规则 2）：签块要靠它延伸穿进手势区
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // ① 底栏底色铺满整个节点（含 insets 撑出的那一段），一直连到屏幕最底
+            // ① 底栏底色铺满整个节点（视觉高 + inset），一直连到屏幕最底
             .background(MaterialTheme.colorScheme.background)
             // ② 与内容区的分界：0.5dp 细线横贯全宽。底栏与页面同色时，这是唯一的分界
             .drawBehind { drawRect(color = barRuleColor, size = Size(size.width, 0.5.dp.toPx())) }
-            // ③ insets 撑在固定高度**之外**，不参与高度扣减（见上方规则 2）
-            .navigationBarsPadding()
-            .height(selectedHeight),
+            // ③ inset 加在固定高度**之外**，不参与高度扣减（见上方规则 2）
+            .height(selectedHeight + navInset),
     ) {
         Row(
             modifier = Modifier
@@ -399,6 +417,7 @@ private fun LedgerBottomBar(
                     selected = currentRoute == item.route,
                     selectedHeight = selectedHeight,
                     unselectedHeight = unselectedHeight,
+                    bottomBleed = navInset,
                     onClick = { onNavigate(item.route) },
                     modifier = Modifier.weight(1f),
                 )
@@ -437,12 +456,16 @@ private fun IndexTab(
     selected: Boolean,
     selectedHeight: Dp,
     unselectedHeight: Dp,
+    bottomBleed: Dp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp)
     val accent = MaterialTheme.colorScheme.primary
     val color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    // 签块底色/描边色先读出：drawBehind 的 DrawScope 里读不了 MaterialTheme（见 LedgerBottomBar 同款注释）
+    val slipColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = modifier
@@ -459,47 +482,91 @@ private fun IndexTab(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (selected) selectedHeight else unselectedHeight)
-                .clip(shape)
-                .background(
-                    if (selected) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface,
-                    shape,
-                )
-                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                // ⚠️ 内容定位两条规则（padding 必须在 border **之后**，否则纸片本身会被缩掉）：
+                // 签块（含 border）延伸穿 inset 直抵屏幕底边：border 是全周描边，
+                // 止于 inset 上沿时 4 签下缘会连成分界线（见类型注释「融为一体」条）。
+                // bottomBleed 只进高度、**不进底部 padding**——内容从固定顶向下生长，
+                // 行盒随 fontScale 放大时直接伸进下方留白（原因见 padding 注释②）。
+                .height((if (selected) selectedHeight else unselectedHeight) + bottomBleed)
+                // ⚠️ 不要加 `.clip(shape)`（2026-09-23 实测裁字根因）：clip 会把**内容**一起裁——
+                // 文字行盒一旦超过内容区（默认行高度量偏大 / fontScale 放大），下沿被平切，
+                // 四签「区/细/计/的」下缘笔画各缺约 3dp。背景用 `background(_, shape)`
+                // 自带形状绘制，不需要 clip；内容溢出时画进签块下方的留白区，完整可见。
+                .background(slipColor, shape)
+                // 描边手绘三边（左 + 上含圆角 + 右），**下缘开放**：
+                // `border()` 是全周描边，下缘线随签块延伸到屏底后仍在（出血压不出窗口、
+                // 盖线又被 border 压住——两条弯路都实测过），4 签下缘连起来就是「分界线」。
+                // 下缘不描，签才真正「从纸边伸出来」。
+                .drawBehind {
+                    val w = 0.5.dp.toPx()
+                    val r = 7.dp.toPx()
+                    val outline = Path().apply {
+                        moveTo(0f, size.height)
+                        lineTo(0f, r)
+                        quadraticTo(0f, 0f, r, 0f)
+                        lineTo(size.width - r, 0f)
+                        quadraticTo(size.width, 0f, size.width, r)
+                        lineTo(size.width, size.height)
+                    }
+                    drawPath(outline, borderColor, style = Stroke(width = w))
+                }
+                // ⚠️ 内容定位规则（padding 必须在描边 **之后**，否则纸片本身会被缩掉）：
                 //
-                // ① 选中签内容下移 12dp：**四签的图标/文字同高**。
-                //    实测（像素）：不这样做时，选中签内容底距纸片底 8.4dp、
-                //    未选中签只有 0.8dp —— 未选中的文字贴着纸片下边缘，观感「掉下去」。
-                //    下移后两者都是 2.3dp，四签文字落在同一水平线上。
-                //    凸出的 12dp 变成空白纸 —— 这正是索引贴的样子：
-                //    被抽出来的那张，露出的是没有字的纸头。
+                // ① 选中签内容下移 12dp：**四签的图标/文字绝对位置重合**（选中签高出
+                //    12dp，内容区顶同步下移）。凸出的 12dp 是没有字的纸头——被抽出来
+                //    的那张索引贴，露出的空白纸。
                 //
-                // ② 底部留 3dp：让文字不贴纸片底边（未选中签 42dp 里内容占 37dp，
-                //    居中后底部只剩 0.8dp）。
-                //
-                // 两条合起来的效果：选中/未选中的内容区**同为 39dp**，内容在同一位置居中。
-                .padding(
-                    top = if (selected) selectedHeight - unselectedHeight else 0.dp,
-                    bottom = 3.dp,
-                ),
+                // ② **底部不设 padding**（2026-09-23 裁字实测定案）：行盒高 = 14sp 随
+                //    fontScale 放大，底部一留 padding，Text 实测只分到「剩余 39px」
+                //    （uiautomator bounds [42,2290][285,2329]），fs=2 时 73.5px 的行盒
+                //    被砍到 39px——文字只剩顶上一条（fs=2 实测墨高 22px/应为 50px，
+                //    before 更惨：只余 1px）。去掉后内容从固定顶向下生长：fs≤3 时
+                //    「22+2+14×fs」dp 都在 54dp 签内，再大就画进签色留白
+                //    （Arrangement.Top 保证只向下溢、不出签顶）。
+                .padding(top = if (selected) selectedHeight - unselectedHeight else 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            // 内容贴顶排布：行盒变高（fontScale > 1）时向**下**溢进签块下方的签色
+            // 留白区（3dp + bottomBleed，空间充足），不会画出签块顶缘。
+            // ⚠️ 别用 Bottom/Center：内容超高时 arrange 偏移变负、向上溢——
+            // 未选中签的内容盒顶就是签顶，字会飘到签外的栏底色上。
+            verticalArrangement = Arrangement.Top,
         ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(if (selected) 22.dp else 20.dp),
-            )
-            Spacer(modifier = Modifier.height(3.dp))
+            // 图标外盒固定 22dp：选中 22 / 未选中 20 居中于同尺寸盒 ——
+            // 盒下缘四签齐平，图文间距从「盒」起算，不受手绘图标笔画包围盒高矮影响
+            // （实测旧版笔画间隙四签 32/37/38/42px，波动 10px，观感就是「图文没对齐」）。
+            Box(
+                modifier = Modifier.size(22.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(if (selected) 22.dp else 20.dp),
+                )
+            }
+            // 图文 gap 统一 2dp（簇内间距 token；旧版「选中 1dp / 未选中 3dp」不对称 hack
+            // 就是裁字的帮凶——它在给溢出行盒硬凑空间，删掉 clip 后不再需要）
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = stringResource(item.labelRes),
-                fontSize = 10.5.sp,
+                // navTab / navTabOn（10.5/14）是布局锁定例外（Type.kt ③）——54dp 签身的
+                // 行盒计算绑定这个字号，归级到 label 12.5 会顶破签身。
+                // 行高锁 14sp + 居中裁剪上下 halfLeading：行盒高度可预测（10.5sp 字形
+                // 放得进 14dp），字形光学居中于行盒，四签文字基线逐像素一致。
+                // lineHeightStyle 是 TextStyle 的字段、不是 Text 的直参，只能走 style 传
+                style = (if (selected) SlType.navTabOn else SlType.navTab).copy(
+                    lineHeightStyle = LineHeightStyle(
+                        trim = LineHeightStyle.Trim.Both,
+                        alignment = LineHeightStyle.Alignment.Center,
+                    ),
+                ),
                 color = color,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                // 长文本/窄容器（横屏 Rail 阈值下、超大字号）单行省略收尾，不截字不换行
                 maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -532,10 +599,10 @@ private fun LedgerNavRail(
                     Icon(
                         imageVector = item.icon,
                         contentDescription = null,
-                        modifier = Modifier.size(21.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 },
-                label = { Text(stringResource(item.labelRes), fontSize = 11.sp) },
+                label = { Text(stringResource(item.labelRes), style = SlType.meta) },
                 colors = NavigationRailItemDefaults.colors(
                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                     selectedTextColor = MaterialTheme.colorScheme.primary,

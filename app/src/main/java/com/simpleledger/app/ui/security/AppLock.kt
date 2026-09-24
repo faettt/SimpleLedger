@@ -28,10 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -39,6 +37,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.AppSettings
+import com.simpleledger.app.ui.theme.SlType
 
 /**
  * 后台停留多久才重新验证（毫秒）。
@@ -184,24 +183,23 @@ fun AppLockGate(
         ) {
             Text(
                 text = stringResource(R.string.app_name),
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
+                // 品牌名 = 页面标题装饰位（楷体 Regular，decorativeWeightRule）
+                style = SlType.headline,
                 color = MaterialTheme.colorScheme.primary,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = unlockTitle,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                style = SlType.title,
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = unlockSubtitle,
-                fontSize = 13.sp,
+                style = SlType.bodySm,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = {
                     errorText = null
@@ -232,14 +230,14 @@ fun AppLockGate(
                 },
                 modifier = Modifier.height(48.dp),
             ) {
-                Text(stringResource(R.string.app_lock_unlock), fontSize = 15.sp)
+                Text(stringResource(R.string.app_lock_unlock), style = SlType.label)
             }
 
             errorText?.let { message ->
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = message,
-                    fontSize = 12.5.sp,
+                    style = SlType.bodySm,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )

@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -21,8 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import com.simpleledger.app.ui.theme.SlType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
@@ -54,15 +58,32 @@ internal fun FilterSheetContent(
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+    // 面板最高 86% 屏高，超出部分内部滚动；「清除/完成」操作条固定在面板底部 ——
+    // P0-C1：此前整列不滚动，「完成」被推出屏幕外（分类 chips 被面板底缘裁切，须滚到底才够得着）。
+    // ⚠️ 限高用「屏幕高度派生的有限值」而非 BoxWithConstraints.maxHeight：
+    // sheet content 的高度约束可能是无限（可滚容器内），maxHeight=Dp.Infinity 时 heightIn 形同虚设。
+    // 另注：P0-C1 的真根因在调用侧 —— ModalBottomSheet 必须 skipPartiallyExpanded，
+    // 半展开态下 sheet 只有半屏高，本面板的 sticky 操作条会被裁出可视区。
+    val maxPanelHeight = LocalConfiguration.current.screenHeightDp.dp * 0.86f
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = maxPanelHeight)
+            .padding(horizontal = 20.dp),
+    ) {
         Text(
             text = stringResource(R.string.filter),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            style = SlType.title,
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("类型", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 可滚动的筛选组区（操作条之外的一切）
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+        ) {
+        Text("类型", style = SlType.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(8.dp))
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             val options = listOf<Int?>(null, EntryType.EXPENSE, EntryType.INCOME)
@@ -78,7 +99,7 @@ internal fun FilterSheetContent(
                             EntryType.INCOME -> stringResource(R.string.income)
                             else -> "全部"
                         },
-                        fontSize = 13.sp,
+                        style = SlType.label,
                     )
                 }
             }
@@ -91,7 +112,7 @@ internal fun FilterSheetContent(
         Spacer(modifier = Modifier.height(20.dp))
         Text(
             stringResource(R.string.filter_group_reconcile),
-            fontSize = 12.5.sp,
+            style = SlType.label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -114,7 +135,7 @@ internal fun FilterSheetContent(
                                 false -> stringResource(R.string.status_pending_reconcile)
                                 else -> stringResource(R.string.filter_all)
                             },
-                            fontSize = 12.5.sp,
+                            style = SlType.label,
                         )
                     },
                 )
@@ -124,7 +145,7 @@ internal fun FilterSheetContent(
         Spacer(modifier = Modifier.height(20.dp))
         Text(
             stringResource(R.string.filter_group_reimburse),
-            fontSize = 12.5.sp,
+            style = SlType.label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -147,7 +168,7 @@ internal fun FilterSheetContent(
                                     ReimburseState.NONE -> stringResource(R.string.status_reimburse_none)
                                     else -> stringResource(R.string.filter_all)
                                 },
-                                fontSize = 12.5.sp,
+                                style = SlType.label,
                             )
                         },
                     )
@@ -155,7 +176,7 @@ internal fun FilterSheetContent(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        Text(stringResource(R.string.category), fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.category), style = SlType.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(8.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -175,17 +196,21 @@ internal fun FilterSheetContent(
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(category.name, fontSize = 12.5.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(category.name, style = SlType.label)
                         }
                     },
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        } // 筛选组滚动区结束
+
+        // sticky 操作条：固定面板底部，任何滚动位置都够得着（P0-C1）
+        Spacer(modifier = Modifier.height(12.dp))
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),

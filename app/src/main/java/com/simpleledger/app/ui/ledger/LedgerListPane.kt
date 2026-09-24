@@ -50,7 +50,8 @@ import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlChipShape
-import com.simpleledger.app.ui.theme.TabularNums
+import com.simpleledger.app.ui.theme.SlType
+import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -96,14 +97,14 @@ internal fun LedgerListPane(
                     onClick = onSearchClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text(stringResource(R.string.search), fontSize = 13.sp)
+                    Text(stringResource(R.string.search), style = SlType.label)
                 }
                 TextButton(
                     onClick = onFilterClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
                     Box {
-                        Text(stringResource(R.string.filter), fontSize = 13.sp)
+                        Text(stringResource(R.string.filter), style = SlType.label)
                         if (filtersActive) {
                             Box(
                                 modifier = Modifier
@@ -127,7 +128,9 @@ internal fun LedgerListPane(
 
         // 分区筛选（最常用，常驻页面；类型与分类收进筛选面板）
         LazyRow(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            modifier = Modifier.padding(vertical = 2.dp),
+            // 尾部 chip 不硬切在屏幕边：contentPadding 让最后一枚能滚进页边距内（与页面 16dp 边距一致）
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // 首位「全部」= 清空一切筛选（含状态维）。用 isActive 而不是
@@ -139,7 +142,7 @@ internal fun LedgerListPane(
                     onClick = { viewModel.clearFilters() },
                     modifier = Modifier.minimumInteractiveComponentSize(),
                     colors = slFilterChipColors(),
-                    label = { Text(stringResource(R.string.filter_all), fontSize = 12.5.sp) },
+                    label = { Text(stringResource(R.string.filter_all), style = SlType.label) },
                 )
             }
             // 两个状态快捷入口（规范 §2.4 的 chip 行：全部 / 待报销 / 待核对 / 分区…）。
@@ -158,7 +161,7 @@ internal fun LedgerListPane(
                         // 比再画一个图标更省，也更不容易看错
                         Text(
                             "○ " + stringResource(R.string.status_reimburse_pending),
-                            fontSize = 12.5.sp,
+                            style = SlType.label,
                         )
                     },
                 )
@@ -174,7 +177,7 @@ internal fun LedgerListPane(
                         // 挂在「待核对」上会跟账目行的 ✓ 打架
                         Text(
                             stringResource(R.string.status_pending_reconcile),
-                            fontSize = 12.5.sp,
+                            style = SlType.label,
                         )
                     },
                 )
@@ -193,8 +196,8 @@ internal fun LedgerListPane(
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(section.name, fontSize = 12.5.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(section.name, style = SlType.label)
                         }
                     },
                 )
@@ -219,7 +222,7 @@ internal fun LedgerListPane(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 modifier = Modifier.heightIn(min = 40.dp),
             ) {
-                Text(stringResource(R.string.record_entry), fontSize = 13.5.sp)
+                Text(stringResource(R.string.record_entry), style = SlType.label)
             }
         }
 
@@ -262,7 +265,7 @@ internal fun LedgerListPane(
                             onSetReimburseState = { onSetReimburse(full.entry.id, it) },
                         )
                     }
-                    item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(6.dp)) }
+                    item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(8.dp)) }
                 }
                 item { Spacer(modifier = Modifier.height(16.dp)) }
             }
@@ -295,7 +298,7 @@ private fun OverviewRow(expenseCents: Long, incomeCents: Long) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OverviewCell(
@@ -340,15 +343,16 @@ private fun OverviewCell(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = value,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            // 概览数字 = 列表主信息位（title，字族一元楷体）。
+            // P2-1（fs2.0 尾数截断）：autoSize 收缩适配三栏等宽槽，绝不截尾
+            style = SlType.title,
             color = color,
-            style = TabularNums,
             maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 7.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
         )
     }
 }
@@ -363,7 +367,7 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         state.filters.type?.let { type ->
             SmallTag(stringResource(if (type == EntryType.EXPENSE) R.string.expense else R.string.income))
@@ -388,7 +392,7 @@ private fun ActiveFilterBar(state: LedgerUiState, onClearAll: () -> Unit) {
         }
         Spacer(modifier = Modifier.weight(1f))
         TextButton(onClick = onClearAll) {
-            Text(stringResource(R.string.clear_all), fontSize = 12.5.sp)
+            Text(stringResource(R.string.clear_all), style = SlType.label)
         }
     }
 }
@@ -399,7 +403,7 @@ private fun SmallTag(text: String, icon: ImageVector? = null) {
         modifier = Modifier
             .clip(SlChipShape)
             .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal = 9.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
@@ -413,9 +417,8 @@ private fun SmallTag(text: String, icon: ImageVector? = null) {
             }
             Text(
                 text = text,
-                fontSize = 11.5.sp,
+                style = SlType.meta,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium,
             )
         }
     }

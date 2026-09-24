@@ -3,6 +3,7 @@ package com.simpleledger.app.ui.entry
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
@@ -74,7 +76,8 @@ fun EntryEditScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 已消费 systemBars insets，内层归零防双重避让（详见 SectionHomeScreen 注释）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
         topBar = {
             EntryFormHeader(

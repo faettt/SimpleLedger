@@ -32,9 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.LocalHideAmounts
-import com.simpleledger.app.ui.theme.KaitiFont
+import androidx.compose.ui.text.TextStyle
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
-import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -68,10 +68,8 @@ fun MonthHeader(
         }
         Text(
             text = DateTimes.monthLabel(month),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            // 「页码」装饰位（规范 D1）：手账翻月即翻页
-            fontFamily = KaitiFont,
+            // 「页码」位：手账翻月即翻页。title（楷体，字族一元）
+            style = SlType.title,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center,
         )
@@ -83,7 +81,7 @@ fun MonthHeader(
                 onClick = onToday,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
             ) {
-                Text("今天", fontSize = 13.sp)
+                Text("今天", style = SlType.label)
             }
         }
         trailing?.invoke()
@@ -141,18 +139,18 @@ fun MoneyText(
     amountCents: Long,
     isIncome: Boolean,
     modifier: Modifier = Modifier,
-    fontSize: TextUnit = 16.sp,
+    style: TextStyle = SlType.title,
 ) {
     val hidden = LocalHideAmounts.current
     val color = if (isIncome) incomeColor() else MaterialTheme.colorScheme.onSurface
-    // 负号用真减号 U+2212（规范 R1）：ASCII hyphen 在等宽数字下过短，与「+」不平衡
+    // 符号语序统一「−¥」/「+¥」（与 Money.formatWithSymbol 同规）。
+    // 负号用真减号 U+2212：楷体子集 v2 已收录（Fonts.kt）
     val sign = if (isIncome) "+" else "−"
     Text(
         text = if (hidden) "$sign••••" else sign + Money.formatWithSymbol(kotlin.math.abs(amountCents)),
         color = color,
-        fontSize = fontSize,
-        fontWeight = FontWeight.Medium,
-        style = TabularNums,
+        // 金额：token（字族一元楷体；R1 等宽数字已随决策二作废）
+        style = style,
         modifier = modifier,
     )
 }
@@ -179,16 +177,15 @@ fun EmptyHint(
                     imageVector = SlIcons.Illustration.EmptyLg,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(32.dp),
                 )
             }
             Text(
                 text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                // 「空态」装饰位（规范 D1）用楷体
-                fontFamily = KaitiFont,
+                // 「空态」位：body（楷体 Regular，字族一元）
+                style = SlType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 14.dp, start = 32.dp, end = 32.dp),
+                modifier = Modifier.padding(top = 12.dp, start = 32.dp, end = 32.dp),
                 textAlign = TextAlign.Center,
             )
             if (actionLabel != null && onAction != null) {
@@ -246,9 +243,8 @@ fun ConfirmDialog(
 fun GroupLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        fontSize = 12.5.sp,
-        fontWeight = FontWeight.SemiBold,
+        style = SlType.label,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+        modifier = modifier.padding(start = 4.dp, top = 24.dp, bottom = 8.dp),
     )
 }

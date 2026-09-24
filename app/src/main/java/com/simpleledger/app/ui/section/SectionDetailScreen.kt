@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,9 +54,8 @@ import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.ledger.DayHeader
 import com.simpleledger.app.ui.ledger.EntryRow
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
-import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
-import com.simpleledger.app.ui.theme.TabularNums
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.launch
@@ -156,9 +156,9 @@ fun SectionDetailScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 已消费 systemBars insets，内层归零防双重避让（详见 SectionHomeScreen 注释）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
-
         snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -166,7 +166,7 @@ fun SectionDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
+                        .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
@@ -184,16 +184,14 @@ fun SectionDetailScreen(
                             Icon(
                                 imageVector = slCategoryIcon(it.iconId),
                                 contentDescription = null,
-                                modifier = Modifier.size(19.dp),
+                                modifier = Modifier.size(20.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                         Text(
                             text = state.section?.name ?: "",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            // 分区名装饰位用楷体 + 页眉双线（规范 §2.3）
-                            fontFamily = KaitiFont,
+                            // 分区名装饰位：headlineK（楷体 Regular）+ 页眉双线（规范 §2.3）
+                            style = SlType.headline,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.slTitleRule(),
@@ -233,7 +231,7 @@ fun SectionDetailScreen(
                                         onDelete = { scope.launch { deleteWithUndo(full.entry.id) } },
                                     )
                                 }
-                                item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(6.dp)) }
+                                item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(8.dp)) }
                             }
                             item { Spacer(modifier = Modifier.height(12.dp)) }
                         }
@@ -292,18 +290,16 @@ private fun SectionSummary(expenseCents: Long, incomeCents: Long) {
                 R.string.section_detail_expense,
                 if (hidden) "••••" else Money.formatWithSymbol(expenseCents),
             ),
-            fontSize = 12.5.sp,
+            style = SlType.bodySm,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = TabularNums,
         )
         Text(
             text = stringResource(
                 R.string.section_detail_income,
                 if (hidden) "••••" else Money.formatWithSymbol(incomeCents),
             ),
-            fontSize = 12.5.sp,
+            style = SlType.bodySm,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = TabularNums,
         )
     }
 }

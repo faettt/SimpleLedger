@@ -44,7 +44,9 @@ import com.simpleledger.app.ui.components.DailyBarChart
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
 import com.simpleledger.app.ui.components.SectionDonutChart
-import com.simpleledger.app.ui.theme.TabularNums
+import com.simpleledger.app.ui.theme.SlStatus
+import com.simpleledger.app.ui.theme.SlType
+import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.ui.theme.tapeColor
@@ -178,7 +180,7 @@ fun StatsScreen(
                 }
 
                 // Q-08：分区预算块已移除——预算进度改由「分区」首屏卡片承载，统计页专注趋势 / 占比 / 每日支出
-                item { Spacer(modifier = Modifier.height(28.dp)) }
+                item { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
     }
@@ -252,7 +254,7 @@ private fun SectionShareSection(
 ) {
     SectionTitle("分区占比")
     Card(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             SectionDonutChart(
                 shares = shares,
                 totalCents = totalCents,
@@ -264,7 +266,7 @@ private fun SectionShareSection(
             // 可点性的提示：环图本身没有「可点」的视觉暗示，这句话是唯一的入口说明
             Text(
                 text = "点扇区可只看该分区的分类",
-                fontSize = 11.5.sp,
+                style = SlType.meta,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
@@ -281,7 +283,7 @@ private fun SectionShareSection(
                                 RoundedCornerShape(3.dp),
                             )
                             .clickable { onSliceClick(index) }
-                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
@@ -294,11 +296,12 @@ private fun SectionShareSection(
                                     RoundedCornerShape(1.dp),
                                 ),
                         )
-                        Spacer(modifier = Modifier.width(9.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             share.section.name,
-                            fontSize = 13.5.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            // 图表内文字同走楷体（字族一元）；选中态只加字距——
+                            // bodySm 13.5sp 在禁粗档（决策一），+0.04em 与 navTabOn 同一信号语言
+                            style = if (selected) SlType.bodySm.merge(SlStatus.selectedSm) else SlType.bodySm,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
@@ -308,9 +311,8 @@ private fun SectionShareSection(
                                 StatsCalculator.percentLabel(share.fraction) +
                                     " · " + Money.formatCents(share.section.expense)
                             },
-                            fontSize = 12.5.sp,
+                            style = SlType.bodySm,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = TabularNums,
                         )
                     }
                 }
@@ -333,7 +335,7 @@ private fun CategoryBarSection(
 ) {
     SectionTitle(title)
     Card(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             CategoryBarChart(rows = rows, hidden = hidden)
         }
     }
@@ -344,7 +346,7 @@ private fun CategoryBarSection(
 private fun DailyExpenseSection(daily: List<Pair<Int, Long>>, daysInMonth: Int, hidden: Boolean) {
     SectionTitle("每日支出")
     Card(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             DailyBarChart(daily = daily, daysInMonth = daysInMonth, hidden = hidden)
         }
     }
@@ -368,15 +370,16 @@ private fun StatCell(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = value,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            // 统计数字 = 结余数字位（title，字族一元楷体）。
+            // P2-1（fs2.0 尾数截断）：autoSize 收缩适配三栏等宽槽，绝不截尾
+            style = SlType.title,
             color = color,
-            style = TabularNums,
             maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 7.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
         )
     }
 }
@@ -385,8 +388,9 @@ private fun StatCell(
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
+        // 区块标题 = titleL（22/28/600，规范 scale.use 明文）
+        style = SlType.titleL,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
     )
 }
+

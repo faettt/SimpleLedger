@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -66,7 +68,7 @@ import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
-import com.simpleledger.app.ui.theme.KaitiFont
+import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.SlChipShape
 import com.simpleledger.app.ui.theme.slSegmentShape
@@ -125,9 +127,9 @@ fun MineScreen(
     }
 
     Scaffold(
-
+        // ⚠️ 外层 AppRoot 已消费 systemBars insets，内层归零防双重避让（详见 SectionHomeScreen 注释）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = Color.Transparent,
-
         snackbarHost = { SlSnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             // 可滚动的设置列表单独抽出：限宽外壳只切换包装，列表本体只有一份，避免两套代码走样
@@ -140,10 +142,8 @@ fun MineScreen(
                 ) {
                     Text(
                         text = stringResource(R.string.nav_mine),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        // 楷体页眉 + 签名双线（规范 §2.6）；bottom 14dp 给双线留出呼吸
-                        fontFamily = KaitiFont,
+                        // 页面主标题装饰位：headlineK（楷体 Regular）；bottom 14dp 给双线留出呼吸
+                        style = SlType.headline,
                         modifier = Modifier
                             .padding(top = 12.dp, bottom = 14.dp)
                             .slTitleRule(),
@@ -163,8 +163,7 @@ fun MineScreen(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 stringResource(R.string.mine_theme),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium,
+                                style = SlType.title,
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -177,7 +176,14 @@ fun MineScreen(
                                             count = AppSettings.ThemeMode.all.size,
                                         ),
                                     ) {
-                                        Text(AppSettings.ThemeMode.label(mode), fontSize = 13.sp)
+                                        // P2-2（fs2.0「跟随系统」换行 + ✓ 重叠）：
+                                        // 段内文字单行 + autoSize 收缩，选中勾与文字不再打架
+                                        Text(
+                                            AppSettings.ThemeMode.label(mode),
+                                            style = SlType.label,
+                                            maxLines = 1,
+                                            autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 12.5.sp, stepSize = 0.25.sp),
+                                        )
                                     }
                                 }
                             }
@@ -342,7 +348,7 @@ private fun QuickAmountsDialog(
             Column {
                 Text(
                     text = "在「记一笔」里显示为可一键填入的金额。留空表示不显示该档位。",
-                    fontSize = 12.5.sp,
+                    style = SlType.bodySm,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -394,7 +400,7 @@ private fun PrivacyCard(countsText: String) {
                 color = MaterialTheme.colorScheme.primary,
                 shape = SlipShape,
             )
-            .padding(18.dp),
+            .padding(20.dp),
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -412,26 +418,24 @@ private fun PrivacyCard(countsText: String) {
                         modifier = Modifier.size(11.dp),
                     )
                 }
-                Spacer(modifier = Modifier.width(9.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.mine_privacy_title),
+                    style = SlType.title,
                     color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.mine_privacy_desc),
+                style = SlType.bodySm,
                 color = Color.White.copy(alpha = 0.88f),
-                fontSize = 12.5.sp,
-                lineHeight = 19.sp,
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = countsText,
+                style = SlType.meta,
                 color = Color.White.copy(alpha = 0.72f),
-                fontSize = 11.5.sp,
             )
         }
     }
@@ -441,10 +445,9 @@ private fun PrivacyCard(countsText: String) {
 private fun GroupTitle(text: String) {
     Text(
         text = text,
-        fontSize = 12.5.sp,
-        fontWeight = FontWeight.SemiBold,
+        style = SlType.label,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 4.dp, top = 24.dp, bottom = 8.dp),
     )
 }
 
@@ -463,22 +466,22 @@ private fun ActionRow(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(title, style = SlType.title)
                 if (desc.isNotBlank()) {
                     Text(
                         desc,
-                        fontSize = 12.sp,
+                        style = SlType.bodySm,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Text(
                 "›",
-                fontSize = 18.sp,
+                style = SlType.title,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -503,9 +506,9 @@ private fun SwitchRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(title, style = SlType.title)
                 if (desc.isNotBlank()) {
-                    Text(desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(desc, style = SlType.bodySm, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
