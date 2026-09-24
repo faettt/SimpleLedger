@@ -50,6 +50,7 @@ import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.slAnimateItem
 import com.simpleledger.app.ui.theme.SlButtonShape
 
 /**
@@ -159,7 +160,10 @@ fun SectionHomeScreen(
                                 onClick = { onOpenSection(total.sectionId) },
                                 onMoveUp = { viewModel.moveSection(total.sectionId, -1) },
                                 onMoveDown = { viewModel.moveSection(total.sectionId, +1) },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                // 增删移位动效（Motion）：重排/新建/删除分区时滑移过渡
+                                modifier = slAnimateItem(
+                                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                ),
                             )
                         }
                         item { Spacer(modifier = Modifier.height(96.dp)) }

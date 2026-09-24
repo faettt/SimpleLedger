@@ -42,7 +42,7 @@ import com.simpleledger.app.ui.Routes
 import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.hingeConstrainedWidth
 import com.simpleledger.app.ui.hingeDetailInsetPx
-import com.simpleledger.app.ui.entry.EntryEditHost
+import com.simpleledger.app.ui.entry.EntryEditHostGate
 import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.section.SectionPickerDialog
 import kotlinx.coroutines.launch
@@ -275,21 +275,21 @@ fun LedgerScreen(
     val startRecord: () -> Unit = { showSectionPicker = true }
 
     val centeredEditHost: @Composable () -> Unit = {
-        if (inPlaceEdit && editingEntryId != null) {
-            EntryEditHost(
-                entryId = editingEntryId,
-                sectionId = editingSectionId,
-                style = EntryEditHostStyle.Centered,
-                dense = dense,
-                snackbarHostState = snackbarHostState,
-                onDismiss = onStopEdit,
-                onSaved = { savedId ->
-                    onStopEdit()
-                    savedId?.let { scope.launch { showSavedNotice(it) } }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        // 进出闸门：居中浮层「轻放上桌 / 快抽离场」（EntryEditHostGate 注释）
+        EntryEditHostGate(
+            visible = inPlaceEdit && editingEntryId != null,
+            entryId = editingEntryId ?: Routes.NEW_ENTRY_ID,
+            sectionId = editingSectionId,
+            style = EntryEditHostStyle.Centered,
+            dense = dense,
+            snackbarHostState = snackbarHostState,
+            onDismiss = onStopEdit,
+            onSaved = { savedId ->
+                onStopEdit()
+                savedId?.let { scope.launch { showSavedNotice(it) } }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 
     Scaffold(
@@ -350,21 +350,23 @@ fun LedgerScreen(
                             .padding(start = detailPaneInset),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (editingEntryId != null) {
-                            EntryEditHost(
-                                entryId = editingEntryId,
-                                sectionId = editingSectionId,
-                                style = EntryEditHostStyle.Panel,
-                                dense = dense,
-                                snackbarHostState = snackbarHostState,
-                                onDismiss = onStopEdit,
-                                onSaved = { savedId ->
-                                    onStopEdit()
-                                    savedId?.let { scope.launch { showSavedNotice(it) } }
-                                },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else {
+                        // 进出闸门：右板「从右插入 / 向右抽走」。退出动画期间与详情栏
+                        // 短暂共存（板淡出、详情已在），读作「纸抽走露出下一页」
+                        EntryEditHostGate(
+                            visible = editingEntryId != null,
+                            entryId = editingEntryId ?: Routes.NEW_ENTRY_ID,
+                            sectionId = editingSectionId,
+                            style = EntryEditHostStyle.Panel,
+                            dense = dense,
+                            snackbarHostState = snackbarHostState,
+                            onDismiss = onStopEdit,
+                            onSaved = { savedId ->
+                                onStopEdit()
+                                savedId?.let { scope.launch { showSavedNotice(it) } }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (editingEntryId == null) {
                             EntryDetailPane(
                                 full = selected,
                                 onEdit = { id -> onStartEdit(id, Routes.NEW_SECTION) },

@@ -51,6 +51,7 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlChipShape
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.slAnimateItem
 import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -263,6 +264,8 @@ internal fun LedgerListPane(
                             showSectionPrefix = state.filters.sectionId == null,
                             onToggleReconciled = { onSetReconciled(full.entry.id, it) },
                             onSetReimburseState = { onSetReimburse(full.entry.id, it) },
+                            // 增删移位动效（Motion：记一笔插入 / 删除 / 撤销恢复时滑移淡入淡出）
+                            modifier = slAnimateItem(),
                         )
                     }
                     item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(8.dp)) }

@@ -55,6 +55,7 @@ import com.simpleledger.app.ui.ledger.DayHeader
 import com.simpleledger.app.ui.ledger.EntryRow
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.slAnimateItem
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -229,6 +230,8 @@ fun SectionDetailScreen(
                                         onDuplicate = { scope.launch { duplicateWithNotice(full.entry.id) } },
                                         onMove = {},
                                         onDelete = { scope.launch { deleteWithUndo(full.entry.id) } },
+                                        // 增删移位动效（Motion）
+                                        modifier = slAnimateItem(),
                                     )
                                 }
                                 item(key = "space_${group.date}") { Spacer(modifier = Modifier.height(8.dp)) }

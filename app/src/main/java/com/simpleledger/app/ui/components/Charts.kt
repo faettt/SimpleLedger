@@ -34,6 +34,9 @@ import com.simpleledger.app.R
 import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.chartGrow
+import com.simpleledger.app.ui.theme.rememberSlChartTimeline
+import com.simpleledger.app.ui.theme.sweepClipPath
 import com.simpleledger.app.util.Money
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -172,6 +175,8 @@ fun DonutChart(
     // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
+    // 入场「画出来」时间线（Motion④）：环带与标注按扇形扫出，起止角保持精确
+    val timeline = rememberSlChartTimeline()
     // 配色已在调用方算好（[DonutSlice.color]）。这里只取与主题相关、与数据无关的颜色。
     //
     // ⚠️ 手势处理要用「最新值」而不是闭包捕获：pointerInput 的 key 若传每次重组
@@ -244,6 +249,14 @@ fun DonutChart(
                     style = Stroke(width = g.stroke, cap = StrokeCap.Butt),
                 )
             } else {
+                // 入场「画出来」（Motion④）：扇形裁剪窗从 12 点顺时针扫过 ——
+                // 环带与百分比标注随窗显形，数据角度完全不变（只是被遮住的还没画出来）。
+                // save/restore 成对：漏 restore 会把后面的中心文字一起裁掉。
+                val revealCanvas = drawContext.canvas.nativeCanvas
+                revealCanvas.save()
+                revealCanvas.clipPath(
+                    sweepClipPath(g.cx, g.cy, size.width, 360f * chartGrow(timeline)),
+                )
                 // ---- 手绘环带（规范 §2.5「手绘甜甜圈：外圈抖动描边」）----
                 // 沿外缘/内缘各采样一排点，半径按角度散列微抖（确定性，同手绘隐喻与
                 // markerJitter 同源）——完美圆弧是「屏幕控件语言」，抖动才是手绘痕迹。
@@ -344,6 +357,7 @@ fun DonutChart(
                     }
                     ringStart = ringEnd
                 }
+                revealCanvas.restore()
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -446,6 +460,8 @@ fun CategoryBarChart(
     val labelPx = with(LocalDensity.current) { 12.sp.toPx() }
     val amountPx = with(LocalDensity.current) { 11.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
+    // 入场生长（Motion④）：条从左端起跑线长出，逐条错峰
+    val timeline = rememberSlChartTimeline()
 
     val rowPitch = 30.dp
     // 全部展开（用户裁定）：条数 = 分类数，高度随条数走，不做限高/折叠
@@ -494,7 +510,8 @@ fun CategoryBarChart(
             )
 
             val barH = 16.dp.toPx()
-            val len = (row.amountCents.toFloat() / maxCents) * barW
+            // 生长系数：条左端（起跑线）不动，只长右端 —— 与「长度编码可比」一致
+            val len = (row.amountCents.toFloat() / maxCents) * barW * chartGrow(timeline, index)
             // 马克笔涂条：左端整齐（都在同一条起跑线上才可比），右端微不规则 + 圆角
             val r = minOf(barH / 2f, 4f)
             val path = Path().apply {
@@ -515,7 +532,8 @@ fun CategoryBarChart(
                 topLeft = Offset(barX, centerY - barH / 2f),
                 size = Size(barW, barH),
             )
-            drawPath(path = path, color = row.color)
+            // 生长未起步（len≈0）时不画条：退化路径的圆角计算会画出怪形
+            if (len > 1f) drawPath(path = path, color = row.color)
 
             // 兜底②：金额标在条右侧 —— 尾部条长接近 0 时，数值是唯一的可读通道
             if (!hidden) {
@@ -575,6 +593,8 @@ fun DailyBarChart(
     val axisLabelPx = with(LocalDensity.current) { 10.sp.toPx() }
     val peakLabelPx = with(LocalDensity.current) { 10.5.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
+    // 入场生长（Motion④）：柱从基线长起、按日错峰 —— 柱底严格贴基线不参与生长
+    val timeline = rememberSlChartTimeline()
     val speech = barChartSpeech(daily, daysInMonth, hidden)
 
     Canvas(
@@ -623,9 +643,10 @@ fun DailyBarChart(
             textAlign = android.graphics.Paint.Align.CENTER
         }
 
-        daily.forEach { (day, cents) ->
-            val barHeight = (cents.toFloat() / maxCents) * plotHeight
-            if (barHeight <= 1f) return@forEach
+        daily.forEachIndexed { index, (day, cents) ->
+            // 生长系数只乘柱高（top 上移），柱底恒贴 baseline
+            val barHeight = (cents.toFloat() / maxCents) * plotHeight * chartGrow(timeline, index)
+            if (barHeight <= 1f) return@forEachIndexed
 
             // ①② 手绘：宽度微不等 + 顶部左右圆角不等
             val ratio = 0.62f + markerJitter(day, 1) * 0.16f

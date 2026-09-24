@@ -3,6 +3,15 @@ package com.simpleledger.app.ui.entry
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,12 +42,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlipShape
+import com.simpleledger.app.ui.theme.slTween
 
 /** 记一笔 / 编辑账目在列表页内的两种承载形态 */
 enum class EntryEditHostStyle {
@@ -47,6 +59,81 @@ enum class EntryEditHostStyle {
 
     /** Expanded（≥840dp）：右侧面板 480dp，与列表并列、不遮挡 */
     Panel,
+}
+
+/**
+ * 编辑宿主的**进出闸门**（Motion.kt「纸的物理」）。
+ *
+ * 直接 `if (visible) EntryEditHost(...)` 是瞬时装卸——浮层"啪"地出现/消失，
+ * 与全项目的纸感节奏脱节。这里换成纸片进出：
+ *
+ * · **Centered（居中浮层）**：像一张纸轻放上桌——24dp 微升 + 淡入 250ms
+ *   （PaperOut）；退场快抽——150ms 淡出（PaperIn）。
+ * · **Panel（右侧板）**：像一张纸从右侧插进来——右移 24dp + 淡入 250ms；
+ *   退场向右抽走 150ms。
+ *
+ * 退场动画期间内容保持**最后一次非空参数**继续组合（[lastEntryId]），
+ * 否则 visible 翻 false 的瞬间表单已拿到空 id，退场动画画的是一张空白纸。
+ */
+@Composable
+fun EntryEditHostGate(
+    visible: Boolean,
+    entryId: Long,
+    sectionId: Long,
+    style: EntryEditHostStyle,
+    snackbarHostState: SnackbarHostState,
+    onDismiss: () -> Unit,
+    onSaved: (Long?) -> Unit,
+    modifier: Modifier = Modifier,
+    dense: Boolean = false,
+) {
+    var lastEntryId by remember { mutableStateOf(entryId) }
+    var lastSectionId by remember { mutableStateOf(sectionId) }
+    if (visible) {
+        lastEntryId = entryId
+        lastSectionId = sectionId
+    }
+
+    // 位移像素：transition lambda 非组合上下文，在此一次性换算供闭包捕获
+    val slidePx = with(LocalDensity.current) { SlMotion.ShiftStandard.roundToPx() }
+
+    val enter: EnterTransition
+    val exit: ExitTransition
+    when (style) {
+        // 居中浮层：轻放上桌（微升 24dp + 淡入），快抽离场（150ms 淡出 + 下沉 8dp）
+        EntryEditHostStyle.Centered -> {
+            enter = fadeIn(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) +
+                slideInVertically(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) { slidePx }
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { slidePx / 3 }
+        }
+
+        // 右侧板：像一张纸从右侧插进来 / 向右抽走
+        EntryEditHostStyle.Panel -> {
+            enter = fadeIn(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) +
+                slideInHorizontally(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) { slidePx }
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { slidePx }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit,
+        modifier = modifier,
+    ) {
+        EntryEditHost(
+            entryId = lastEntryId,
+            sectionId = lastSectionId,
+            style = style,
+            snackbarHostState = snackbarHostState,
+            onDismiss = onDismiss,
+            onSaved = onSaved,
+            modifier = Modifier.fillMaxSize(),
+            dense = dense,
+        )
+    }
 }
 
 /**

@@ -1,5 +1,17 @@
 package com.simpleledger.app.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -76,6 +91,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.clickable
+import androidx.navigation.NavBackStackEntry
+import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.slFast
+import com.simpleledger.app.ui.theme.slPress
+import com.simpleledger.app.ui.theme.slStandard
+import com.simpleledger.app.ui.theme.slTween
 
 /*
  * 应用外壳：窗口形态判定 + 4 槽一级导航 + 路由挂载。
@@ -241,13 +262,60 @@ private fun AppNavHost(
     onStopEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // ——— 导航动效规格（Motion.kt「纸的物理」；dp 位移在此换算成 px 供 transition 闭包使用）———
+    val pageShift = with(LocalDensity.current) { SlMotion.ShiftPage.roundToPx() }
+    val halfPageShift = pageShift / 2
+    val microShift = with(LocalDensity.current) { SlMotion.ShiftMicro.roundToPx() }
+    val stdShift = with(LocalDensity.current) { SlMotion.ShiftStandard.roundToPx() }
+
+    // 换章（底部 4 签互切）：交叉淡化 + 8dp 微升 —— 同层切换没有方向语义，不做横移
+    val tabEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        fadeIn(slStandard(SlMotion.PaperOut)) +
+            slideInVertically(slStandard(SlMotion.PaperOut)) { microShift }
+    }
+    val tabExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn))
+    }
+    // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来
+    val formEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
+            slideInVertically(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { stdShift }
+    }
+    val formExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+            slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { stdShift }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
         modifier = modifier,
+        // ——— 导航动效（Motion.kt「纸的物理」）———
+        // 默认 = 翻页：前进从右 32dp 轻推入（PaperOut），下层微退 16dp；
+        // 后退反向（下层从左微进，本页向右 32dp 抽走 —— PaperIn 加速离场）。
+        enterTransition = {
+            fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
+                slideInHorizontally(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { pageShift }
+        },
+        exitTransition = {
+            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { -halfPageShift }
+        },
+        popEnterTransition = {
+            fadeIn(slStandard(SlMotion.PaperOut)) +
+                slideInHorizontally(slStandard(SlMotion.PaperOut)) { -halfPageShift }
+        },
+        popExitTransition = {
+            fadeOut(slStandard(SlMotion.PaperIn)) +
+                slideOutHorizontally(slStandard(SlMotion.PaperIn)) { pageShift }
+        },
     ) {
         // 分区首屏（默认落点）
-        composable(Routes.SECTIONS) {
+        composable(
+            Routes.SECTIONS,
+            enterTransition = tabEnter, exitTransition = tabExit,
+            popEnterTransition = tabEnter, popExitTransition = tabExit,
+        ) {
             SectionHomeScreen(
                 onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
                 layout = layout,
@@ -288,7 +356,11 @@ private fun AppNavHost(
         }
 
         // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
-        composable(Routes.LEDGER) { entry ->
+        composable(
+            Routes.LEDGER,
+            enterTransition = tabEnter, exitTransition = tabExit,
+            popEnterTransition = tabEnter, popExitTransition = tabExit,
+        ) { entry ->
             LedgerScreen(
                 resultHandle = entry.savedStateHandle,
                 onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
@@ -309,16 +381,29 @@ private fun AppNavHost(
         // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
         // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这几页，
         // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
-        composable(Routes.STATS) { StatsScreen(layout = layout) }
-        composable(Routes.MINE) {
+        composable(
+            Routes.STATS,
+            enterTransition = tabEnter, exitTransition = tabExit,
+            popEnterTransition = tabEnter, popExitTransition = tabExit,
+        ) { StatsScreen(layout = layout) }
+        composable(
+            Routes.MINE,
+            enterTransition = tabEnter, exitTransition = tabExit,
+            popEnterTransition = tabEnter, popExitTransition = tabExit,
+        ) {
             MineScreen(
                 layout = layout,
                 onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
             )
         }
 
-        // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）
-        composable(Routes.ENTRY_EDIT) { entry ->
+        // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）。
+        // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
+        composable(
+            Routes.ENTRY_EDIT,
+            enterTransition = formEnter, exitTransition = tabExit,
+            popEnterTransition = tabEnter, popExitTransition = formExit,
+        ) { entry ->
             val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
                 ?: Routes.NEW_ENTRY_ID
             val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull()
@@ -461,17 +546,49 @@ private fun IndexTab(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp)
+    // 按压轻压与点击共用同一个 interactionSource（slPress 从它收集按压状态）
+    val interactionSource = remember { MutableInteractionSource() }
     val accent = MaterialTheme.colorScheme.primary
-    val color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
-    // 签块底色/描边色先读出：drawBehind 的 DrawScope 里读不了 MaterialTheme（见 LedgerBottomBar 同款注释）
-    val slipColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    // ——— 索引贴形变（Motion「切换/形变」档）：凸出高度 250ms、
+    //     填充/内容色与图标尺寸 150ms —— 形变是这套导航的招牌信号，值得有一段
+    //     可感知的过渡；曲线 Standard（两端软中段快），减少动效时瞬时完成 ———
+    val slipColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        animationSpec = slFast(),
+        label = "tabSlip",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = slFast(),
+        label = "tabContent",
+    )
+    val heightAnim by animateDpAsState(
+        targetValue = if (selected) selectedHeight else unselectedHeight,
+        animationSpec = slTween(SlMotion.StandardMs, SlMotion.Standard),
+        label = "tabHeight",
+    )
+    val topPadAnim by animateDpAsState(
+        targetValue = if (selected) selectedHeight - unselectedHeight else 0.dp,
+        animationSpec = slTween(SlMotion.StandardMs, SlMotion.Standard),
+        label = "tabPad",
+    )
+    val iconAnim by animateDpAsState(
+        targetValue = if (selected) 22.dp else 20.dp,
+        animationSpec = slFast(),
+        label = "tabIcon",
+    )
     val borderColor = MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = modifier
             // 触控区撑满整条栏高（54dp ≥ 48dp）；视觉签再贴到底部
             .fillMaxHeight()
-            .clickable(onClick = onClick)
+            .slPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             // 语义：告诉读屏这是标签页且当前选中 —— 仅靠文字节点读不出"选中了几号"
             .semantics {
                 role = Role.Tab
@@ -486,7 +603,7 @@ private fun IndexTab(
                 // 止于 inset 上沿时 4 签下缘会连成分界线（见类型注释「融为一体」条）。
                 // bottomBleed 只进高度、**不进底部 padding**——内容从固定顶向下生长，
                 // 行盒随 fontScale 放大时直接伸进下方留白（原因见 padding 注释②）。
-                .height((if (selected) selectedHeight else unselectedHeight) + bottomBleed)
+                .height(heightAnim + bottomBleed)
                 // ⚠️ 不要加 `.clip(shape)`（2026-09-23 实测裁字根因）：clip 会把**内容**一起裁——
                 // 文字行盒一旦超过内容区（默认行高度量偏大 / fontScale 放大），下沿被平切，
                 // 四签「区/细/计/的」下缘笔画各缺约 3dp。背景用 `background(_, shape)`
@@ -522,7 +639,7 @@ private fun IndexTab(
                 //    before 更惨：只余 1px）。去掉后内容从固定顶向下生长：fs≤3 时
                 //    「22+2+14×fs」dp 都在 54dp 签内，再大就画进签色留白
                 //    （Arrangement.Top 保证只向下溢、不出签顶）。
-                .padding(top = if (selected) selectedHeight - unselectedHeight else 0.dp),
+                .padding(top = topPadAnim),
             horizontalAlignment = Alignment.CenterHorizontally,
             // 内容贴顶排布：行盒变高（fontScale > 1）时向**下**溢进签块下方的签色
             // 留白区（3dp + bottomBleed，空间充足），不会画出签块顶缘。
@@ -540,8 +657,8 @@ private fun IndexTab(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(if (selected) 22.dp else 20.dp),
+                    tint = contentColor,
+                    modifier = Modifier.size(iconAnim),
                 )
             }
             // 图文 gap 统一 2dp（簇内间距 token；旧版「选中 1dp / 未选中 3dp」不对称 hack
@@ -560,7 +677,7 @@ private fun IndexTab(
                         alignment = LineHeightStyle.Alignment.Center,
                     ),
                 ),
-                color = color,
+                color = contentColor,
                 // 长文本/窄容器（横屏 Rail 阈值下、超大字号）单行省略收尾，不截字不换行
                 maxLines = 1,
                 softWrap = false,

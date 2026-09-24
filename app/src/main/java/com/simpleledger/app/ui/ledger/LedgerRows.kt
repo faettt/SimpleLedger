@@ -55,6 +55,7 @@ import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
+import com.simpleledger.app.ui.theme.slHoverLift
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import androidx.compose.material3.Icon
@@ -138,6 +139,7 @@ internal fun EntryRow(
     onToggleReconciled: ((Boolean) -> Unit)? = null,
     /** 长按菜单：设置报销维度。传 null 则不显示这三项。 */
     onSetReimburseState: ((Int) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val isIncome = full.entry.type == EntryType.INCOME
     val hidden = LocalHideAmounts.current
@@ -207,7 +209,7 @@ internal fun EntryRow(
 
     val moreActionsLabel = stringResource(R.string.a11y_more_actions)
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth()) {
         // 分区胶带色：账目行颜色的**唯一**含义（F4 —— 分区身份由色条承担，
         // 所以分类名不再带「装修 · 」文字前缀，符号簇也不再引入第三套色彩语义）
         // （唯一的例外是「全部分区」视图下对专属分类补前缀，见上方 categoryLabel）
@@ -216,6 +218,9 @@ internal fun EntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // 悬停拈起（仅指针设备）：密排流水行**不加按压缩放**——整行缩 2.5%
+                // 在长列表里是持续的视觉噪音；点击反馈由涟漪承担，悬停给 1dp 拈起
+                .slHoverLift()
                 .background(
                     if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                 )

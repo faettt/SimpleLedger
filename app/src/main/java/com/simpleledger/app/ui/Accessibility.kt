@@ -18,19 +18,20 @@ import com.simpleledger.app.util.Money
 /**
  * 是否「跟随系统减少动效」。
  *
- * 全项目**零自研动画**（无 `animate*` / `tween` / `spring` / `Animatable`），需要处理的是
- * Material3 内置动画（`ModalBottomSheet` / `DropdownMenu` / `AlertDialog` / `DatePicker` /
- * `TimePicker` / 图片查看浮层 / 导航选中指示器）。
+ * 自研动效体系见 `ui/theme/Motion.kt`（「纸的物理」），减少动效是**两层降级**：
  *
- * 系统侧的系统动画开关对应 `Settings.Global.ANIMATOR_DURATION_SCALE`：为 0 即关闭动画。
- * 这一条 Compose **已自动遵循**——`ui` 模块内部的 `MotionDurationScaleImpl` 会监听该设置并
- * 把 `MotionDurationScale` 的缩放因子设为 0，所有基于 `animate*AsState` / `Animatable` 的
- * 动画随之瞬时完成。因此**不需要**再写一套「动画时长系统」，更不能去换算时长——那样反而
- * 会与 Compose 的内部机制重复。
+ * · **时长层（自动）**：所有自研动画都走 Compose 动画原语（`animate*AsState` /
+ *   `Animatable` / `tween` / `spring`），`ui` 模块内部的 `MotionDurationScaleImpl` 会监听
+ *   `Settings.Global.ANIMATOR_DURATION_SCALE` 并把 `MotionDurationScale` 缩放因子设为 0，
+ *   动画随之瞬时完成。**不允许在调用点换算时长**——那样会与 Compose 内部机制重复，
+ *   且在 0.5x 等慢速档下行为错误。
+ * · **形变层（显式）**：缩放、位移这类**装饰性形变**时长缩放管不到（0ms 的缩放仍是缩放），
+ *   由本 [LocalReduceMotion] 显式分流：`slPress` 的按压缩放归零（保留涟漪）、
+ *   `slHoverLift` 整体关闭。Material3 内置动画（`ModalBottomSheet` / `DropdownMenu` /
+ *   `AlertDialog` / `DatePicker` / 涟漪）同样走时长层，不重包。
  *
- * 本 [LocalReduceMotion] 的职责是**给项目自己需要按动效偏好分流的少数场景**一个统一入口，
- * 默认 `false`（不影响任何现有行为）。当前消费方见 [EntryRow] 的长按提示等读屏文案场景；
- * 若将来引入自研动效，应统一读这里而不是各自读系统设置。
+ * 系统侧开关即 `Settings.Global.ANIMATOR_DURATION_SCALE`：为 0 即关闭动画。
+ * 本 [LocalReduceMotion] 经 [rememberReduceMotion] 提供实时值，切换开发者选项后无需重启。
  */
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
