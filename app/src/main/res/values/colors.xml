@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- v5 图标系统：adaptive 背景改纸色（与手账底 / windowBackground 同源）。
-         旧值 #0F766E（青绿）是 v1 时代的底，已由 docs/design/icons-v3 重设计替代。 -->
-    <color name="ic_launcher_background">#F7F3E9</color>
+    <!-- v6 图标系统：前景换 AI 位图手账原型（ic_launcher_foreground.png @5 密度），
+         背景同步取该图实测底色 #F0E4D1（暖纸卡纸），与主体边缘无缝。
+         旧值 #F7F3E9（页面纸色）在位图边缘处有可见色差。 -->
+    <color name="ic_launcher_background">#F0E4D1</color>
     <!-- v4 手账皮肤：窗口底（含 API 31+ 系统启动屏的默认底色）用暖纸色。
          不设它的话会沿用 Material Light 的纯白，启动瞬间闪一下白再跳进纸色，很跳。 -->
     <color name="paper">#F7F3E9</color>

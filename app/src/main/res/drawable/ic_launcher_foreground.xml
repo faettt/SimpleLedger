@@ -2,15 +2,38 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- 简账 v3 App 图标「纸墨账本」：手绘本子 + ¥ + 青绿胶带（safe zone r33@54） -->
-    <path android:pathData="M32.5 25.5h42.4a3.6 3.6 0 0 1 3.6 3.6v50.2a3.2 3.2 0 0 1 -3.2 3.2h-43.0a2.8 2.8 0 0 1 -2.8 -2.8v-51.2a3.0 3.0 0 0 1 3.0 -3.0z" android:fillColor="#00000000"
-        android:strokeColor="#17403A" android:strokeWidth="4.5"
-        android:strokeLineCap="round" android:strokeLineJoin="round"/>
-    <path android:pathData="M40.5 25.7v56.2" android:fillColor="#00000000"
-        android:strokeColor="#17403A" android:strokeWidth="4.5"
-        android:strokeLineCap="round" android:strokeLineJoin="round"/>
-    <path android:pathData="M55.5 44.5l5.8 8.2M67.1 44.5l-5.8 8.2M61.3 52.7v13.5M56.2 58.0h10.2" android:fillColor="#00000000"
-        android:strokeColor="#17403A" android:strokeWidth="4.5"
-        android:strokeLineCap="round" android:strokeLineJoin="round"/>
-    <path android:pathData="M25.0 32.5l29.5-9.4 2.7 8.3-29.5 9.4z" android:fillColor="#0F766E"/>
+    <!-- 简账 v4 App 图标「纸签胶带 ¥」定稿方案 A（2026-09-24 v3：对齐 AI 参考稿构图） -->
+    <!-- 构图：双纸片同向扇形斜叠（垫纸 +15° / 主纸 +5°）+ 撕口胶带 -6° + 大字手写 ¥ + 账目底线 -->
+    <!-- 色源：手账 v2.0 tokens —— slip #FDFBF6 / slipUnder #EAE3D2 / 胶带青绿 #0F766E / 主墨 #17403A -->
+    <!-- 安全区：¥/纸片角全部 ≤ r33@54；胶带右撕口端 r≈37 有意出血（圆形蒙版下读作「撕出画外」） -->
+    <!-- 垫纸：slipUnder，+15° 扇形斜叠并向右下错位 2dp（右侧探出 5dp + 底部露出 = 参考稿的叠纸方向） -->
+    <path
+        android:pathData="M43.08 28.19 L77.86 37.51 L64.92 85.81 L30.14 76.49 Z"
+        android:fillColor="#EAE3D2" />
+    <!-- 主纸片：slip + 墨青细描边，+5° 斜置 -->
+    <path
+        android:pathData="M37.25 30.53 L73.11 33.67 L68.75 83.47 L32.89 80.33 Z"
+        android:fillColor="#FDFBF6"
+        android:strokeColor="#17403A"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round" />
+    <!-- 顶部胶带：-6° 斜贴，两端锯齿撕口 -->
+    <path
+        android:pathData="M29.66 28.43 L75.40 23.62 L74.20 25.40 L77.70 26.60 L75.20 29.80 L76.34 32.57 L30.60 37.38 L32.00 34.60 L28.70 33.30 L31.00 30.20 Z"
+        android:fillColor="#0F766E" />
+    <!-- ¥：粗笔手写 4.8dp，笔画带弧度抖动（确定性形变，非随机） -->
+    <path
+        android:pathData="M42.7 39 C45.2 43.2 49.2 48.4 53 51.5 M63.3 39 C60.8 43.2 56.8 48.4 53 51.5 M53 51.5 C53.4 58.5 52.7 67.5 53 74.8 M44 57.6 C49 56.9 58 57.2 62 57.8 M44.2 65.6 C49 64.9 58 65.1 61.8 65.7"
+        android:strokeColor="#17403A"
+        android:strokeWidth="4.8"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- 账目底线：一笔带弧度的手绘横线 -->
+    <path
+        android:pathData="M43.5 79.4 C47.5 78.7 52.5 78.7 55.5 79 C58 79.3 60.3 79.2 62.3 78.8"
+        android:strokeColor="#17403A"
+        android:strokeWidth="2.2"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
 </vector>
