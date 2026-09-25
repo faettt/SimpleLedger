@@ -1,0 +1,51 @@
+sequenceDiagram
+    autonumber
+    participant T as SyncTriggers / SyncWorker / U-1按钮
+    participant SM as SyncManager
+    participant E as SyncEngine
+    participant OP as OpRecorder / SyncDao
+    participant R as WebDavRemote
+    participant D as OkHttp WebDAV (坚果云/NAS)
+    participant A as OpApplier
+    participant P as PhotoTransfer
+    participant DB as Room (AppDatabase)
+
+    Note over T,DB: 图一 · 一轮同步（自动/手动同路径）
+    T->>SM: requestSync(trigger)  去抖60s(FOREGROUND)+单飞Mutex
+    SM->>E: syncOnce(trigger)
+    E->>E: state = Syncing(PUSH_OPS)
+    E->>OP: outbox() 取 uploaded=0 的操作
+    OP-->>E: List&lt;SyncOp&gt; 打包 ≤128 条或 ≤256KB
+    E->>E: gzip(ops JSON) → SyncCrypto.seal(encKey, PURPOSE_OPS)
+    E->>R: uploadChunk(bytes)
+    R->>D: PUT &lt;random&gt;.op  If-None-Match: *
+    D-->>R: 201 + ETag
+    R-->>E: chunkName
+    E->>OP: markUploaded + sync_remote_files 台账
+    E->>E: state = Syncing(PULL_OPS)
+    E->>R: listRemote()
+    R->>D: PROPFIND Depth:1 /simpleledger-v1/
+    D-->>R: 全部假名文件 + ETag/size
+    R-->>E: List&lt;DavResource&gt;
+    E->>E: 差集 = 远端 ⊖ sync_remote_files
+    loop 每个新分片
+        E->>R: downloadChunk(name)
+        R->>D: GET &lt;name&gt;.op
+        D-->>R: 密文
+        R-->>E: open → ungzip → OpCodec.decode
+    end
+    E->>E: state = Syncing(MERGE)
+    E->>A: applyRemote(ops) 排序 SECTION→CATEGORY→ENTRY→IMAGE→MEMBER→SETTING→TRASH
+    A->>DB: withTransaction UPSERT投影 / observed-remove判定 / 回收站推导 / TRASH_ACT
+    Note right of A: U_live = 未被任何 DELETE(baseSeq≥seq) 观察的 UPSERT<br/>行状态 = max(U_live) 按 (seq,actorId) LWW<br/>每个 DELETE ⇒ sync_trash 留底 行存活则 conflict=1
+    A-->>E: ApplyResult 失败→整体回滚 下轮幂等重试
+    E->>E: state = Syncing(PHOTOS)
+    E->>P: syncPendingPhotos()
+    P->>P: isPhotoAllowedNow? wifiOnly开关 && Wi-Fi && 额度未顶
+    P->>D: HEAD nym(photo:hash) 上行差集 存在即跳过
+    P->>D: PUT nym(photo:hash) If-None-Match: * seal(photo)
+    P->>D: GET nym(photo:hash) 下行差集 Range续传
+    P->>DB: 落盘 filesDir/images/&lt;hash&gt;.jpg 回填 filePath
+    P-->>E: PhotoSyncReport 月流量记账 R-19
+    E->>SM: state = Idle + lastSyncAt=now
+    Note over SM: 失败任一步 → state=Failed(reason) 静默 仅U-4角标变化 S6

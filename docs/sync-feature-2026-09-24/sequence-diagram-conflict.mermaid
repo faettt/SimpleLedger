@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    actor A as A机 家人
+    actor B as B机 家人
+    actor U as 用户
+    participant CA as A机 OpRecorder
+    participant CB as B机 OpRecorder
+    participant D as WebDAV 服务器
+    participant X as 任一机 OpApplier
+    participant DB as Room
+    participant UI as U-3 冲突回收站
+
+    Note over A,UI: 图三 · 删/改冲突合并 S2 双留 永不丢账
+    A->>CA: deleteEntryWithSnapshot(X) 观察到 X.seq=1
+    CA->>CA: op d = DELETE(ENTRY,X,baseSeq=1,payload=旧版快照) + 本地回收站留底
+    B->>CB: saveEntry(编辑X) 观察到 X.seq=1
+    CB->>CB: op u = UPSERT(ENTRY,X,seq=2,payload=改动版快照)
+    A->>D: PUT &lt;a-random&gt;.op 分片含 d
+    B->>D: PUT &lt;b-random&gt;.op 分片含 u
+    Note over X,DB: 下一轮 任一机拉到对方分片后合并
+    X->>X: X 操作集 = u(UPSERT,seq=2) + d(DELETE,baseSeq=1)
+    X->>X: u 被观察? d.baseSeq=1 ≥ u.seq=2 ? 否 → u 存活
+    X->>DB: 行投影 = max(U_live) = 改动版 ⇒ 改动版正常存在 ✓
+    X->>DB: d 推导回收站 deleteOpId=d.opId snapshot=旧版快照 conflict=1 conflictActorId=B.deviceId ⇒ 被A删除 被B修改
+    X-->>UI: 回收站条目 成员/时间/金额/原分区色条/照片引用
+    U->>UI: 点 恢复
+    UI->>X: TRASH_ACT(RESTORE, deleteOpId=d.opId)
+    X->>DB: 以原syncId seq=max+1 插回 UPSERT + 条目 resolved=1
+    Note over X: 若改动版仍存活 → RESTORE 退化为消解留底 UI提示 该账目已有新版本
+    U->>UI: 点 彻底删除 另一条
+    UI->>X: TRASH_ACT(PURGE) → resolved=2 全设备收敛消失

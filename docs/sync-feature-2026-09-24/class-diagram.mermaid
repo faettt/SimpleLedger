@@ -1,0 +1,290 @@
+classDiagram
+    direction TB
+
+    %% ================= 数据层：Room 实体（v5） =================
+    class SectionEntity {
+        +Long id  «本地键»
+        +String syncId  «32hex 全局»
+        +Long versionSeq
+        +String name
+        +Int iconId
+        +String note
+        +Long budgetCents
+        +Int colorIndex
+        +Int sortOrder
+        +Long createdAt
+        +Long updatedAt
+    }
+    class CategoryEntity {
+        +Long id  «本地键»
+        +String syncId
+        +Long versionSeq
+        +Long updatedAt
+        +String name
+        +Int iconId
+        +Int type
+        +Long? sectionId  «本地»
+        +String? sectionSyncId  «同步引用»
+        +Int sortOrder
+    }
+    class EntryEntity {
+        +Long id  «本地键»
+        +String syncId
+        +Long versionSeq
+        +String? memberId
+        +Int type
+        +Long amountCents
+        +Long categoryId
+        +Long sectionId
+        +Long entryTime
+        +String note
+        +Boolean reconciled
+        +Int reimburseState
+        +Long createdAt
+        +Long updatedAt
+    }
+    class EntryImageEntity {
+        +Long id  «本地键»
+        +String syncId
+        +Long versionSeq
+        +Long updatedAt
+        +Long entryId
+        +String filePath  «仅本地»
+        +String contentHash  «明文SHA-256»
+        +Int sortOrder
+    }
+    class MemberEntity {
+        +String syncId  «PK»
+        +String name
+        +Boolean hidden
+        +Long createdAt
+        +Long updatedAt
+        +Long versionSeq
+    }
+    class SyncOpEntity {
+        +String opId  «PK UUID»
+        +String rowKind
+        +String rowSyncId
+        +String opType
+        +String actorId
+        +String? memberId
+        +Long seq
+        +Long? baseSeq
+        +String payload  «JSON»
+        +String origin
+        +Boolean applied
+        +Boolean uploaded
+        +String? chunkName
+        +Long createdAt
+    }
+    class ConflictTrashEntity {
+        +String deleteOpId  «PK»
+        +String rowKind
+        +String rowSyncId
+        +String snapshot  «JSON»
+        +Long deletedAt
+        +String? deletedByMemberId
+        +Boolean conflict
+        +String? conflictActorId
+        +Int resolved
+    }
+    class RemoteFileEntity {
+        +String remoteName  «PK 假名»
+        +String kind
+        +String? etag
+        +Long size
+        +Long downloadedAt
+        +Long uploadedAt
+    }
+
+    EntryFull "1" *-- EntryEntity
+    EntryFull "1" *-- CategoryEntity
+    EntryFull "1" *-- SectionEntity
+    EntryFull "1" *-- EntryImageEntity
+    EntryFull "0..1" *-- MemberEntity
+    EntryEntity "n" --> "1" CategoryEntity : categoryId / categorySyncId
+    EntryEntity "n" --> "1" SectionEntity : sectionId / sectionSyncId
+    EntryImageEntity "n" --> "1" EntryEntity : entryId / entrySyncId
+    EntryEntity "n" --> "0..1" MemberEntity : memberId
+    ConflictTrashEntity "n" --> "1" SyncOpEntity : deleteOpId
+
+    %% ================= 同步域：操作模型 =================
+    class SyncOp {
+        +String opId
+        +RowKind rowKind
+        +String rowSyncId
+        +OpType opType
+        +String actorId
+        +String? memberId
+        +Long seq
+        +Long? baseSeq
+        +JSONObject payload
+        +Long createdAt
+    }
+    class RowVersion {
+        +Long seq
+        +String actorId
+        +compareTo(other) Int
+    }
+    class OpCodec {
+        +encode(op: SyncOp) String
+        +decode(json: String) SyncOp
+    }
+    class OpRecorder {
+        +onUpsert(rowKind, rowSyncId, seq, snapshot)
+        +onDelete(rowKind, rowSyncId, baseSeq, snapshot)
+        +onTrashAct(deleteOpId, action, restoreSnapshot)
+    }
+    class OpApplier {
+        +applyRemote(ops: List~SyncOp~) ApplyResult
+        +retryDeferred() ApplyResult
+        +materializeRow(rowKind, rowSyncId)
+    }
+    class ApplyResult {
+        +Int applied
+        +Int deferred
+        +Int trashUpserts
+    }
+
+    SyncOp "1" *-- RowVersion : version(seq, actorId)
+    OpCodec ..> SyncOp : 序列化
+    OpRecorder ..> SyncOpEntity : 追加（与业务写同事务）
+    OpApplier ..> SyncOpEntity : 幂等回放
+    OpApplier ..> ConflictTrashEntity : 回收站推导（observed-remove）
+    OpApplier ..> ApplyResult
+
+    %% ================= 同步域：加密 =================
+    class SyncCrypto {
+        +deriveKeys(password, params) SyncKeys
+        +seal(key, purpose, plaintext) ByteArray
+        +open(key, blob) ByteArray
+        +checkPassword(keys, expectKcv) Boolean
+    }
+    class SyncKeys {
+        +ByteArray encKey
+        +ByteArray nameKey
+        +ByteArray kcv
+    }
+    class KdfParams {
+        +Int mKiB
+        +Int t
+        +Int p
+        +ByteArray salt
+    }
+    class CryptoFormat {
+        +MAGIC SLC1
+        +encodeHeader(h) ByteArray
+        +decodeHeader(bytes) BlobHeader
+    }
+    class FilenameNym {
+        +photoName(nameKey, contentHashHex) String
+        +metaName(nameKey) String
+        +chunkName() String
+    }
+
+    SyncCrypto "1" *-- SyncKeys
+    SyncCrypto "1" *-- KdfParams
+    SyncCrypto ..> CryptoFormat : 头 v1
+    FilenameNym ..> SyncKeys : nameKey
+
+    %% ================= 同步域：传输 =================
+    class MiniWebDavClient {
+        +propfindDepth1(dir) List~DavResource~
+        +mkcol(dir)
+        +head(path) DavHead?
+        +put(path, body, ifMatch, ifNoneMatchStar) PutResult
+        +get(path, rangeStart) Response
+        +delete(path)
+    }
+    class WebDavRemote {
+        +ensureLayout()
+        +readMeta() MetaBody?
+        +writeMetaOnce(body)
+        +listRemote() List~DavResource~
+        +uploadChunk(opsPlain) String
+        +downloadChunk(remoteName) ByteArray
+        +photoHas(contentHashHex) Boolean
+        +uploadPhoto(contentHashHex, bytes, onProgress)
+        +downloadPhoto(contentHashHex, resumeFrom, onProgress) ByteArray?
+    }
+    class PhotoTransfer {
+        +isPhotoAllowedNow() Boolean
+        +syncPendingPhotos() PhotoSyncReport
+        +monthlyUsage() Pair
+    }
+
+    WebDavRemote o-- MiniWebDavClient
+    WebDavRemote ..> SyncCrypto : seal/open
+    WebDavRemote ..> FilenameNym : 假名
+    PhotoTransfer o-- WebDavRemote
+    PhotoTransfer ..> RemoteFileEntity : 差集台账
+
+    %% ================= 同步域：引擎/门面 =================
+    class SyncEngine {
+        +state StateFlow~SyncState~
+        +syncOnce(trigger) SyncOutcome
+    }
+    class SyncManager {
+        +state StateFlow~SyncState~
+        +requestSync(trigger)
+        +testConnection(cred) TestResult
+        +setupAccount(cred, password) SetupResult
+        +syncNow() SyncOutcome
+        +resetSync() Result
+    }
+    class SyncState {
+        <<sealed>>
+    }
+    class Never
+    class Idle
+    class Syncing {
+        +SyncPhase phase
+    }
+    class Failed {
+        +SyncError reason
+        +Long at
+    }
+    class SyncPrefs {
+        +String deviceId
+        +String? selfMemberId
+        +Boolean wifiOnlyPhotos
+        +Long lastSyncAt
+        +KdfParams kdf
+        +ByteArray kcv
+    }
+    class SyncWorker {
+        +doWork() Result
+    }
+    class SyncTriggers {
+        +attach(app)  «ProcessLifecycleOwner»
+    }
+
+    SyncState <|-- Never
+    SyncState <|-- Idle
+    SyncState <|-- Syncing
+    SyncState <|-- Failed
+    SyncManager o-- SyncEngine
+    SyncEngine ..> OpRecorder
+    SyncEngine ..> OpApplier
+    SyncEngine ..> WebDavRemote
+    SyncEngine ..> PhotoTransfer
+    SyncEngine ..> SyncState : 发射
+    SyncWorker ..> SyncEngine : syncOnce(PERIODIC)
+    SyncTriggers ..> SyncManager : requestSync(COLD_START/FOREGROUND)
+    SyncManager o-- SyncPrefs
+
+    %% ================= 业务写路径 =================
+    class LedgerRepository {
+        +saveEntry(draft) Long
+        +deleteEntryWithSnapshot(id) DeletedEntrySnapshot?
+        +restoreEntry(snapshot) Long?
+        +saveSection(section) Long
+        +deleteSection(id) Result
+    }
+    class ImageStorage {
+        +importToPending(uri) String?
+        +promoteToStorage(pendingPath) String?  «改为 <sha256>.jpg»
+        +deleteFiles(paths)  «引用计数»
+    }
+    LedgerRepository ..> OpRecorder : 同事务埋点
+    LedgerRepository o-- ImageStorage

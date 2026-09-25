@@ -1,0 +1,56 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户(新设备)
+    participant UI as U-1 同步设置页
+    participant SM as SyncManager
+    participant R as WebDavRemote
+    participant D as WebDAV 服务器
+    participant C as SyncCrypto
+    participant DB as Room
+    participant E as SyncEngine
+
+    Note over U,E: 图二 · 首次接入（双向合并取并集 R-15 无「覆盖方向」）
+    U->>UI: 选坚果云(预填 https://dav.jianguoyun.com/dav/) 或 其他 WebDAV
+    U->>UI: 填 地址+账号+应用密码 R-02图文引导
+    UI->>SM: testConnection(cred)
+    SM->>R: propfindDepth1(root)
+    R->>D: PROPFIND
+    alt 401/403
+        D-->>R: 401
+        R-->>SM: DavException.Auth
+        SM-->>UI: 凭证无效 纸签Snackbar 无色条
+    else 网络错
+        R-->>SM: DavException.Network
+        SM-->>UI: 网络不可用
+    else 成功
+        D-->>R: 207 Multi-Status
+        R-->>SM: OK
+        SM-->>UI: 连接成功
+    end
+    U->>UI: 设置同步口令 附楷体说明 忘记口令=云端作废本地不受影响
+    UI->>SM: setupAccount(cred, password)
+    SM->>R: readMeta() 读 nym(meta) 明文头 KDF参数/salt
+    alt 云端已有 meta 家里已有账
+        R-->>SM: BlobHeader(salt, params, kcv)
+        SM->>C: deriveKeys → checkPassword(kcv)
+        alt KCV 不符
+            C-->>SM: false
+            SM-->>UI: 口令不一致 终止 R-04 未下载任何数据
+        else 通过
+            C-->>SM: SyncKeys
+        end
+    else 云端无 meta 本机是第一台
+        SM->>C: 生成 salt → deriveKeys(m=64MiB,t=2,p=1)
+        SM->>R: writeMetaOnce PUT If-None-Match: *
+        alt 412 竞争 另一台刚建
+            R-->>SM: 412
+            SM->>R: readMeta() 重读 → 走已有meta的KCV校验
+        else 201
+            D-->>R: 201
+        end
+    end
+    U->>UI: 认领成员名 全书唯一 冲突换名 → 生成 member UUID
+    UI->>DB: members UPSERT + SyncPrefs.selfMemberId
+    UI->>DB: 存量导出 全部4表 → LOCAL UPSERT 操作(outbox)
+    UI->>E: syncOnce(COLD_START) 执行图一 PUSH→PULL→MERGE→PHOTOS
+    E-->>UI: 双向合并=并集完成 ≤10分钟见全量 S5
