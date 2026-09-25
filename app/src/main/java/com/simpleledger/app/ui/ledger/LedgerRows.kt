@@ -248,7 +248,7 @@ internal fun EntryRow(
                     onLongClick = { menuOpen = true },
                 )
                 // start 留 12dp 给色条（3dp 色条 + 9dp 呼吸）
-                .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 状态符号簇：核对 ✓ + 报销 ○/●（两个槽恒定占位 14dp，空槽不收缩，
