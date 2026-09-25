@@ -200,13 +200,16 @@
     <string name="section_dialog_budget_hint">月度预算（可留空）</string>
     <string name="section_dialog_note_hint">分区备注（如：主材与人工，控制在 26 万内）</string>
 
-    <!-- 删除确认正文（同时说明「账目去向 + 分类去向」） -->
-    <string name="delete_section_body_entries">该分区下的 %1$d 笔账目将移入「%2$s」。</string>
+    <!-- 删除确认正文（A1/B4 新口径：分区连账整包留底可恢复；分类删除 = 去向单选） -->
+    <string name="delete_section_body_entries">该分区下的 %1$d 笔账目将一并删除并留底，可在「我的 → 回收站」整包恢复。</string>
     <string name="delete_section_body_no_entries">该分区下暂无账目。</string>
     <string name="delete_section_body_keep_cats">该分区的 %1$d 个专属分类将保留并变为全局分类。</string>
     <string name="delete_section_body_no_cats">该分区没有专属分类。</string>
     <string name="delete_category_body_none">该分类下暂无账目，可安全删除。</string>
-    <string name="delete_category_body_moved">该分类下的 %1$d 笔账目将改为「%2$s」。</string>
+    <string name="delete_category_destinations_hint">该分类下的 %1$d 笔账目将迁移到：</string>
+    <!-- 分区长按菜单（纸片菜单两项） -->
+    <string name="section_menu_edit">编辑</string>
+    <string name="section_menu_delete">删除分区</string>
 
     <!-- 无障碍摘要（复用 edit=编辑 / delete=删除） -->
     <string name="a11y_more_actions">更多操作</string>

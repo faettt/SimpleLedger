@@ -35,13 +35,12 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.repo.CategoryDeleteImpact
 import com.simpleledger.app.ui.WindowLayout
+import com.simpleledger.app.ui.components.CategoryDeleteDialog
 import com.simpleledger.app.ui.components.CategoryDialog
 import com.simpleledger.app.ui.components.CategoryList
-import com.simpleledger.app.ui.components.ConfirmDialog
 import com.simpleledger.app.ui.components.ContentMaxWidth
 import com.simpleledger.app.ui.components.ContentWidth
 import com.simpleledger.app.ui.icon.SlIcons
-import com.simpleledger.app.ui.section.categoryDeleteMessage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
@@ -174,14 +173,15 @@ fun GlobalCategoriesScreen(
     }
 
     deleteTarget?.let { target ->
-        val impact = deleteImpact
-        ConfirmDialog(
+        CategoryDeleteDialog(
             title = stringResource(R.string.delete_category_title, target.name),
-            text = categoryDeleteMessage(impact),
-            onConfirm = { viewModel.deleteCategory(target.id) },
+            impact = deleteImpact,
+            // B4：去向单选（默认「未分类」，哨兵恒排末尾）；destinationId 交给数据层解析兜底
+            onConfirm = { destinationId ->
+                viewModel.deleteCategory(target.id, destinationId)
+                deleteTarget = null
+            },
             onDismiss = { deleteTarget = null },
-            // P2-4：影响描述异步加载，加载完成前 impact 为 null——保持禁用，避免首帧闪现可点
-            confirmEnabled = impact != null && impact.blockedReason == null,
         )
     }
 }

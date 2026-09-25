@@ -13,6 +13,7 @@ import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.repo.EntryDraft
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.data.settings.AppSettings
+import com.simpleledger.app.data.local.SectionFirstSeed
 import com.simpleledger.app.logic.CategoryCandidates
 import com.simpleledger.app.util.Money
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -257,10 +258,6 @@ class EntryEditViewModel(
             _state.update { it.copy(error = "请输入有效金额") }
             return
         }
-        val categoryId = current.selectedCategoryId ?: run {
-            _state.update { it.copy(error = "请选择分类") }
-            return
-        }
         val sectionId = current.sectionId.takeIf { it > 0 } ?: run {
             _state.update { it.copy(error = "缺少分区上下文") }
             return
@@ -269,6 +266,13 @@ class EntryEditViewModel(
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             runCatching {
+                // B2：记账不选分类 = 落「未分类」哨兵（不再硬拦「请选择分类」）。
+                // 哨兵解析失败（极端：补种也失败）按保存失败提示，绝不静默换分类。
+                val unclassifiedId = repo.unclassifiedCategoryId(current.type)
+                val categoryId = SectionFirstSeed.Unclassified.saveCategoryId(
+                    current.selectedCategoryId,
+                    unclassifiedId,
+                )
                 repo.saveEntry(
                     EntryDraft(
                         id = if (entryId > 0) entryId else null,

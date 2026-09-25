@@ -1,5 +1,8 @@
 package com.simpleledger.app.ui.section
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,14 +28,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.R
 import com.simpleledger.app.data.local.entity.SectionEntity
@@ -50,8 +58,10 @@ import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.slAnimateItem
 import com.simpleledger.app.ui.theme.SlButtonShape
+import kotlinx.coroutines.launch
 
 /**
  * 分区首屏（默认 tab，FR-07）。
@@ -75,6 +85,9 @@ fun SectionHomeScreen(
     var editTarget by remember { mutableStateOf<SectionEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<SectionTotal?>(null) }
     var deleteImpact by remember { mutableStateOf<SectionDeleteImpact?>(null) }
+    // A1：长按分区卡弹出的纸片菜单锚点（记录分区 id， Popup 挂在对应卡片上）
+    var menuTargetId by remember { mutableStateOf<Long?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(error) {
         error?.let { message ->
@@ -152,19 +165,39 @@ fun SectionHomeScreen(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(state.cards, key = { _, total -> total.sectionId }) { index, total ->
-                            SectionCard(
-                                total = total,
-                                reorderMode = state.reorderMode,
-                                canMoveUp = index > 0,
-                                canMoveDown = index < state.cards.lastIndex,
-                                onClick = { onOpenSection(total.sectionId) },
-                                onMoveUp = { viewModel.moveSection(total.sectionId, -1) },
-                                onMoveDown = { viewModel.moveSection(total.sectionId, +1) },
-                                // 增删移位动效（Motion）：重排/新建/删除分区时滑移过渡
-                                modifier = slAnimateItem(
-                                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                                ),
-                            )
+                            Box {
+                                SectionCard(
+                                    total = total,
+                                    reorderMode = state.reorderMode,
+                                    canMoveUp = index > 0,
+                                    canMoveDown = index < state.cards.lastIndex,
+                                    onClick = { onOpenSection(total.sectionId) },
+                                    onMoveUp = { viewModel.moveSection(total.sectionId, -1) },
+                                    onMoveDown = { viewModel.moveSection(total.sectionId, +1) },
+                                    // A1：长按分区卡 → 「编辑 / 删除分区」纸片菜单
+                                    onLongClick = { menuTargetId = total.sectionId },
+                                    // 增删移位动效（Motion）：重排/新建/删除分区时滑移过渡
+                                    modifier = slAnimateItem(
+                                        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                    ),
+                                )
+                                if (menuTargetId == total.sectionId) {
+                                    SectionCardMenu(
+                                        onEdit = {
+                                            menuTargetId = null
+                                            scope.launch {
+                                                editTarget = viewModel.sectionOf(total.sectionId)
+                                                showSectionDialog = true
+                                            }
+                                        },
+                                        onDelete = {
+                                            menuTargetId = null
+                                            deleteTarget = total
+                                        },
+                                        onDismiss = { menuTargetId = null },
+                                    )
+                                }
+                            }
                         }
                         item { Spacer(modifier = Modifier.height(96.dp)) }
                     }
@@ -205,17 +238,18 @@ fun SectionHomeScreen(
     }
 }
 
-/** 组合删除分区的确认文案：同时说明「账目去向 + 分类去向」（FR-40） */
+/**
+ * 组合删除分区的确认文案（A1 新口径：分区 + 账目**一并删除并留底**，回收站整包恢复；
+ * 专属分类降级为全局）。阻塞原因由数据层给出可读文案，直接展示。
+ */
 @Composable
 private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
-    // 阻塞原因由数据层给出可读文案，直接展示
     impact?.blockedReason?.let { return it }
     val entryCount = impact?.entryCount ?: 0
     val exclusiveCount = impact?.exclusiveCategoryCount ?: 0
     // v4：删除提示文案不拼 emoji（这是读给用户听的字，图标在此无信息量）
-    val fallbackName = impact?.fallback?.name
-    val entriesLine = if (entryCount > 0 && fallbackName != null) {
-        stringResource(R.string.delete_section_body_entries, entryCount, fallbackName)
+    val entriesLine = if (entryCount > 0) {
+        stringResource(R.string.delete_section_body_entries, entryCount)
     } else {
         stringResource(R.string.delete_section_body_no_entries)
     }
@@ -225,4 +259,51 @@ private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
         stringResource(R.string.delete_section_body_no_cats)
     }
     return "$entriesLine\n$categoriesLine"
+}
+
+/**
+ * 分区卡纸片菜单（A1 定案 V1「纸片菜单」）：纸面填充 + 0.5dp 描边 + 3dp 圆角
+ * （与 ConfirmDialog / SlipCard 同一套纸语言），无阴影；「删除分区」用朱砂。
+ * 锚定卡片右上、下移 57dp（卡头行高度，让菜单贴着触发手指出现在卡片身上）。
+ */
+@Composable
+private fun SectionCardMenu(
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Popup(
+        alignment = Alignment.TopEnd,
+        // 锚定卡片右上、下移 57dp：与 A/B 实测的 DpOffset(0, 57dp) 同位
+        offset = IntOffset(0, with(LocalDensity.current) { 57.dp.roundToPx() }),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(168.dp)
+                .background(MaterialTheme.colorScheme.surface, SlipShape)
+                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, SlipShape),
+        ) {
+            SectionCardMenuItem(stringResource(R.string.section_menu_edit), danger = false, onClick = onEdit)
+            SectionCardMenuItem(stringResource(R.string.section_menu_delete), danger = true, onClick = onDelete)
+        }
+    }
+}
+
+/** 纸片菜单项：整行可点（≥48dp 触控目标），危险项用 error 色 */
+@Composable
+private fun SectionCardMenuItem(label: String, danger: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+    ) {
+        Text(
+            text = label,
+            style = SlType.body,
+            color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }

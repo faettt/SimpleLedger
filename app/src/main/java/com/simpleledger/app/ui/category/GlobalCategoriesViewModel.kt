@@ -9,6 +9,7 @@ import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.repo.LedgerRepository
+import com.simpleledger.app.logic.CategoryReorderRules
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,9 +69,11 @@ class GlobalCategoriesViewModel(private val repo: LedgerRepository) : ViewModel(
         }
     }
 
-    fun deleteCategory(id: Long) {
+    /** B4：删除分类（去向单选，destinationId = null 落默认「未分类」哨兵） */
+    fun deleteCategory(id: Long, destinationId: Long? = null) {
         viewModelScope.launch {
-            repo.deleteCategory(id).onFailure { e -> _error.value = e.message ?: "删除失败" }
+            repo.deleteCategory(id, destinationId)
+                .onFailure { e -> _error.value = e.message ?: "删除失败" }
         }
     }
 
@@ -80,6 +83,10 @@ class GlobalCategoriesViewModel(private val repo: LedgerRepository) : ViewModel(
         val index = list.indexOfFirst { it.id == id }
         val target = index + direction
         if (index < 0 || target !in list.indices) return
+        // F-3：「未分类」哨兵不参与手动排序（恒排末尾）——对哨兵行的 ↑/↓ 直接 no-op，
+        // 避免发起一次注定被仓库侧过滤、却让普通行白白 bump versionSeq 的重写。
+        val moved = list.getOrNull(index) ?: return
+        if (!CategoryReorderRules.isReorderable(moved)) return
         list[index] = list[target].also { list[target] = list[index] }
         viewModelScope.launch { repo.reorderCategories(list) }
     }

@@ -1,10 +1,12 @@
 package com.simpleledger.app.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -62,7 +64,10 @@ import com.simpleledger.app.ui.theme.slPress
  *                ⚠️ 可点必须走这个参数而不是在 modifier 里自己加 `clickable` ——
  *                按压反馈要从同一个 interactionSource 收集，点击写在 modifier 里
  *                会拿不到按压状态（slPress 静默失效）。
+ * @param onLongClick 传入则支持长按（combinedClickable，与 onClick 共用同一
+ *                    interactionSource；A1「长按分区卡 → 纸片菜单」的承载口）。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SlipCard(
     modifier: Modifier = Modifier,
@@ -71,6 +76,7 @@ fun SlipCard(
     edgeWidth: Dp = 4.dp,
     contentPadding: PaddingValues = PaddingValues(20.dp),
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 按压/悬停共用外层节点：垫纸与纸片一起被压下、一起被拈起。
@@ -127,14 +133,19 @@ fun SlipCard(
                     }
                 )
                 .then(
-                    if (onClick != null) {
-                        Modifier.clickable(
+                    when {
+                        onClick != null && onLongClick != null -> Modifier.combinedClickable(
+                            interactionSource = interactionSource,
+                            indication = LocalIndication.current,
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                        )
+                        onClick != null -> Modifier.clickable(
                             interactionSource = interactionSource,
                             indication = LocalIndication.current,
                             onClick = onClick,
                         )
-                    } else {
-                        Modifier
+                        else -> Modifier
                     }
                 )
                 .padding(contentPadding),

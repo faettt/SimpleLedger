@@ -119,7 +119,8 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
 
 /**
  * 账目行：分类名（主）· 时间/分区/标记（次）· 金额（视觉最重）。
- * 备注不展开全文，仅用 💬 标记存在性——明细页的首要任务是快速扫视。
+ * 备注定案 V2（问题三）：以 meta 小字**独立第二行**直显（单行 ellipsis），
+ * meta 行内仅保留 💬 存在性图标——行高从 62dp 加高到实测 70.86dp。
  *
  * 长按弹出快捷菜单（复制一笔 / 移动到其它分区 / 删除）。菜单锚定在本行而非手指坐标：
  * 行内交互用锚定行更可预期，也能保住 combinedClickable 带来的涟漪反馈与读屏语义
@@ -322,6 +323,18 @@ internal fun EntryRow(
                             modifier = Modifier.size(12.dp),
                         )
                     }
+                }
+                // 备注「独立第二行」（定案 V2，问题三）：meta 行完整保留（时间 · 分区 ·
+                // 成员 + 图标），备注以 SlType.meta（11.5/16）小字另起一行、单行 ellipsis
+                // ——备注可读性优先，实测行高 62dp → 70.86dp（186px @2.625x）。
+                if (hasNote) {
+                    Text(
+                        text = full.entry.note,
+                        style = SlType.meta,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             Spacer(modifier = Modifier.width(8.dp))

@@ -50,6 +50,7 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.IconMapping
+import com.simpleledger.app.logic.CategoryReorderRules
 import com.simpleledger.app.ui.icon.SlCategoryIcons
 import com.simpleledger.app.ui.icon.SlIconGrid
 import com.simpleledger.app.ui.icon.SlIconTile
@@ -212,10 +213,21 @@ fun CategoryList(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            IconActionButton(SlIcons.Ui.ArrowUp, stringResource(R.string.a11y_move_up), enabled = index > 0) {
+                            // F-3：「未分类」哨兵不参与手动排序（恒排末尾）——排序按钮禁用；
+                            // 编辑/删除仍走各自确认弹窗（弹窗内已有哨兵拦截文案），此处只收口排序。
+                            val sortable = CategoryReorderRules.isReorderable(category)
+                            IconActionButton(
+                                SlIcons.Ui.ArrowUp,
+                                stringResource(R.string.a11y_move_up),
+                                enabled = sortable && index > 0,
+                            ) {
                                 onMove(category.id, -1)
                             }
-                            IconActionButton(SlIcons.Ui.ArrowDown, stringResource(R.string.a11y_move_down), enabled = index < categories.lastIndex) {
+                            IconActionButton(
+                                SlIcons.Ui.ArrowDown,
+                                stringResource(R.string.a11y_move_down),
+                                enabled = sortable && index < categories.lastIndex,
+                            ) {
                                 onMove(category.id, +1)
                             }
                             IconActionButton(SlIcons.Ui.Edit, stringResource(R.string.edit)) { onEdit(category) }

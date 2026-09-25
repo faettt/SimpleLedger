@@ -7,6 +7,7 @@ import com.simpleledger.app.data.local.AppDatabase
 import com.simpleledger.app.data.local.SectionFirstSeed
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.CategoryTotal
+import com.simpleledger.app.data.local.entity.ConflictTrashEntity
 import com.simpleledger.app.data.local.entity.EntryEntity
 import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryImageEntity
@@ -15,8 +16,11 @@ import com.simpleledger.app.data.local.entity.OpOrigin
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.local.entity.TypeTotal
+import com.simpleledger.app.logic.CategoryDeletePlan
+import com.simpleledger.app.logic.CategoryReorderRules
 import com.simpleledger.app.logic.PhotoRetention
 import com.simpleledger.app.logic.RestoreFallbacks
+import com.simpleledger.app.logic.TrashAggregation
 import com.simpleledger.app.sync.op.OpCodec
 import com.simpleledger.app.sync.op.OpRecorder
 import com.simpleledger.app.sync.op.RowKind
@@ -149,66 +153,104 @@ class LedgerRepository(
     }
 
     /**
-     * 删除分区前的影响描述（供确认框展示「账目去向 + 分类去向」，FR-40）。
-     * [blockedReason] 非空表示「当前不可删」及原因。
+     * 删除分区前的影响描述（供确认框展示「连删留底 + 分类去向」，A1 新口径）。
+     * [blockedReason] 非空表示「当前不可删」及原因（仅剩「分区不存在」——
+     * 「最后一个分区有账目不给删」的旧规已废止）。
      */
     suspend fun sectionDeleteImpact(sectionId: Long): SectionDeleteImpact {
-        val all = sectionDao.getAll()
-        val target = all.firstOrNull { it.id == sectionId }
-            ?: return SectionDeleteImpact(0, 0, null, "分区不存在")
-        val others = all.filter { it.id != sectionId }
-        val entryCount = entryDao.countBySection(sectionId)
-        val exclusiveCount = categoryDao.countBySection(sectionId)
-        val fallback = others.firstOrNull()
-        val blocked = if (others.isEmpty() && entryCount > 0) {
-            "该分区还有 $entryCount 笔账目，删除后将无处归属；请先删除这些账目"
-        } else {
-            null
-        }
+        val target = sectionDao.getById(sectionId)
+            ?: return SectionDeleteImpact("", 0, 0, "分区不存在")
         return SectionDeleteImpact(
-            entryCount = entryCount,
-            exclusiveCategoryCount = exclusiveCount,
-            fallback = fallback,
-            blockedReason = blocked,
+            sectionName = target.name,
+            entryCount = entryDao.countBySection(sectionId),
+            exclusiveCategoryCount = categoryDao.countBySection(sectionId),
+            blockedReason = null,
         )
     }
 
     /**
-     * 删除分区（Q-04 / Q-06 / D-3）。
+     * 删除单笔账目并逐行埋点（ENTRY + 各 IMAGE 各一条 DELETE，载荷含 `_deletedAt`）。
+     * ⚠️ 必须在调用方事务内执行（[deleteSection] 的连删步骤）。
+     * A2 照片挂起：贴图行删除但实体文件**不物理删除**（留底恢复后按 contentHash 回链）。
+     */
+    private suspend fun deleteEntryRowsInTx(entryId: Long, now: Long) {
+        val full = entryDao.getEntryFull(entryId) ?: return
+        val entry = full.entry
+        val entrySyncId = entry.syncId.ifEmpty { newSyncId() }
+        val categorySyncId = full.category?.syncId ?: categoryDao.getById(entry.categoryId)?.syncId ?: ""
+        val sectionSyncId = full.section?.syncId ?: sectionDao.getById(entry.sectionId)?.syncId ?: ""
+
+        full.images.sortedBy { it.sortOrder }.forEach { img ->
+            ops.onDelete(
+                RowKind.IMAGE,
+                img.syncId.ifEmpty { newSyncId() },
+                img.versionSeq.coerceAtLeast(1L),
+                OpCodec.withDeletedAt(
+                    OpCodec.imageSnapshot(entrySyncId, img.contentHash, img.sortOrder),
+                    now,
+                ),
+            )
+        }
+        ops.onDelete(
+            RowKind.ENTRY,
+            entrySyncId,
+            entry.versionSeq.coerceAtLeast(1L),
+            OpCodec.withDeletedAt(
+                OpCodec.entrySnapshot(
+                    type = entry.type,
+                    amountCents = entry.amountCents,
+                    categorySyncId = categorySyncId,
+                    sectionSyncId = sectionSyncId,
+                    entryTime = entry.entryTime,
+                    note = entry.note,
+                    reconciled = entry.reconciled,
+                    reimburseState = entry.reimburseState,
+                    createdAt = entry.createdAt,
+                    updatedAt = now,
+                    memberSyncId = entry.memberId,
+                ),
+                now,
+            ),
+        )
+
+        // 运行期外键关闭、级联不生效（见 AppDatabase 注释）→ 显式清贴图行
+        entryDao.deleteImagesOf(entryId)
+        entryDao.deleteEntry(entryId)
+    }
+
+    /**
+     * 删除分区（A1 新口径：**删除分区 = 连删账目并留底**，可整包恢复）。
      *
      * 语义（在事务内，任一失败整体回滚）：
-     * 1. 该分区的专属分类一律**降级为全局**（`sectionId := NULL`），绝不硬删（Q-04）；
-     * 2. 若它是**最后一个分区**：
-     *    - 有账目 → 阻塞删除并给出可读原因（保护账目不丢、不重建表）；
-     *    - 无账目 → 允许删到 0（Q-06）；
-     * 3. 否则把账目迁到「排序最靠前的其余分区」，再删分区。
+     * 1. 该分区下**每笔账目**逐行删除：ENTRY + 各 IMAGE 记 DELETE 操作，
+     *    [OpRecorder.onDelete] 自动推导 `sync_trash` 留底（TrashDeriver）；
+     *    照片实体文件**不销毁**（引用挂起，恢复后完整回链，见 [PhotoRetention]）；
+     * 2. 专属分类逐行**降级为全局**（`sectionId := NULL`，同事务逐行记 UPSERT）；
+     * 3. 分区本身记 DELETE（留底同推导）并删除行。
      *
-     * 注意：账目迁入 fallback 前，专属分类已降级为全局 → 全局对 fallback 可见 →
-     * 不会出现「分区=旅行、分类只属于装修」的非法组合。
+     * 旧规「最后一个分区有账目不给删」**废止**——账目随分区一并进回收站，可整包恢复。
      */
     suspend fun deleteSection(sectionId: Long): Result<Unit> = deleteMutex.withLock {
         runCatching {
             db.withTransaction {
-                val all = sectionDao.getAll()
-                val target = all.firstOrNull { it.id == sectionId }
-                    ?: error("分区不存在")
-                val others = all.filter { it.id != sectionId }
-                val entryCount = entryDao.countBySection(sectionId)
+                val now = System.currentTimeMillis()
+                val target = sectionDao.getById(sectionId) ?: error("分区不存在")
 
-                // Q-04：专属分类降级为全局（不丢数据、不报错）
-                categoryDao.detachFromSection(sectionId)
-
-                if (others.isEmpty()) {
-                    if (entryCount > 0) {
-                        // 抛出以触发事务回滚（含上面的 detachFromSection）
-                        error("该分区还有 $entryCount 笔账目，删除后将无处归属；请先删除这些账目")
-                    }
-                    sectionDao.delete(sectionId) // 允许删到 0（Q-06）
-                } else {
-                    val fallback = others.first() // 已按 sortOrder 排序，取最靠前者
-                    if (entryCount > 0) sectionDao.moveEntries(sectionId, fallback.id)
-                    sectionDao.delete(sectionId)
+                // 1) 账目逐笔连贴图删除（DELETE 埋点 + 留底，同事务）
+                entryDao.listBySection(sectionId).forEach { entry ->
+                    deleteEntryRowsInTx(entry.id, now)
                 }
+
+                // 2) 专属分类逐行降级为全局（不丢数据），同步侧逐行埋点
+                categoryDao.listBySection(sectionId).forEach { cat ->
+                    val updated = cat.copy(sectionId = null, versionSeq = cat.versionSeq + 1, updatedAt = now)
+                    categoryDao.update(updated)
+                    recordCategoryUpsert(updated, baseSeq = cat.versionSeq)
+                }
+
+                // 3) 分区本身
+                recordSectionDelete(target, now)
+                sectionDao.delete(sectionId)
             }
         }
     }
@@ -246,6 +288,38 @@ class LedgerRepository(
 
     suspend fun getCategory(categoryId: Long): CategoryEntity? = categoryDao.getById(categoryId)
 
+    // ---------- B1「未分类」哨兵 ----------
+
+    /**
+     * 幂等补种「未分类」哨兵（启动时调用；新装已由 `AppDatabase.seed()` 写入）。
+     * 补种行**不记操作**（与种子行同生命周期：初始导出 / 首次编辑才产生操作），
+     * 避免两台设备各自补种出 seq=1 的 LWW 冲突留底。
+     */
+    suspend fun ensureUnclassified() {
+        val existing = listOf(EntryType.EXPENSE, EntryType.INCOME)
+            .flatMap { type -> categoryDao.getAllByType(type) }
+            .map { it.syncId }
+            .toSet()
+        val missing = SectionFirstSeed.Unclassified.missingCategories(existing)
+        if (missing.isEmpty()) return
+        db.withTransaction {
+            missing.forEach { row ->
+                categoryDao.insert(
+                    row.copy(sortOrder = categoryDao.nextSortOrder(row.type, null)),
+                )
+            }
+        }
+    }
+
+    /** 解析「未分类」哨兵的本地 id（缺则现场补种；B2 记账不选分类的落点） */
+    suspend fun unclassifiedCategoryId(type: Int): Long {
+        val syncId = SectionFirstSeed.Unclassified.syncId(type)
+        categoryDao.getBySyncId(syncId)?.let { return it.id }
+        ensureUnclassified()
+        return categoryDao.getBySyncId(syncId)?.id
+            ?: error("「未分类」哨兵补种失败")
+    }
+
     /** 新建时 `sortOrder` 落在 (类型, 归属) 作用域内；编辑时保持原值（Q-11：不做改归属） */
     suspend fun saveCategory(category: CategoryEntity): Long = db.withTransaction {
         val now = System.currentTimeMillis()
@@ -275,66 +349,86 @@ class LedgerRepository(
     }
 
     /**
-     * 删除分类（EC-03 / Q-05 / D-4）。兜底链（**同类型**）：
-     * ① 同类型 + 同分区其余专属（仅当 target 为专属）→ ② 同类型全局其余 → ③ 同类型任意其余。
-     * 三级都空且**有账目**时才拒绝并给可读原因；无账目则允许删除（允许 0 个全局分类，Q-05）。
+     * 删除分类（B4 新口径：**去向单选迁移**，FR-41）。
+     *
+     * 该分类下的账目迁移到 [destinationId] 指定的同类型分类（null → 默认「未分类」哨兵），
+     * 然后删除分类。取代旧的「同类型 sort-first 兜底链」。
+     * 「未分类」哨兵不可删（[SectionFirstSeed.Unclassified]）。
+     *
+     * v5 埋点：账目改挂 destination 逐行记 UPSERT；分类本身记 DELETE。
      */
-    suspend fun deleteCategory(categoryId: Long): Result<Unit> = deleteMutex.withLock {
-        runCatching {
-            db.withTransaction {
-                val target = categoryDao.getById(categoryId) ?: error("分类不存在")
-                val sameType = categoryDao.getAllByType(target.type)
-                val fallback = pickFallback(target, sameType)
-                val referencing = entryDao.countByCategory(categoryId)
-
-                if (fallback == null) {
-                    if (referencing > 0) {
-                        error("该分类下还有 $referencing 笔账目，且没有同类型分类可承接；请先新建一个同类型分类")
+    suspend fun deleteCategory(categoryId: Long, destinationId: Long? = null): Result<Unit> =
+        deleteMutex.withLock {
+            runCatching {
+                db.withTransaction {
+                    val now = System.currentTimeMillis()
+                    val target = categoryDao.getById(categoryId) ?: error("分类不存在")
+                    if (SectionFirstSeed.Unclassified.isUnclassified(target)) {
+                        error("「未分类」不可删除")
                     }
-                    categoryDao.delete(categoryId)
-                } else {
-                    if (referencing > 0) categoryDao.moveEntries(categoryId, fallback.id)
+                    val sameType = categoryDao.getAllByType(target.type)
+                    val plan = CategoryDeletePlan.plan(sameType, target.id)
+                    val destId = CategoryDeletePlan.resolveDestinationId(plan.destinations, destinationId)
+                    val referencing = entryDao.countByCategory(categoryId)
+
+                    if (referencing > 0) {
+                        val dest = destId?.let { categoryDao.getById(it) }
+                            ?: error("没有同类型分类可承接；请先新建一个同类型分类")
+                        entryDao.listByCategory(categoryId).forEach { e ->
+                            val updated = e.copy(
+                                categoryId = dest.id,
+                                versionSeq = e.versionSeq + 1,
+                                updatedAt = now,
+                            )
+                            entryDao.updateEntry(updated)
+                            recordEntryUpsert(updated, baseSeq = e.versionSeq)
+                        }
+                    }
+                    recordCategoryDelete(target, now)
                     categoryDao.delete(categoryId)
                 }
             }
         }
-    }
 
-    /** 兜底链：① 同分区其余专属 → ② 全局其余 → ③ 任意其余（跨分区允许，历史显示不受可见性影响） */
-    private fun pickFallback(
-        target: CategoryEntity,
-        sameType: List<CategoryEntity>,
-    ): CategoryEntity? {
-        val others = sameType.filter { it.id != target.id }
-        if (target.sectionId != null) {
-            others.firstOrNull { it.sectionId == target.sectionId }?.let { return it }
-        }
-        others.firstOrNull { it.sectionId == null }?.let { return it }
-        return others.firstOrNull()
-    }
-
-    /** 删除分类前的影响描述（供确认框展示「账目去向」，FR-41） */
+    /**
+     * 删除分类前的影响描述（FR-41 新口径：给出**去向候选**与默认预选，
+     * 确认框升级为单选迁移；哨兵恒在候选末位，因此只要有同类型哨兵就永不可阻塞）。
+     */
     suspend fun categoryDeleteImpact(categoryId: Long): CategoryDeleteImpact {
         val target = categoryDao.getById(categoryId)
-            ?: return CategoryDeleteImpact(0, null, "分类不存在")
+            ?: return CategoryDeleteImpact(0, emptyList(), null, "分类不存在")
+        if (SectionFirstSeed.Unclassified.isUnclassified(target)) {
+            return CategoryDeleteImpact(0, emptyList(), null, "「未分类」不可删除")
+        }
         val sameType = categoryDao.getAllByType(target.type)
-        val fallback = pickFallback(target, sameType)
+        val plan = CategoryDeletePlan.plan(sameType, target.id)
         val referencing = entryDao.countByCategory(categoryId)
-        val blocked = if (fallback == null && referencing > 0) {
+        val blocked = if (plan.destinations.isEmpty() && referencing > 0) {
             "该分类下还有 $referencing 笔账目，且没有同类型分类可承接；请先新建一个同类型分类"
         } else {
             null
         }
-        return CategoryDeleteImpact(referencing, fallback, blocked)
+        return CategoryDeleteImpact(
+            entryCount = referencing,
+            destinations = plan.destinations,
+            defaultDestinationId = plan.defaultDestinationId,
+            blockedReason = blocked,
+        )
     }
 
-    /** 分类排序：作用域 (类型, 归属) 内整表重写（每次改动逐行埋点） */
+    /**
+     * 分类排序：作用域 (类型, 归属) 内整表重写（每次改动逐行埋点）。
+     *
+     * F-3：「未分类」哨兵不参与用户排序——哨兵行整行忽略（位次不动、不 bump
+     * versionSeq、不记 UPSERT），与 [CategoryDeletePlan]「未分类恒排末尾」同口径。
+     */
     suspend fun reorderCategories(ordered: List<CategoryEntity>) {
+        val plan = CategoryReorderRules.rewritePlan(ordered)
         db.withTransaction {
             val now = System.currentTimeMillis()
-            ordered.forEachIndexed { index, category ->
-                val cur = categoryDao.getById(category.id) ?: return@forEachIndexed
-                val updated = cur.copy(sortOrder = index, versionSeq = cur.versionSeq + 1, updatedAt = now)
+            plan.forEach { (id, sortOrder) ->
+                val cur = categoryDao.getById(id) ?: return@forEach
+                val updated = cur.copy(sortOrder = sortOrder, versionSeq = cur.versionSeq + 1, updatedAt = now)
                 categoryDao.update(updated)
                 recordCategoryUpsert(updated, baseSeq = cur.versionSeq)
             }
@@ -1027,30 +1121,35 @@ data class DeletedImageSnapshot(
 )
 
 /**
- * 删除分区前给确认框用的影响描述（FR-40：同时说明「账目去向 + 分类去向」）。
+ * 删除分区前给确认框用的影响描述（A1 新口径：分区 + 账目**一并删除并留底**，
+ * 回收站整包恢复；专属分类降级为全局）。
  *
- * @param entryCount            该分区下的账目数
+ * @param sectionName            被删分区名（确认框标题用）
+ * @param entryCount            该分区下的账目数（将随分区一并进回收站）
  * @param exclusiveCategoryCount 该分区的专属分类数（删除时将降级为全局）
- * @param fallback              账目将移入的分区；无其余分区时为 null
  * @param blockedReason         非 null 表示「当前不可删」及可读原因
+ *                              （旧规「最后一个分区有账目不给删」已废止，
+ *                              仅剩「分区不存在」）
  */
 data class SectionDeleteImpact(
+    val sectionName: String,
     val entryCount: Int,
     val exclusiveCategoryCount: Int,
-    val fallback: SectionEntity?,
     val blockedReason: String?,
 )
 
 /**
- * 删除分类前给确认框用的影响描述（FR-41：说明「账目去向」，或给出可读阻塞原因）。
+ * 删除分类前给确认框用的影响描述（B4/FR-41 新口径：确认框升级为**去向单选**）。
  *
- * @param entryCount    该分类下的账目数
- * @param fallback      账目将改挂的分类；无同类型分类可承接时为 null
- * @param blockedReason 非 null 表示「当前不可删」及可读原因
+ * @param entryCount           该分类下的账目数
+ * @param destinations         去向候选（同类型其余分类 + 「未分类」哨兵，哨兵恒排末尾）
+ * @param defaultDestinationId 默认预选 = 「未分类」哨兵；候选为空时 null
+ * @param blockedReason        非 null 表示「当前不可删」及可读原因
  */
 data class CategoryDeleteImpact(
     val entryCount: Int,
-    val fallback: CategoryEntity?,
+    val destinations: List<CategoryEntity>,
+    val defaultDestinationId: Long?,
     val blockedReason: String?,
 )
 

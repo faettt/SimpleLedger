@@ -100,9 +100,11 @@ class SectionManageViewModel(
         }
     }
 
-    fun deleteCategory(id: Long) {
+    /** B4：删除分类（去向单选，destinationId = null 落默认「未分类」哨兵） */
+    fun deleteCategory(id: Long, destinationId: Long? = null) {
         viewModelScope.launch {
-            repo.deleteCategory(id).onFailure { e -> _error.value = e.message ?: "删除失败" }
+            repo.deleteCategory(id, destinationId)
+                .onFailure { e -> _error.value = e.message ?: "删除失败" }
         }
     }
 

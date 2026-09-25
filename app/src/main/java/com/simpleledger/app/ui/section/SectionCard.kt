@@ -66,6 +66,8 @@ fun SectionCard(
     onClick: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
+    /** 长按分区卡 → 纸片菜单（A1：编辑 / 删除分区）；null = 不响应长按 */
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val hidden = LocalHideAmounts.current
@@ -118,6 +120,8 @@ fun SectionCard(
         // 点击走 SlipCard 的 onClick 参数（不要在 modifier 里写 clickable）：
         // 按压轻压反馈要与点击共用同一个 interactionSource（见 SlipCard 注释）
         onClick = onClick,
+        // A1：长按分区卡弹「编辑 / 删除分区」纸片菜单（删除分区入口）
+        onLongClick = onLongClick,
         edgeColor = sectionColor,
         // 左边距 20dp：让出 4dp 色条 + 呼吸；其余三边 16dp
         contentPadding = PaddingValues(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),

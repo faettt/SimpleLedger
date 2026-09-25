@@ -27,6 +27,10 @@ class LedgerApp : Application() {
         applicationScope.launch {
             runCatching { container.repository.backfillImageHashes() }
         }
+        // B1：「未分类」哨兵幂等补种（新装已由 AppDatabase.seed() 写入，此处覆盖升级库 / 中断恢复）
+        applicationScope.launch {
+            runCatching { container.repository.ensureUnclassified() }
+        }
         // T-4 触发挂接（V3）：回前台去抖触发 + 30min 周期兜底（COLD_START 在 MainActivity）
         SyncTriggers.attach(this)
         SyncWorker.enqueue(this)

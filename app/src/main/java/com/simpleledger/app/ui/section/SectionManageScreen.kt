@@ -39,6 +39,7 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.repo.CategoryDeleteImpact
 import com.simpleledger.app.ui.WindowLayout
+import com.simpleledger.app.ui.components.CategoryDeleteDialog
 import com.simpleledger.app.ui.components.CategoryDialog
 import com.simpleledger.app.ui.components.CategoryList
 import com.simpleledger.app.ui.components.ConfirmDialog
@@ -252,28 +253,15 @@ fun SectionManageScreen(
     }
 
     deleteTarget?.let { target ->
-        val impact = deleteImpact
-        ConfirmDialog(
+        CategoryDeleteDialog(
             title = stringResource(R.string.delete_category_title, target.name),
-            text = categoryDeleteMessage(impact),
-            onConfirm = { viewModel.deleteCategory(target.id) },
+            impact = deleteImpact,
+            // B4：去向单选（默认「未分类」，哨兵恒排末尾）；destinationId 交给数据层解析兜底
+            onConfirm = { destinationId ->
+                viewModel.deleteCategory(target.id, destinationId)
+                deleteTarget = null
+            },
             onDismiss = { deleteTarget = null },
-            // P2-4：影响描述异步加载，加载完成前 impact 为 null——保持禁用，避免首帧闪现可点
-            confirmEnabled = impact != null && impact.blockedReason == null,
         )
-    }
-}
-
-/** 组合删除分类的确认文案：说明「账目将改为 X」，或给阻塞原因（FR-41/42） */
-@Composable
-internal fun categoryDeleteMessage(impact: CategoryDeleteImpact?): String {
-    impact?.blockedReason?.let { return it }
-    val count = impact?.entryCount ?: 0
-    val fallback = impact?.fallback
-    return if (count > 0 && fallback != null) {
-        // v4：提示文案不拼 emoji —— 这是要给用户读的字，图标在这里没有信息量
-        stringResource(R.string.delete_category_body_moved, count, fallback.name)
-    } else {
-        stringResource(R.string.delete_category_body_none)
     }
 }

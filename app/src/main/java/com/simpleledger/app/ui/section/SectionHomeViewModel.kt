@@ -113,6 +113,9 @@ class SectionHomeViewModel(private val repo: LedgerRepository) : ViewModel() {
     /** 删除前的影响描述（供确认框） */
     suspend fun impactOf(id: Long): SectionDeleteImpact = repo.sectionDeleteImpact(id)
 
+    /** 纸片菜单「编辑」：取分区实体供编辑表单回填 */
+    suspend fun sectionOf(id: Long): SectionEntity? = repo.getSection(id)
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

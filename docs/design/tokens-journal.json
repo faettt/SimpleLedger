@@ -344,7 +344,7 @@
  "components": {
   "slip": "纸片容器：slip 填充 + 3dp 圆角 + 0.5dp ruleStrong 描边 + 20dp 内边距",
   "slipStacked": "需要强调层级时，在纸片背后加一层错位 3dp 的 slipUnder 垫纸",
-  "listRow": "62dp 行高；左侧 3dp 分区色条（通高）+ 符号簇(14+2+14dp) + 分类名 + 右对齐金额",
+  "listRow": "行高两档自适应（v2.2 §0-H1）：无备注基准 62.48dp / 有备注 70.86dp（备注 meta 独立第二行）；左侧 3dp 分区色条（通高）+ 符号簇(14+2+14dp) + 分类名 + 右对齐金额",
   "sectionBar": "账目行左侧 3dp 分区色条，取自该分区的胶带色",
   "chip": "6dp 圆角；选中 = ink 底 + paper 文字；未选中 = 0.5dp ruleStrong 描边 + ink2 文字",
   "buttonPrimary": "4dp 圆角；ink 底 + paper 文字（ink 上白字 11.47:1）",
