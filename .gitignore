@@ -15,3 +15,7 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+
+# Python 走查工具缓存
+__pycache__/
+*.pyc

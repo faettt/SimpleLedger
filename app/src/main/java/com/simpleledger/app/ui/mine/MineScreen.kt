@@ -68,6 +68,7 @@ import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.ui.sync.SyncStatusBadge
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.SlChipShape
@@ -84,6 +85,9 @@ import com.simpleledger.app.ui.theme.slSegmentShape
 fun MineScreen(
     layout: WindowLayout = WindowLayout.Compact,
     onNavigateGlobalCategories: () -> Unit = {},
+    onNavigateSyncSettings: () -> Unit = {},
+    onNavigateMembers: () -> Unit = {},
+    onNavigateTrash: () -> Unit = {},
     viewModel: MineViewModel = viewModel(factory = MineViewModel.Factory),
 ) {
     val state by viewModel.state.collectAsState()
@@ -94,6 +98,10 @@ fun MineScreen(
     val hideAmounts by viewModel.hideAmounts.collectAsState()
     val appLock by viewModel.appLock.collectAsState()
     val secureScreen by viewModel.secureScreen.collectAsState()
+    // T-5 同步入口：四态角标 / 回收站计数 / 成员数
+    val syncState by viewModel.syncState.collectAsState()
+    val trashCount by viewModel.trashCount.collectAsState()
+    val memberCount by viewModel.memberCount.collectAsState()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -211,6 +219,31 @@ fun MineScreen(
                         desc = stringResource(R.string.mine_global_categories_desc),
                         enabled = true,
                         onClick = onNavigateGlobalCategories,
+                    )
+
+                    // T-5：同步三入口（同步设置带四态角标、回收站带计数角标）
+                    GroupTitle(stringResource(R.string.mine_sync_group))
+                    ActionRow(
+                        title = stringResource(R.string.mine_sync_settings),
+                        desc = stringResource(R.string.mine_sync_settings_desc),
+                        enabled = true,
+                        onClick = onNavigateSyncSettings,
+                        // 四态角标（U-4）：失败不弹窗，点角标进状态详情
+                        trailing = { SyncStatusBadge(state = syncState, onClick = onNavigateSyncSettings) },
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.mine_sync_members),
+                        desc = stringResource(R.string.mine_sync_members_desc, memberCount),
+                        enabled = true,
+                        onClick = onNavigateMembers,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.mine_sync_trash),
+                        desc = stringResource(R.string.mine_sync_trash_desc),
+                        enabled = true,
+                        onClick = onNavigateTrash,
+                        // 有留底时数量角标（U-3）
+                        trailing = { if (trashCount > 0) CountBadge(trashCount) },
                     )
 
                     GroupTitle(stringResource(R.string.mine_group_data))
@@ -457,6 +490,8 @@ private fun ActionRow(
     desc: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    /** 行尾附加物（T-5：同步四态角标 / 回收站计数角标）；null = 只有「›」 */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -479,12 +514,32 @@ private fun ActionRow(
                     )
                 }
             }
+            trailing?.invoke()
             Text(
                 "›",
                 style = SlType.title,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** 小计数角标：凹面底 + 楷体小字（无颜色语义——颜色语义被分区身份独占） */
+@Composable
+private fun CountBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = SlChipShape,
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = count.toString(),
+            style = SlType.meta,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

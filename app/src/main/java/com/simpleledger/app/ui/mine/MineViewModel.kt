@@ -8,11 +8,17 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.data.export.DataExporter
+import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.data.settings.AppSettings
+import com.simpleledger.app.sync.SyncManager
+import com.simpleledger.app.sync.SyncState
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -36,6 +42,8 @@ class MineViewModel(
     private val repository: LedgerRepository,
     private val exporter: DataExporter,
     private val settings: AppSettings,
+    private val syncManager: SyncManager,
+    private val syncDao: SyncDao,
 ) : ViewModel() {
 
     val themeMode: StateFlow<String> = settings.themeMode
@@ -44,6 +52,18 @@ class MineViewModel(
     val appLock: StateFlow<Boolean> = settings.appLock
     val secureScreen: StateFlow<Boolean> = settings.secureScreen
     val quickAmounts: StateFlow<List<Long>> = settings.quickAmounts
+
+    /** T-5：「同步设置」行尾四态角标（U-4） */
+    val syncState: StateFlow<SyncState> = syncManager.state
+
+    /** T-5：「冲突回收站」行尾计数角标（U-3：有留底时提示数量） */
+    val trashCount: StateFlow<Int> = syncDao.observeVisibleTrashCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** T-5：「成员管理」行描述里的成员数 */
+    val memberCount: StateFlow<Int> = syncDao.observeMembers()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _state = MutableStateFlow(MineUiState())
     val state: StateFlow<MineUiState> = _state.asStateFlow()
@@ -117,6 +137,8 @@ class MineViewModel(
                     repository = app.container.repository,
                     exporter = app.container.exporter,
                     settings = app.container.settings,
+                    syncManager = app.container.syncManager,
+                    syncDao = app.container.database.syncDao(),
                 )
             }
         }

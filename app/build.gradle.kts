@@ -118,5 +118,23 @@ dependencies {
     // 图片加载（本地文件）
     implementation(libs.coil.compose)
 
+    // 多端同步：Argon2id 口令派生（纯 Java 直调 Argon2BytesGenerator，不注册 Security Provider，
+    // 避开 Android 内置旧版 BC Provider 的类冲突；见架构设计 V1 实测）
+    implementation(libs.bcprov.jdk18on)
+
+    // 多端同步：自研最小 WebDAV 客户端的传输底座（PROPFIND/MKCOL/条件写/Range，见 V2 实测）
+    implementation(libs.okhttp)
+
+    // 多端同步：后台 30 分钟周期兜底（CoroutineWorker，见 V3 实测）
+    implementation(libs.androidx.work.runtime.ktx)
+
     testImplementation(libs.junit)
+
+    // 多端同步 JVM 单测：org.json 真实现（Android 内置同 API，android.jar 桩不可用）。
+    // OpCodec / OpApplier 的操作载荷编解码在单测里必须跑真 JSON。
+    testImplementation(libs.json)
+
+    // 多端同步 JVM 单测：kxml2 提供 XmlPullParser 实现（PROPFIND 解析；
+    // 生产路径用 android.util.Xml.newPullParser()，测试经解析器工厂注入本实现）
+    testImplementation(libs.kxml2)
 }

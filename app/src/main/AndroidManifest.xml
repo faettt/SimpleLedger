@@ -5,7 +5,14 @@
         隐私优先：本应用不需要任何**运行时**权限，数据全部保存在本机。
         USE_BIOMETRIC 是 normal 权限，安装即授予、不会向用户弹框；仅用于「应用锁」调用
         BiometricPrompt。截屏保护（FLAG_SECURE）与导出（FileProvider 临时授权）均无需存储权限。
+
+        多端同步（U-2 裁定）：INTERNET / ACCESS_NETWORK_STATE 均为 **normal 权限**（安装即授予、
+        无运行时弹窗），仅用于用户自带 WebDAV（坚果云等）的端到端加密同步；
+        ACCESS_NETWORK_STATE 仅用于「仅 Wi-Fi 传照片」的网络类型判定（R-17）。
+        「零权限」宣传口径据此微调为「零运行时权限」。
     -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application

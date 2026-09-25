@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.fragment.app.FragmentActivity
 import com.simpleledger.app.data.settings.AppSettings
 import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.sync.SyncTrigger
 import com.simpleledger.app.ui.AppRoot
 import com.simpleledger.app.ui.rememberReduceMotion
 import com.simpleledger.app.ui.security.AppLockGate
@@ -30,7 +31,10 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val settings = (application as LedgerApp).container.settings
+        val container = (application as LedgerApp).container
+        val settings = container.settings
+        // T-4 冷启动同步触发（S6：异步静默，失败只动角标，绝不弹窗）
+        container.syncManager.requestSync(SyncTrigger.COLD_START)
 
         setContent {
             val themeMode by settings.themeMode.collectAsState()

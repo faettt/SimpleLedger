@@ -1,6 +1,8 @@
 package com.simpleledger.app.data.local
 
+import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
+import java.util.UUID
 
 /**
  * 「分区优先」重构后的**理想初始态**（纯 Kotlin 数据结构，无 Android 依赖）。
@@ -94,4 +96,97 @@ object SectionFirstSeed {
 
     /** 全部分类（全局 + 分区专属），便于单测整体断言 */
     val categories: List<SeedCategory> = globalCategories + sectionCategories
+
+    /**
+     * B1「未分类」哨兵：categories 表内置的**系统分类**，每种类型（支出/收入）各一行。
+     *
+     * 定案要点：
+     * - **零 schema 变更**：就是普通分类行（plain category rows），同步协议零改动，
+     *   旧客户端把它当普通分类展示；
+     * - **不可删 / 不可改名**：管理列表中可见，但编辑 / 删除 / 排序操作全部禁用；
+     * - **确定性 syncId**（`SeedIds.unclassified(type)`）：两台设备各自补种出来的是同一逻辑行，
+     *   合并天然对齐（与 SectionFirstSeed 的 H7 同一模式）；
+     * - **幂等补种**：新装走 `AppDatabase.seed()`，升级 / 崩溃恢复走启动时
+     *   `LedgerRepository.ensureUnclassified()`——两条路径共用 [missingCategories]，
+     *   重复执行零副作用。
+     */
+    object Unclassified {
+
+        /** 展示名（明细 / 统计 / 导出里与用户所见一致） */
+        const val NAME = "未分类"
+
+        /** 中性图标 43 = tag（与分类默认图标一致，不携带语义） */
+        const val ICON_ID = 43
+
+        /** 哨兵的确定性 syncId（支出 / 收入各一个） */
+        fun syncId(type: Int): String = SeedIds.unclassified(type)
+
+        /** 按行身份（syncId）判定是否哨兵——用户自建的同名分类不算 */
+        fun isUnclassified(syncId: String): Boolean =
+            syncId == syncId(EntryType.EXPENSE) || syncId == syncId(EntryType.INCOME)
+
+        fun isUnclassified(category: CategoryEntity): Boolean = isUnclassified(category.syncId)
+
+        /** 哨兵行模板（sortOrder / updatedAt 由落库方按作用域补齐） */
+        fun categoryRow(type: Int): CategoryEntity = CategoryEntity(
+            name = NAME,
+            iconId = ICON_ID,
+            type = type,
+            sectionId = null,
+            sortOrder = 0,
+            syncId = syncId(type),
+            versionSeq = 0,
+            updatedAt = 0,
+        )
+
+        /**
+         * 幂等补种计划（纯函数）：给定库中既有分类的 syncId 集合，返回**缺失**的哨兵行。
+         * 第二次调用（哨兵已在）返回空列表——这就是幂等性的测试锚点。
+         */
+        fun missingCategories(existingSyncIds: Set<String>): List<CategoryEntity> =
+            listOf(EntryType.EXPENSE, EntryType.INCOME)
+                .map { type -> categoryRow(type) }
+                .filter { it.syncId !in existingSyncIds }
+
+        /**
+         * B2 保存口径：记账不选分类 = 记到「未分类」哨兵（不再硬拦「请选择分类」）。
+         * [unclassifiedId] 由调用方解析（`LedgerRepository.unclassifiedCategoryId(type)`）。
+         */
+        fun saveCategoryId(selectedCategoryId: Long?, unclassifiedId: Long): Long =
+            selectedCategoryId ?: unclassifiedId
+    }
+}
+
+/**
+ * 种子行的**确定性 syncId** 派生（v5 多端同步，架构设计 §3.6 / H7）。
+ *
+ * 两台设备各自新装后，默认分区 / 分类必须是**同一逻辑行**，否则合并会复制出两套
+ * 「日常开支 / 装修 / 旅行」。解法：种子行的 syncId 不用随机 UUID，而是由「种子 key」
+ * 确定性派生——所有设备对同一种子行算出同一个 syncId，合并天然对齐。
+ *
+ * **单一真源**：`AppDatabase.seed()`（新装写入）与 `MigrationSql`（升级回填覆盖）
+ * 都必须调用本对象的同一组函数，禁止各自手写公式。
+ *
+ * 形态：`"sd" + nameUUID(key).hex 截 30` = 32 字符小写（`sd` 前缀可与随机 32hex 区分）。
+ * 用户改过名 / 换过图标的种子行**无法**按 key 识别（迁移期）→ 取随机 syncId，
+ * 极端情况合并出重复行（用户删一条即可，走标准删除兜底链）——已知边界，见设计 §8 U-5。
+ */
+object SeedIds {
+
+    /** 分区种子 key = `section:<分区名>` */
+    fun section(name: String): String = seed("section:$name")
+
+    /**
+     * 分类种子 key = `category:<type><:sectionName>:<分类名>`
+     * （全局分类 `sectionName` 传 null，key 中为空串）。
+     */
+    fun category(type: Int, sectionName: String?, name: String): String =
+        seed("category:$type:${sectionName ?: ""}:$name")
+
+    /** 「未分类」哨兵种子 key = `unclassified:<type>`（B1，两设备补种同一逻辑行） */
+    fun unclassified(type: Int): String = seed("unclassified:$type")
+
+    /** `UUID.nameUUIDFromBytes`（MD5 名字型 UUID v3）取 hex32 前 30 位，加 `sd` 前缀 */
+    private fun seed(key: String): String =
+        "sd" + UUID.nameUUIDFromBytes(key.toByteArray()).toString().replace("-", "").take(30)
 }

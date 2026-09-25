@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 debug 构建合并的清单覆开（T-5 走查专用，release 构建不受影响）。
+
+  用途：模拟器走查 / 自测时对宿主假 WebDAV（http://10.0.2.2:8899）走通
+  「测试连接 → 开启同步 → 立即同步」全链路。targetSdk 28+ 默认禁明文 HTTP，
+  不放开则模拟器侧无法对本地 http 服务做任何同步验证（真机坚果云走 https 不受影响）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>

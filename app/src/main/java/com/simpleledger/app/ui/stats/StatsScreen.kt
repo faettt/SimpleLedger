@@ -92,6 +92,16 @@ fun StatsScreen(
         ?.let { name -> "分类金额 · 只看$name" }
         ?: "分类金额"
 
+    // U-7/R-18「按人」条形图（G3：长度管数值、不给颜色加语义）——
+    // 全部条同墨色（primary 墨青），身份靠楷体名标签，不引入第三套色彩语义
+    val memberRows = state.memberShares.map { share ->
+        BarRow(
+            label = share.name,
+            amountCents = share.amountCents,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+
     // 把滚动主体抽成一个 lambda：限宽与否只切换外壳，主体只有一份，避免两套代码走样
     val body: @Composable () -> Unit = {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -139,6 +149,9 @@ fun StatsScreen(
                                     rows = barRows,
                                     hidden = hidden,
                                 )
+                                if (state.memberShares.isNotEmpty()) {
+                                    MemberBarSection(rows = memberRows, hidden = hidden)
+                                }
                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 DailyExpenseSection(
@@ -169,6 +182,11 @@ fun StatsScreen(
                             rows = barRows,
                             hidden = hidden,
                         )
+                    }
+                    if (state.memberShares.isNotEmpty()) {
+                        item {
+                            MemberBarSection(rows = memberRows, hidden = hidden)
+                        }
                     }
                     item {
                         DailyExpenseSection(
@@ -334,6 +352,21 @@ private fun CategoryBarSection(
     hidden: Boolean,
 ) {
     SectionTitle(title)
+    Card(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            CategoryBarChart(rows = rows, hidden = hidden)
+        }
+    }
+}
+
+/**
+ * 按人支出（U-7/R-18）：横向条形图，复用 [CategoryBarChart]（G3 双图方法论：
+ * 长度管数值、不给颜色加语义 —— 全部条同墨色，楷体名标签管身份）。
+ * 不参与 G4 双图联动（联动是「分区 ↔ 分类」两个图之间的事，与按人无关）。
+ */
+@Composable
+private fun MemberBarSection(rows: List<BarRow>, hidden: Boolean) {
+    SectionTitle(stringResource(R.string.stats_by_member))
     Card(modifier = Modifier.padding(horizontal = 16.dp)) {
         Column(modifier = Modifier.padding(20.dp)) {
             CategoryBarChart(rows = rows, hidden = hidden)

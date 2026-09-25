@@ -1,6 +1,8 @@
 package com.simpleledger.app
 
 import com.simpleledger.app.data.local.MigrationSql
+import com.simpleledger.app.data.local.SectionFirstSeed
+import com.simpleledger.app.data.local.SeedIds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -177,6 +179,273 @@ class MigrationSqlTest {
         assertEquals(
             "ALTER TABLE entries ADD COLUMN reimburseState INTEGER NOT NULL DEFAULT 0",
             MigrationSql.ADD_ENTRY_REIMBURSE_STATE,
+        )
+    }
+
+    /* ---------------------------------------------------------------- v4 → v5 */
+
+    /**
+     * v5 语句顺序契约（51 条）：新表 → ADD COLUMN → 随机回填 → 种子覆盖 → 索引。
+     * 顺序敏感点：覆盖必须晚于回填（两阶段保唯一索引可建），索引必须最后建。
+     */
+    private fun expectedV5Names(): List<String> = listOf(
+        "CREATE_TABLE_MEMBERS",
+        "CREATE_TABLE_SYNC_OPS",
+        "CREATE_INDEX_SYNC_OPS_OUTBOX",
+        "CREATE_INDEX_SYNC_OPS_ROW",
+        "CREATE_TABLE_SYNC_TRASH",
+        "CREATE_TABLE_SYNC_REMOTE_FILES",
+        "ADD_SECTION_SYNC_ID", "ADD_SECTION_VERSION_SEQ", "ADD_SECTION_UPDATED_AT",
+        "ADD_CATEGORY_SYNC_ID", "ADD_CATEGORY_VERSION_SEQ", "ADD_CATEGORY_UPDATED_AT",
+        "ADD_ENTRY_SYNC_ID", "ADD_ENTRY_VERSION_SEQ", "ADD_ENTRY_MEMBER_ID",
+        "ADD_IMAGE_SYNC_ID", "ADD_IMAGE_VERSION_SEQ", "ADD_IMAGE_UPDATED_AT", "ADD_IMAGE_CONTENT_HASH",
+        "BACKFILL_SECTION_SYNC_ID", "BACKFILL_CATEGORY_SYNC_ID",
+        "BACKFILL_ENTRY_SYNC_ID", "BACKFILL_IMAGE_SYNC_ID",
+    ) + SectionFirstSeed.sections.map { "SEED_SECTION_SYNC_ID_${it.name}" } +
+        SectionFirstSeed.globalCategories.map { "SEED_CATEGORY_SYNC_ID_${it.name}" } +
+        SectionFirstSeed.sectionCategories.map { "SEED_CATEGORY_SYNC_ID_${it.name}" } +
+        listOf(
+            "CREATE_SECTION_SYNC_ID_INDEX", "CREATE_CATEGORY_SYNC_ID_INDEX",
+            "CREATE_ENTRY_SYNC_ID_INDEX", "CREATE_IMAGE_SYNC_ID_INDEX",
+            "CREATE_ENTRY_MEMBER_ID_INDEX", "CREATE_IMAGE_CONTENT_HASH_INDEX",
+        )
+
+    @Test
+    fun `v5 statement list is complete and order is pinned`() {
+        // 3 分区 + 19 分类 = 22 条种子覆盖；合计 6 + 13 + 4 + 22 + 6 = 51 条
+        assertEquals(51, MigrationSql.V5_STATEMENTS.size)
+        assertEquals(expectedV5Names(), MigrationSql.V5_STATEMENTS.map { it.first })
+    }
+
+    @Test
+    fun `v5 statements are all single-statement`() {
+        assertEquals(
+            "v5 语句条数应与 MIGRATION_4_5 一致",
+            51,
+            MigrationSql.V5_STATEMENTS.size,
+        )
+        val names = MigrationSql.V5_STATEMENTS.map { it.first }
+        assertEquals("语句名不得重复", names.size, names.toSet().size)
+        MigrationSql.V5_STATEMENTS.forEach { (name, sql) ->
+            assertTrue("$name 不应为空", sql.isNotBlank())
+            assertEquals("$name 混入了分号", 0, sql.count { it == ';' })
+        }
+    }
+
+    /** R-11 铁律：零 DROP、零重建表——四表只增列，本地 Long 引用原值不动 */
+    @Test
+    fun `v5 never drops or rebuilds tables`() {
+        MigrationSql.V5_STATEMENTS.forEach { (name, sql) ->
+            assertTrue("$name 不得含 DROP", !sql.contains("DROP"))
+            assertTrue("$name 不得含 RENAME", !sql.contains("RENAME"))
+            assertTrue("$name 不得走临时表重建", !sql.contains("_new"))
+        }
+    }
+
+    @Test
+    fun `v5 adds sync identity columns exactly`() {
+        // 与 §3.1 DDL 逐字一致：syncId 32hex / versionSeq Lamport / updatedAt
+        assertEquals(
+            "ALTER TABLE sections ADD COLUMN syncId TEXT NOT NULL DEFAULT ''",
+            MigrationSql.ADD_SECTION_SYNC_ID,
+        )
+        assertEquals(
+            "ALTER TABLE sections ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_SECTION_VERSION_SEQ,
+        )
+        assertEquals(
+            "ALTER TABLE sections ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_SECTION_UPDATED_AT,
+        )
+        assertEquals(
+            "ALTER TABLE categories ADD COLUMN syncId TEXT NOT NULL DEFAULT ''",
+            MigrationSql.ADD_CATEGORY_SYNC_ID,
+        )
+        assertEquals(
+            "ALTER TABLE categories ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_CATEGORY_VERSION_SEQ,
+        )
+        assertEquals(
+            "ALTER TABLE categories ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_CATEGORY_UPDATED_AT,
+        )
+        assertEquals(
+            "ALTER TABLE entries ADD COLUMN syncId TEXT NOT NULL DEFAULT ''",
+            MigrationSql.ADD_ENTRY_SYNC_ID,
+        )
+        assertEquals(
+            "ALTER TABLE entries ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_ENTRY_VERSION_SEQ,
+        )
+        // memberId 必须**可空**（存量 = 未知成员）；误写 NOT NULL 会把老账目塞进假成员
+        assertEquals("ALTER TABLE entries ADD COLUMN memberId TEXT", MigrationSql.ADD_ENTRY_MEMBER_ID)
+        assertTrue(!MigrationSql.ADD_ENTRY_MEMBER_ID.contains("NOT NULL"))
+        assertEquals(
+            "ALTER TABLE entry_images ADD COLUMN syncId TEXT NOT NULL DEFAULT ''",
+            MigrationSql.ADD_IMAGE_SYNC_ID,
+        )
+        assertEquals(
+            "ALTER TABLE entry_images ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_IMAGE_VERSION_SEQ,
+        )
+        assertEquals(
+            "ALTER TABLE entry_images ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0",
+            MigrationSql.ADD_IMAGE_UPDATED_AT,
+        )
+        assertEquals(
+            "ALTER TABLE entry_images ADD COLUMN contentHash TEXT NOT NULL DEFAULT ''",
+            MigrationSql.ADD_IMAGE_CONTENT_HASH,
+        )
+    }
+
+    @Test
+    fun `v5 backfills random sync ids for all legacy rows`() {
+        // 第一阶段：全体随机（lower(hex(randomblob(16))) = 32hex）；第二阶段才覆盖种子行
+        assertEquals(
+            "UPDATE sections SET syncId = lower(hex(randomblob(16))), updatedAt = createdAt",
+            MigrationSql.BACKFILL_SECTION_SYNC_ID,
+        )
+        assertEquals(
+            "UPDATE categories SET syncId = lower(hex(randomblob(16))), updatedAt = 0",
+            MigrationSql.BACKFILL_CATEGORY_SYNC_ID,
+        )
+        assertEquals(
+            "UPDATE entries SET syncId = lower(hex(randomblob(16)))",
+            MigrationSql.BACKFILL_ENTRY_SYNC_ID,
+        )
+        assertEquals(
+            "UPDATE entry_images SET syncId = lower(hex(randomblob(16))), updatedAt = 0",
+            MigrationSql.BACKFILL_IMAGE_SYNC_ID,
+        )
+    }
+
+    @Test
+    fun `v5 seed sync ids are deterministic golden vectors`() {
+        // RFC 向量式金标：钉死 UUID.nameUUIDFromBytes 派生公式（Python 校验脚本镜像同一组金标）。
+        // 一旦有人改公式，多设备默认数据会分裂成两套逻辑行——必须红。
+        val goldens: Map<String, String> = mapOf(
+            SeedIds.section("日常开支") to "sd05948a76a5233ccebe001dad42a63e",
+            SeedIds.section("装修") to "sd1056d1fadccb3c758c73dfdd5f72c0",
+            SeedIds.section("旅行") to "sdbe6ff5dc48ef304aaf3d3bc0e123b0",
+            SeedIds.category(0, null, "餐饮") to "sdef2a17de26533d868d4b39f02722ad",
+            SeedIds.category(0, null, "交通") to "sd71f609c0b79334f995719dbb87fa34",
+            SeedIds.category(0, null, "购物") to "sd07e72de901ef3592a8637e74d7456f",
+            SeedIds.category(0, null, "居住") to "sd09ba2516708d3ec183d459318f6674",
+            SeedIds.category(0, null, "医疗") to "sd15384270ffc63b8cba5f74050c9738",
+            SeedIds.category(0, null, "娱乐") to "sd093b209f1f8d33eebbcf2e76e9a6a1",
+            SeedIds.category(0, null, "学习") to "sdfdb7acf1ad0138b69dd79f7de8f35a",
+            SeedIds.category(0, null, "其他支出") to "sd452344bf97583dbb86b06cb474f20d",
+            SeedIds.category(1, null, "工资") to "sd8803f75cfb4a3a519ae3ef83c49a28",
+            SeedIds.category(1, null, "理财") to "sd42ec544700943cffb8fc870e5935fb",
+            SeedIds.category(1, null, "红包") to "sd97bda608be5b35d39c79a6c24273aa",
+            SeedIds.category(1, null, "其他收入") to "sd3923bb02822733a7894cd5a09e1736",
+            SeedIds.category(0, "装修", "主材") to "sd262aeca685e239958765bf34ecbd2d",
+            SeedIds.category(0, "装修", "人工") to "sd97c75c38ab003937adbdc493c2d00d",
+            SeedIds.category(0, "装修", "家具") to "sd9a6ab9f33a303e9bb37f4423cc3717",
+            SeedIds.category(0, "装修", "家电") to "sd7b1a5f8b41f135e39ddeb5ad761bd5",
+            SeedIds.category(0, "装修", "设计费") to "sd60a22752e2a232119fff97056701d4",
+            SeedIds.category(1, "装修", "报销") to "sd1b4aa01a333139e498a6726e08c2a3",
+            SeedIds.category(1, "装修", "退款") to "sd0fcfc90aee313b4eae6004278cf089",
+        )
+        goldens.forEach { (actual, expected) -> assertEquals(expected, actual) }
+        // 形态：'sd' 前缀 + 30 hex（可与随机 32hex 区分），全集无重复
+        assertEquals(22, goldens.size)
+        goldens.keys.forEach { id ->
+            assertTrue("种子 syncId 形态不对：$id", id.matches(Regex("sd[0-9a-f]{30}")))
+        }
+    }
+
+    @Test
+    fun `v5 seed fixes cover every seed row exactly once with uniqueness guard`() {
+        val fixes = MigrationSql.V5_STATEMENTS.filter { it.first.startsWith("SEED_") }
+        assertEquals(SectionFirstSeed.sections.size + SectionFirstSeed.categories.size, fixes.size)
+
+        // 分区：同名 + 同 iconId 命中；MIN(rowid) 保证同名克隆行只有一行拿确定性 id
+        SectionFirstSeed.sections.forEach { section ->
+            val expected = "UPDATE sections SET syncId = '" + SeedIds.section(section.name) +
+                "' WHERE rowid = (SELECT MIN(rowid) FROM sections WHERE name = '${section.name}' " +
+                "AND iconId = ${section.iconId})"
+            assertEquals(expected, fixes.first { it.first == "SEED_SECTION_SYNC_ID_${section.name}" }.second)
+        }
+
+        // 分类：同名 + 同 type + 同 iconId + 同归属；专属分类还要求分区行已拿到确定性 id
+        SectionFirstSeed.categories.forEach { category ->
+            val id = SeedIds.category(category.type, category.sectionName, category.name)
+            val scope = if (category.sectionName == null) {
+                "sectionId IS NULL"
+            } else {
+                "sectionId IN (SELECT id FROM sections WHERE syncId = '" +
+                    SeedIds.section(category.sectionName) + "')"
+            }
+            val expected = "UPDATE categories SET syncId = '" + id +
+                "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '${category.name}' " +
+                "AND type = ${category.type} AND iconId = ${category.iconId} AND $scope)"
+            assertEquals(expected, fixes.first { it.first == "SEED_CATEGORY_SYNC_ID_${category.name}" }.second)
+        }
+    }
+
+    @Test
+    fun `v5 creates the four sync tables with u3 semantics`() {
+        val members = MigrationSql.CREATE_TABLE_MEMBERS
+        assertTrue(members.startsWith("CREATE TABLE IF NOT EXISTS members"))
+        listOf("syncId TEXT PRIMARY KEY NOT NULL", "name TEXT NOT NULL", "hidden INTEGER NOT NULL")
+            .forEach { assertTrue("members 缺少：$it", members.contains(it)) }
+
+        val ops = MigrationSql.CREATE_TABLE_SYNC_OPS
+        assertTrue(ops.startsWith("CREATE TABLE IF NOT EXISTS sync_ops"))
+        // U-3：UPSERT 也携带 baseSeq（编辑观察版本；新建 = null）→ 列必须可空
+        assertTrue(ops.contains("baseSeq INTEGER,"))
+        listOf("opId TEXT PRIMARY KEY NOT NULL", "rowKind TEXT NOT NULL", "rowSyncId TEXT NOT NULL",
+            "opType TEXT NOT NULL", "actorId TEXT NOT NULL", "seq INTEGER NOT NULL",
+            "payload TEXT NOT NULL", "origin TEXT NOT NULL")
+            .forEach { assertTrue("sync_ops 缺少：$it", ops.contains(it)) }
+
+        val trash = MigrationSql.CREATE_TABLE_SYNC_TRASH
+        assertTrue(trash.startsWith("CREATE TABLE IF NOT EXISTS sync_trash"))
+        // U-3：kind 来源字段（DELETE = 删除留底 / OVERWRITE = 并发编辑落败版留底）
+        assertTrue(trash.contains("kind TEXT NOT NULL DEFAULT 'DELETE'"))
+        assertTrue(trash.contains("deleteOpId TEXT PRIMARY KEY NOT NULL"))
+
+        val files = MigrationSql.CREATE_TABLE_SYNC_REMOTE_FILES
+        assertTrue(files.startsWith("CREATE TABLE IF NOT EXISTS sync_remote_files"))
+        assertTrue(files.contains("remoteName TEXT PRIMARY KEY NOT NULL"))
+    }
+
+    @Test
+    fun `v5 index names follow room naming or explicit contract`() {
+        // 业务表四个 syncId 索引：对齐 Room 生成名（index_<表>_<列>），否则 schema 校验崩
+        assertEquals(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_sections_syncId ON sections (syncId)",
+            MigrationSql.CREATE_SECTION_SYNC_ID_INDEX,
+        )
+        assertEquals(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_categories_syncId ON categories (syncId)",
+            MigrationSql.CREATE_CATEGORY_SYNC_ID_INDEX,
+        )
+        assertEquals(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_entries_syncId ON entries (syncId)",
+            MigrationSql.CREATE_ENTRY_SYNC_ID_INDEX,
+        )
+        assertEquals(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_entry_images_syncId ON entry_images (syncId)",
+            MigrationSql.CREATE_IMAGE_SYNC_ID_INDEX,
+        )
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS index_entries_memberId ON entries (memberId)",
+            MigrationSql.CREATE_ENTRY_MEMBER_ID_INDEX,
+        )
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS index_entry_images_contentHash ON entry_images (contentHash)",
+            MigrationSql.CREATE_IMAGE_CONTENT_HASH_INDEX,
+        )
+        // sync_ops 两个索引：显式契约名（SyncDao / SyncOpEntity 声明同名）
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS index_sync_ops_outbox ON sync_ops (uploaded, createdAt)",
+            MigrationSql.CREATE_INDEX_SYNC_OPS_OUTBOX,
+        )
+        assertEquals(
+            "CREATE INDEX IF NOT EXISTS index_sync_ops_row ON sync_ops (rowKind, rowSyncId)",
+            MigrationSql.CREATE_INDEX_SYNC_OPS_ROW,
         )
     }
 }

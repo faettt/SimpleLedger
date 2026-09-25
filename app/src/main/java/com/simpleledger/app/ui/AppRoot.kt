@@ -77,6 +77,9 @@ import com.simpleledger.app.ui.section.SectionDetailScreen
 import com.simpleledger.app.ui.section.SectionHomeScreen
 import com.simpleledger.app.ui.section.SectionManageScreen
 import com.simpleledger.app.ui.stats.StatsScreen
+import com.simpleledger.app.ui.sync.ConflictTrashScreen
+import com.simpleledger.app.ui.sync.MemberManageScreen
+import com.simpleledger.app.ui.sync.SyncSettingsScreen
 import com.simpleledger.app.ui.theme.paperTexture
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawBehind
@@ -355,6 +358,26 @@ private fun AppNavHost(
             )
         }
 
+        // T-5 同步三入口（从「我的 → 同步」进入）：同步设置 · 成员管理 · 冲突回收站
+        composable(Routes.SYNC_SETTINGS) {
+            SyncSettingsScreen(
+                onBack = { navController.popBackStack() },
+                layout = layout,
+            )
+        }
+        composable(Routes.MEMBER_MANAGE) {
+            MemberManageScreen(
+                onBack = { navController.popBackStack() },
+                layout = layout,
+            )
+        }
+        composable(Routes.CONFLICT_TRASH) {
+            ConflictTrashScreen(
+                onBack = { navController.popBackStack() },
+                layout = layout,
+            )
+        }
+
         // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
         composable(
             Routes.LEDGER,
@@ -394,6 +417,9 @@ private fun AppNavHost(
             MineScreen(
                 layout = layout,
                 onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
+                onNavigateSyncSettings = { navController.navigate(Routes.SYNC_SETTINGS) },
+                onNavigateMembers = { navController.navigate(Routes.MEMBER_MANAGE) },
+                onNavigateTrash = { navController.navigate(Routes.CONFLICT_TRASH) },
             )
         }
 

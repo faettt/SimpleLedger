@@ -143,10 +143,14 @@ internal fun EntryRow(
 ) {
     val isIncome = full.entry.type == EntryType.INCOME
     val hidden = LocalHideAmounts.current
+    // U-6 成员标识：楷体小字缀在 meta（时间 · 分区 · 成员）。只追加进**同一个 Text**（单行
+    // ellipsis），不加布局节点——62dp 行高与双符号槽（EntryStatusCluster）零风险。
+    val memberLabel = full.member?.name ?: stringResource(R.string.entry_member_unknown)
     val meta = buildString {
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
         // v4：分区名不再拼 emoji（F4——分区身份由色条/图标表达，文字只留名称）
         full.section?.let { append(" · ${it.name}") }
+        append(" · $memberLabel")
     }
     // v4：📷 / 💬 从「拼进字符串的 emoji」改成**渲染出来的行内图标**（SlIcons.Ui.CameraInline /
     // NoteInline）。它们与读屏串 speech 的分工：视觉用图标，语义由 speechImageCount / speechHasNote 兜底。
@@ -203,6 +207,7 @@ internal fun EntryRow(
         append("，")
         append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
         full.section?.let { append("，${it.name}") }
+        append("，$memberLabel")
         if (full.entry.note.isNotBlank()) append("，$speechHasNote")
         if (full.images.isNotEmpty()) append("，$speechImageCount")
     }

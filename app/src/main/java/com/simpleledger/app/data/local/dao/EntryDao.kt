@@ -157,6 +157,88 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getEntryFull(id: Long): EntryFull?
 
+    // ---------- v5 同步身份（远端回放 / 内容寻址，T-3） ----------
+
+    /** 按同步身份定位逻辑行（远端操作回放） */
+    @Query("SELECT * FROM entries WHERE syncId = :syncId")
+    suspend fun getBySyncId(syncId: String): EntryEntity?
+
+    /** 按同步身份定位贴图行 */
+    @Query("SELECT * FROM entry_images WHERE syncId = :syncId")
+    suspend fun getImageBySyncId(syncId: String): EntryImageEntity?
+
+    /** 删除分区/分类时逐行迁移 + 埋点用 */
+    @Query("SELECT * FROM entries WHERE sectionId = :sectionId ORDER BY entryTime, id")
+    suspend fun listBySection(sectionId: Long): List<EntryEntity>
+
+    @Query("SELECT * FROM entries WHERE categoryId = :categoryId ORDER BY entryTime, id")
+    suspend fun listByCategory(categoryId: Long): List<EntryEntity>
+
+    /**
+     * 内容哈希引用计数（R-16 共享文件保护）：删除文件前查，
+     * > 1 说明其余账目/贴图还在用同一文件，不得删/不得暂存。
+     */
+    @Query("SELECT COUNT(*) FROM entry_images WHERE contentHash = :contentHash")
+    suspend fun countByContentHash(contentHash: String): Int
+
+    /**
+     * 远端回放 upsert：按 syncId 有则更新、无则插入（理由同 [SectionDao.upsertRemote]）。
+     * 原子性由外层 OpApplier 单事务保证。
+     */
+    suspend fun upsertRemote(row: EntryEntity): Long {
+        val existing = getBySyncId(row.syncId)
+        return if (existing == null) {
+            insertEntry(row)
+        } else {
+            updateEntry(row.copy(id = existing.id))
+            existing.id
+        }
+    }
+
+    /** 贴图行的远端回放 upsert（口径同 [upsertRemote]） */
+    suspend fun upsertRemoteImage(row: EntryImageEntity): Long {
+        val existing = getImageBySyncId(row.syncId)
+        return if (existing == null) {
+            insertImages(listOf(row))
+            0L
+        } else {
+            updateImage(row.copy(id = existing.id))
+            existing.id
+        }
+    }
+
+    /** 远端回放删除（行整体死亡；贴图行由调用方显式清——运行期外键关闭，级联不生效） */
+    @Query("DELETE FROM entries WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
+
+    @Query("DELETE FROM entry_images WHERE syncId = :syncId")
+    suspend fun deleteImageBySyncId(syncId: String)
+
+    @Update
+    suspend fun updateImage(image: EntryImageEntity)
+
+    // ---------- T-4 存量导出 / 照片管线 / U-6 哈希补算 ----------
+
+    /** 存量导出（RoomInitialExporter）：全部账目行（不带关联，逐行取快照用） */
+    @Query("SELECT * FROM entries ORDER BY id")
+    suspend fun allEntries(): List<EntryEntity>
+
+    /** 存量导出 / 照片管线：全部贴图行 */
+    @Query("SELECT * FROM entry_images ORDER BY id")
+    suspend fun allImages(): List<EntryImageEntity>
+
+    /** 照片管线（R-16 内容寻址）：全部非空内容哈希（去重前原样） */
+    @Query("SELECT DISTINCT contentHash FROM entry_images WHERE contentHash IS NOT NULL AND contentHash != ''")
+    suspend fun allContentHashes(): List<String>
+
+    /** U-6 哈希补算：contentHash 为空的贴图行（v4 存量照片） */
+    @Query("SELECT * FROM entry_images WHERE contentHash IS NULL OR contentHash = '' ORDER BY id")
+    suspend fun imagesWithoutHash(): List<EntryImageEntity>
+
+    /** U-6 哈希补算回填：只改 contentHash / filePath 两列（不动版本字段——技术迁移非语义变更） */
+    @Query("UPDATE entry_images SET contentHash = :contentHash, filePath = :filePath WHERE id = :id")
+    suspend fun updateImageBackfill(id: Long, contentHash: String, filePath: String)
+
     /** 大屏列表–详情：选中账目的实时数据（编辑后自动刷新） */
     @Transaction
     @Query("SELECT * FROM entries WHERE id = :id")
@@ -183,11 +265,20 @@ interface EntryDao {
      * 后者会把行内其它列一起写回，若此刻另有写入（如表单保存）就会互相覆盖。
      * 定向 UPDATE 只碰 reconciled 这一列，天然无竞态。
      */
-    @Query("UPDATE entries SET reconciled = :value, updatedAt = :now WHERE id = :id")
+    @Query(
+        "UPDATE entries SET reconciled = :value, updatedAt = :now, versionSeq = versionSeq + 1 " +
+            "WHERE id = :id"
+    )
     suspend fun updateReconciled(id: Long, value: Boolean, now: Long)
 
-    /** 只改**报销**维度，理由同上。 */
-    @Query("UPDATE entries SET reimburseState = :value, updatedAt = :now WHERE id = :id")
+    /**
+     * 只改**报销**维度，理由同上。
+     * v5 起两处定向 UPDATE 都顺带 `versionSeq + 1`（行级 Lamport 与 UPSERT 操作 seq 同步推进，U-3）。
+     */
+    @Query(
+        "UPDATE entries SET reimburseState = :value, updatedAt = :now, versionSeq = versionSeq + 1 " +
+            "WHERE id = :id"
+    )
     suspend fun updateReimburseState(id: Long, value: Int, now: Long)
 
     @Query("DELETE FROM entries WHERE id = :id")

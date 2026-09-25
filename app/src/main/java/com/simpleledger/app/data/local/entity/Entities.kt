@@ -37,7 +37,7 @@ object ReimburseState {
  *
  * ⚠️ v4 起 `emoji` 已替换为 [iconId]（Int，1–50）。历史 emoji 的翻译见 `IconMapping`。
  */
-@Entity(tableName = "sections")
+@Entity(tableName = "sections", indices = [Index(value = ["syncId"], unique = true)])
 data class SectionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -53,6 +53,16 @@ data class SectionEntity(
     val colorIndex: Int = 0,
     val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * 全局同步 ID（32 字符小写，v5 多端同步引入）。
+     * 跨设备引用**只用它**，本地自增 [id] 永不出现在操作载荷里：
+     * 新行 = `UUID` 32hex；迁移存量 = 随机 32hex；种子行 = [SeedIds] 确定性派生（防两机默认分区撞车）。
+     */
+    val syncId: String = "",
+    /** 行级 Lamport 因果计数（CRDT 版本）；每次写入 = 旧值 + 1 */
+    val versionSeq: Long = 0,
+    /** 最近一次语义修改时间（epoch millis）；迁移存量回填 = createdAt */
+    val updatedAt: Long = createdAt,
 )
 
 /**
@@ -69,7 +79,10 @@ data class SectionEntity(
  *
  * ⚠️ v4 起 `emoji` 已替换为 [iconId]（Int，1–50）。历史 emoji 的翻译见 `IconMapping`。
  */
-@Entity(tableName = "categories", indices = [Index("type"), Index("sectionId")])
+@Entity(
+    tableName = "categories",
+    indices = [Index("type"), Index("sectionId"), Index(value = ["syncId"], unique = true)],
+)
 data class CategoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -80,6 +93,12 @@ data class CategoryEntity(
     /** 归属：null = 全局；非空 = 该分区专属（不加 FK，见类注释） */
     val sectionId: Long? = null,
     val sortOrder: Int = 0,
+    /** 全局同步 ID（v5），见 [SectionEntity.syncId] */
+    val syncId: String = "",
+    /** 行级 Lamport 因果计数（v5），见 [SectionEntity.versionSeq] */
+    val versionSeq: Long = 0,
+    /** 最近一次语义修改时间（v5）；迁移存量回填 0 */
+    val updatedAt: Long = 0,
 )
 
 /**
@@ -102,7 +121,13 @@ data class CategoryEntity(
             onDelete = ForeignKey.RESTRICT,
         ),
     ],
-    indices = [Index("entryTime"), Index("sectionId"), Index("categoryId")],
+    indices = [
+        Index("entryTime"),
+        Index("sectionId"),
+        Index("categoryId"),
+        Index(value = ["syncId"], unique = true),
+        Index("memberId"),
+    ],
 )
 data class EntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -125,6 +150,15 @@ data class EntryEntity(
     val reimburseState: Int = ReimburseState.NONE,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+    /** 全局同步 ID（v5），见 [SectionEntity.syncId] */
+    val syncId: String = "",
+    /** 行级 Lamport 因果计数（v5），见 [SectionEntity.versionSeq] */
+    val versionSeq: Long = 0,
+    /**
+     * 记账成员的同步 ID（v5，指向 [MemberEntity.syncId]）。
+     * `null` = 未知成员（存量账目 / 未认领设备）；刻意不加 FK（跨设备合并以 syncId 松耦合）。
+     */
+    val memberId: String? = null,
 )
 
 /** 贴图：一条账目可以有多张图片，文件保存在应用私有目录 */
@@ -138,7 +172,7 @@ data class EntryEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("entryId")],
+    indices = [Index("entryId"), Index(value = ["syncId"], unique = true), Index("contentHash")],
 )
 data class EntryImageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -146,9 +180,25 @@ data class EntryImageEntity(
     /** 图片文件的绝对路径 */
     val filePath: String,
     val sortOrder: Int = 0,
+    /** 全局同步 ID（v5），见 [SectionEntity.syncId] */
+    val syncId: String = "",
+    /** 行级 Lamport 因果计数（v5），见 [SectionEntity.versionSeq] */
+    val versionSeq: Long = 0,
+    /** 最近一次语义修改时间（v5）；迁移存量回填 0 */
+    val updatedAt: Long = 0,
+    /**
+     * 明文 JPEG 的 SHA-256（64hex 小写，v5 照片内容寻址）。
+     * 空串 = 尚未补算（存量照片由启动后台一次性补算）；补算完成前该照片不参与同步。
+     */
+    val contentHash: String = "",
 )
 
-/** 账目 + 分类 + 分区 + 图片 的聚合视图 */
+/**
+ * 账目 + 分类 + 分区 + 图片 + 成员 的聚合视图。
+ *
+ * v5 增挂 [member]（记账成员，按 `memberId → syncId` 关联）：存量账目 `memberId = null`
+ * 时成员为 null，UI 显示「未知成员」占位（不挤占 62dp 行高，见 U-6）。
+ */
 data class EntryFull(
     @Embedded val entry: EntryEntity,
     @Relation(parentColumn = "categoryId", entityColumn = "id")
@@ -157,6 +207,8 @@ data class EntryFull(
     val section: SectionEntity?,
     @Relation(parentColumn = "id", entityColumn = "entryId")
     val images: List<EntryImageEntity>,
+    @Relation(parentColumn = "memberId", entityColumn = "syncId")
+    val member: MemberEntity? = null,
 )
 
 /** 按类型汇总（SUM 结果行） */

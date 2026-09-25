@@ -193,4 +193,231 @@ object MigrationSql {
         "ADD_ENTRY_RECONCILED" to ADD_ENTRY_RECONCILED,
         "ADD_ENTRY_REIMBURSE_STATE" to ADD_ENTRY_REIMBURSE_STATE,
     )
+
+    // ==================================================================================
+    // v4 → v5：多端同步身份（syncId / versionSeq）+ 四张同步支撑表
+    //
+    // ⚠️ 全程**零 DROP、零重建表**：只 ALTER ADD / UPDATE / CREATE TABLE(新表) / CREATE INDEX。
+    //    引用关系（entries → categories / sections 的本地 Long id）原值不动 ⇒ 迁移前后逐笔无损（R-11）。
+    //
+    // 回填口径（两阶段，保证唯一索引可建）：
+    //    ① 全部存量行先落**随机** syncId（`lower(hex(randomblob(16)))` = 32hex）；
+    //    ② 种子行再**覆盖**为确定性 syncId（[SeedIds]，与 `AppDatabase.seed()` 同一函数——
+    //       新装 / 升级 / 多设备的默认分区分类天然是同一逻辑行，合并不重复，H7）。
+    //    ③ 覆盖语句一律带 `rowid = (SELECT MIN(rowid) ...)` 守卫：用户克隆出的同名同行
+    //       只有最早一行拿到确定性 id，绝不产生重复 syncId 撞唯一索引。
+    //    未改名判定 = 同名 + 同 iconId（分类另要求同 type 与同归属）；用户改过名的种子行
+    //    保持随机 id（极端情况合并出重复行，用户删一条即可）——已知边界，见设计 §8 U-5。
+    // ==================================================================================
+
+    /** v5 ①：成员表（家人共记，可隐藏不可删） */
+    const val CREATE_TABLE_MEMBERS =
+        "CREATE TABLE IF NOT EXISTS members (" +
+            "syncId TEXT PRIMARY KEY NOT NULL, " +
+            "name TEXT NOT NULL, " +
+            "hidden INTEGER NOT NULL DEFAULT 0, " +
+            "createdAt INTEGER NOT NULL, " +
+            "updatedAt INTEGER NOT NULL, " +
+            "versionSeq INTEGER NOT NULL DEFAULT 0)"
+
+    /**
+     * v5 ②：操作日志（CRDT 事实源，不可变）。
+     * `baseSeq` 语义（U-3 裁定）：UPSERT = 编辑时观察到的行 versionSeq（新建 = null）；
+     * DELETE = 被删行当时的 versionSeq（observed-remove 判据）。
+     */
+    const val CREATE_TABLE_SYNC_OPS =
+        "CREATE TABLE IF NOT EXISTS sync_ops (" +
+            "opId TEXT PRIMARY KEY NOT NULL, " +
+            "rowKind TEXT NOT NULL, " +
+            "rowSyncId TEXT NOT NULL, " +
+            "opType TEXT NOT NULL, " +
+            "actorId TEXT NOT NULL, " +
+            "memberId TEXT, " +
+            "seq INTEGER NOT NULL, " +
+            "baseSeq INTEGER, " +
+            "payload TEXT NOT NULL, " +
+            "origin TEXT NOT NULL, " +
+            "applied INTEGER NOT NULL DEFAULT 1, " +
+            "uploaded INTEGER NOT NULL DEFAULT 0, " +
+            "chunkName TEXT, " +
+            "createdAt INTEGER NOT NULL)"
+
+    const val CREATE_INDEX_SYNC_OPS_OUTBOX =
+        "CREATE INDEX IF NOT EXISTS index_sync_ops_outbox ON sync_ops (uploaded, createdAt)"
+
+    const val CREATE_INDEX_SYNC_OPS_ROW =
+        "CREATE INDEX IF NOT EXISTS index_sync_ops_row ON sync_ops (rowKind, rowSyncId)"
+
+    /**
+     * v5 ③：冲突回收站（持久层留底，R-08/R-09）。
+     * `kind`（U-3 裁定）：'DELETE' = 删除留底；'OVERWRITE' = 并发编辑 LWW 落败版留底。
+     */
+    const val CREATE_TABLE_SYNC_TRASH =
+        "CREATE TABLE IF NOT EXISTS sync_trash (" +
+            "deleteOpId TEXT PRIMARY KEY NOT NULL, " +
+            "rowKind TEXT NOT NULL, " +
+            "rowSyncId TEXT NOT NULL, " +
+            "kind TEXT NOT NULL DEFAULT 'DELETE', " +
+            "snapshot TEXT NOT NULL, " +
+            "deletedAt INTEGER NOT NULL, " +
+            "deletedByMemberId TEXT, " +
+            "conflict INTEGER NOT NULL DEFAULT 0, " +
+            "conflictActorId TEXT, " +
+            "resolved INTEGER NOT NULL DEFAULT 0)"
+
+    /** v5 ④：云端文件台账（增量发现游标；remoteName 即假名，无可读信息） */
+    const val CREATE_TABLE_SYNC_REMOTE_FILES =
+        "CREATE TABLE IF NOT EXISTS sync_remote_files (" +
+            "remoteName TEXT PRIMARY KEY NOT NULL, " +
+            "kind TEXT NOT NULL, " +
+            "etag TEXT, " +
+            "size INTEGER NOT NULL DEFAULT 0, " +
+            "downloadedAt INTEGER NOT NULL DEFAULT 0, " +
+            "uploadedAt INTEGER NOT NULL DEFAULT 0)"
+
+    // —— v5 ⑤：四表增列（syncId / versionSeq / updatedAt / memberId / contentHash）——
+
+    const val ADD_SECTION_SYNC_ID =
+        "ALTER TABLE sections ADD COLUMN syncId TEXT NOT NULL DEFAULT ''"
+
+    const val ADD_SECTION_VERSION_SEQ =
+        "ALTER TABLE sections ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0"
+
+    const val ADD_SECTION_UPDATED_AT =
+        "ALTER TABLE sections ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0"
+
+    const val ADD_CATEGORY_SYNC_ID =
+        "ALTER TABLE categories ADD COLUMN syncId TEXT NOT NULL DEFAULT ''"
+
+    const val ADD_CATEGORY_VERSION_SEQ =
+        "ALTER TABLE categories ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0"
+
+    const val ADD_CATEGORY_UPDATED_AT =
+        "ALTER TABLE categories ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0"
+
+    const val ADD_ENTRY_SYNC_ID =
+        "ALTER TABLE entries ADD COLUMN syncId TEXT NOT NULL DEFAULT ''"
+
+    const val ADD_ENTRY_VERSION_SEQ =
+        "ALTER TABLE entries ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0"
+
+    /** 记账成员同步 ID；可空（存量 = 未知成员，memberId 保持 NULL） */
+    const val ADD_ENTRY_MEMBER_ID =
+        "ALTER TABLE entries ADD COLUMN memberId TEXT"
+
+    const val ADD_IMAGE_SYNC_ID =
+        "ALTER TABLE entry_images ADD COLUMN syncId TEXT NOT NULL DEFAULT ''"
+
+    const val ADD_IMAGE_VERSION_SEQ =
+        "ALTER TABLE entry_images ADD COLUMN versionSeq INTEGER NOT NULL DEFAULT 0"
+
+    const val ADD_IMAGE_UPDATED_AT =
+        "ALTER TABLE entry_images ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0"
+
+    /** 明文 JPEG SHA-256（64hex）；存量为空串，由 LedgerApp 启动后台补算（U-6） */
+    const val ADD_IMAGE_CONTENT_HASH =
+        "ALTER TABLE entry_images ADD COLUMN contentHash TEXT NOT NULL DEFAULT ''"
+
+    // —— v5 ⑥：存量回填（先全体随机 syncId，再由 ⑦ 覆盖种子行）——
+
+    /** 分区：随机 syncId + updatedAt 回填为 createdAt（分区没有独立更新时间，取建档时刻） */
+    const val BACKFILL_SECTION_SYNC_ID =
+        "UPDATE sections SET syncId = lower(hex(randomblob(16))), updatedAt = createdAt"
+
+    const val BACKFILL_CATEGORY_SYNC_ID =
+        "UPDATE categories SET syncId = lower(hex(randomblob(16))), updatedAt = 0"
+
+    /** 账目：只补 syncId；memberId 保持 NULL（未知成员），既有 updatedAt 原值不动 */
+    const val BACKFILL_ENTRY_SYNC_ID =
+        "UPDATE entries SET syncId = lower(hex(randomblob(16)))"
+
+    const val BACKFILL_IMAGE_SYNC_ID =
+        "UPDATE entry_images SET syncId = lower(hex(randomblob(16))), updatedAt = 0"
+
+    // —— v5 ⑧：索引（名字必须与 Room 生成名一致，否则 schema 校验失败；见 MigrationSqlTest）——
+
+    const val CREATE_SECTION_SYNC_ID_INDEX =
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_sections_syncId ON sections (syncId)"
+
+    const val CREATE_CATEGORY_SYNC_ID_INDEX =
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_categories_syncId ON categories (syncId)"
+
+    const val CREATE_ENTRY_SYNC_ID_INDEX =
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_entries_syncId ON entries (syncId)"
+
+    const val CREATE_IMAGE_SYNC_ID_INDEX =
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_entry_images_syncId ON entry_images (syncId)"
+
+    const val CREATE_ENTRY_MEMBER_ID_INDEX =
+        "CREATE INDEX IF NOT EXISTS index_entries_memberId ON entries (memberId)"
+
+    const val CREATE_IMAGE_CONTENT_HASH_INDEX =
+        "CREATE INDEX IF NOT EXISTS index_entry_images_contentHash ON entry_images (contentHash)"
+
+    /**
+     * v5 全部语句，**按 [AppDatabase.MIGRATION_4_5] 的执行顺序**：
+     * 新表（含其索引）→ ADD COLUMN → 随机回填 → 种子行确定性覆盖（[SeedIds]，
+     * 与 `AppDatabase.seed()` 共用同一函数）→ 业务表索引。
+     *
+     * 顺序即契约：覆盖必须在随机回填**之后**（两阶段保唯一索引可建），
+     * 唯一索引必须在回填**之后**建（建早了随机撞名会炸）。
+     * 单测按这份清单逐名钉死，`tools/verify_migration_v5.py` 原样解析执行。
+     */
+    val V5_STATEMENTS: List<Pair<String, String>> = listOf(
+        "CREATE_TABLE_MEMBERS" to CREATE_TABLE_MEMBERS,
+        "CREATE_TABLE_SYNC_OPS" to CREATE_TABLE_SYNC_OPS,
+        "CREATE_INDEX_SYNC_OPS_OUTBOX" to CREATE_INDEX_SYNC_OPS_OUTBOX,
+        "CREATE_INDEX_SYNC_OPS_ROW" to CREATE_INDEX_SYNC_OPS_ROW,
+        "CREATE_TABLE_SYNC_TRASH" to CREATE_TABLE_SYNC_TRASH,
+        "CREATE_TABLE_SYNC_REMOTE_FILES" to CREATE_TABLE_SYNC_REMOTE_FILES,
+        "ADD_SECTION_SYNC_ID" to ADD_SECTION_SYNC_ID,
+        "ADD_SECTION_VERSION_SEQ" to ADD_SECTION_VERSION_SEQ,
+        "ADD_SECTION_UPDATED_AT" to ADD_SECTION_UPDATED_AT,
+        "ADD_CATEGORY_SYNC_ID" to ADD_CATEGORY_SYNC_ID,
+        "ADD_CATEGORY_VERSION_SEQ" to ADD_CATEGORY_VERSION_SEQ,
+        "ADD_CATEGORY_UPDATED_AT" to ADD_CATEGORY_UPDATED_AT,
+        "ADD_ENTRY_SYNC_ID" to ADD_ENTRY_SYNC_ID,
+        "ADD_ENTRY_VERSION_SEQ" to ADD_ENTRY_VERSION_SEQ,
+        "ADD_ENTRY_MEMBER_ID" to ADD_ENTRY_MEMBER_ID,
+        "ADD_IMAGE_SYNC_ID" to ADD_IMAGE_SYNC_ID,
+        "ADD_IMAGE_VERSION_SEQ" to ADD_IMAGE_VERSION_SEQ,
+        "ADD_IMAGE_UPDATED_AT" to ADD_IMAGE_UPDATED_AT,
+        "ADD_IMAGE_CONTENT_HASH" to ADD_IMAGE_CONTENT_HASH,
+        "BACKFILL_SECTION_SYNC_ID" to BACKFILL_SECTION_SYNC_ID,
+        "BACKFILL_CATEGORY_SYNC_ID" to BACKFILL_CATEGORY_SYNC_ID,
+        "BACKFILL_ENTRY_SYNC_ID" to BACKFILL_ENTRY_SYNC_ID,
+        "BACKFILL_IMAGE_SYNC_ID" to BACKFILL_IMAGE_SYNC_ID,
+        // —— ⑦ 种子行确定性 syncId 覆盖（22 条：3 分区 + 12 全局分类 + 7 装修专属分类）——
+        //    每条一行（便于 tools/verify_migration_v5.py 原样解析）；
+        //    未改名判定 = 同名 + 同 iconId（分类再加同 type + 同归属）；
+        //    MIN(rowid) 守卫：同名克隆行只有最早一行拿确定性 id。
+        "SEED_SECTION_SYNC_ID_日常开支" to "UPDATE sections SET syncId = '" + SeedIds.section("日常开支") + "' WHERE rowid = (SELECT MIN(rowid) FROM sections WHERE name = '日常开支' AND iconId = 1)",
+        "SEED_SECTION_SYNC_ID_装修" to "UPDATE sections SET syncId = '" + SeedIds.section("装修") + "' WHERE rowid = (SELECT MIN(rowid) FROM sections WHERE name = '装修' AND iconId = 17)",
+        "SEED_SECTION_SYNC_ID_旅行" to "UPDATE sections SET syncId = '" + SeedIds.section("旅行") + "' WHERE rowid = (SELECT MIN(rowid) FROM sections WHERE name = '旅行' AND iconId = 13)",
+        "SEED_CATEGORY_SYNC_ID_餐饮" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "餐饮") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '餐饮' AND type = 0 AND iconId = 2 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_交通" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "交通") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '交通' AND type = 0 AND iconId = 8 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_购物" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "购物") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '购物' AND type = 0 AND iconId = 15 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_居住" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "居住") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '居住' AND type = 0 AND iconId = 16 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_医疗" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "医疗") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '医疗' AND type = 0 AND iconId = 20 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_娱乐" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "娱乐") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '娱乐' AND type = 0 AND iconId = 22 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_学习" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "学习") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '学习' AND type = 0 AND iconId = 26 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_其他支出" to "UPDATE categories SET syncId = '" + SeedIds.category(0, null, "其他支出") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '其他支出' AND type = 0 AND iconId = 42 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_工资" to "UPDATE categories SET syncId = '" + SeedIds.category(1, null, "工资") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '工资' AND type = 1 AND iconId = 36 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_理财" to "UPDATE categories SET syncId = '" + SeedIds.category(1, null, "理财") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '理财' AND type = 1 AND iconId = 37 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_红包" to "UPDATE categories SET syncId = '" + SeedIds.category(1, null, "红包") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '红包' AND type = 1 AND iconId = 32 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_其他收入" to "UPDATE categories SET syncId = '" + SeedIds.category(1, null, "其他收入") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '其他收入' AND type = 1 AND iconId = 41 AND sectionId IS NULL)",
+        "SEED_CATEGORY_SYNC_ID_主材" to "UPDATE categories SET syncId = '" + SeedIds.category(0, "装修", "主材") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '主材' AND type = 0 AND iconId = 44 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_人工" to "UPDATE categories SET syncId = '" + SeedIds.category(0, "装修", "人工") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '人工' AND type = 0 AND iconId = 45 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_家具" to "UPDATE categories SET syncId = '" + SeedIds.category(0, "装修", "家具") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '家具' AND type = 0 AND iconId = 46 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_家电" to "UPDATE categories SET syncId = '" + SeedIds.category(0, "装修", "家电") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '家电' AND type = 0 AND iconId = 47 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_设计费" to "UPDATE categories SET syncId = '" + SeedIds.category(0, "装修", "设计费") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '设计费' AND type = 0 AND iconId = 48 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_报销" to "UPDATE categories SET syncId = '" + SeedIds.category(1, "装修", "报销") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '报销' AND type = 1 AND iconId = 49 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "SEED_CATEGORY_SYNC_ID_退款" to "UPDATE categories SET syncId = '" + SeedIds.category(1, "装修", "退款") + "' WHERE rowid = (SELECT MIN(rowid) FROM categories WHERE name = '退款' AND type = 1 AND iconId = 50 AND sectionId IN (SELECT id FROM sections WHERE syncId = '" + SeedIds.section("装修") + "'))",
+        "CREATE_SECTION_SYNC_ID_INDEX" to CREATE_SECTION_SYNC_ID_INDEX,
+        "CREATE_CATEGORY_SYNC_ID_INDEX" to CREATE_CATEGORY_SYNC_ID_INDEX,
+        "CREATE_ENTRY_SYNC_ID_INDEX" to CREATE_ENTRY_SYNC_ID_INDEX,
+        "CREATE_IMAGE_SYNC_ID_INDEX" to CREATE_IMAGE_SYNC_ID_INDEX,
+        "CREATE_ENTRY_MEMBER_ID_INDEX" to CREATE_ENTRY_MEMBER_ID_INDEX,
+        "CREATE_IMAGE_CONTENT_HASH_INDEX" to CREATE_IMAGE_CONTENT_HASH_INDEX,
+    )
 }

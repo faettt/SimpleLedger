@@ -143,4 +143,69 @@ class StatsCalculatorTest {
         assertEquals("<1%", StatsCalculator.percentLabel(0.003))
         assertEquals("0%", StatsCalculator.percentLabel(0.0))
     }
+
+    /* ------------------------------------- 按人维度（U-7/R-18，T-5 扩展） */
+
+    /** 构造带成员关系的账目（EntryFull 的 member 关系 = R-20 改名即时生效的数据源） */
+    private fun fullEntry(
+        type: Int,
+        cents: Long,
+        memberId: String?,
+        memberName: String?,
+    ) = com.simpleledger.app.data.local.entity.EntryFull(
+        entry = entry(type, cents, 0L).copy(memberId = memberId),
+        category = null,
+        section = null,
+        images = emptyList(),
+        member = memberName?.let { name ->
+            com.simpleledger.app.data.local.entity.MemberEntity(
+                syncId = memberId ?: "",
+                name = name,
+                createdAt = 0L,
+                updatedAt = 0L,
+            )
+        },
+    )
+
+    @Test
+    fun `member shares sum equals total expense and ignore income`() {
+        val entries = listOf(
+            fullEntry(EntryType.EXPENSE, 3000L, "m1", "阿明"),
+            fullEntry(EntryType.EXPENSE, 1000L, "m1", "阿明"),
+            fullEntry(EntryType.EXPENSE, 2000L, "m2", "小林"),
+            fullEntry(EntryType.EXPENSE, 500L, null, null),    // 记账人不可考 → 未知成员桶
+            fullEntry(EntryType.INCOME, 9999L, "m1", "阿明"),   // 收入不计入（口径同分区占比）
+        )
+        val shares = StatsCalculator.memberShares(entries)
+
+        // 验收断言：各成员合计 = 全账支出合计（不含收入）
+        assertEquals(6500L, shares.sumOf { it.amountCents })
+        // 金额降序；成员名经 EntryFull.member 关系取（R-20 改名即时生效）
+        assertEquals(listOf("阿明", "小林", "未知成员"), shares.map { it.name })
+        assertEquals(listOf(4000L, 2000L, 500L), shares.map { it.amountCents })
+        assertEquals(listOf(2, 1, 1), shares.map { it.count })
+        assertEquals("m1", shares[0].memberSyncId)
+        assertEquals(null, shares[2].memberSyncId)
+        // fraction 合计 = 1.0
+        assertEquals(1.0, shares.sumOf { it.fraction }, 1e-9)
+    }
+
+    @Test
+    fun `member shares return empty when nothing was spent`() {
+        assertEquals(0, StatsCalculator.memberShares(emptyList()).size)
+        // 只有收入 → 支出合计 0 → 空
+        assertEquals(
+            0,
+            StatsCalculator.memberShares(listOf(fullEntry(EntryType.INCOME, 100L, "m1", "阿明"))).size,
+        )
+    }
+
+    @Test
+    fun `member shares unknown label is customizable`() {
+        val shares = StatsCalculator.memberShares(
+            listOf(fullEntry(EntryType.EXPENSE, 100L, null, null)),
+            unknownLabel = "未知",
+        )
+        assertEquals(listOf("未知"), shares.map { it.name })
+    }
 }

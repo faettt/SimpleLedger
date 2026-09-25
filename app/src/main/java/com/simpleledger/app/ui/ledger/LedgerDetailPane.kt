@@ -121,6 +121,8 @@ internal fun EntryDetailPane(
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
+                // U-6 成员标识：头部 meta 行追加「· 成员名」（楷体小字，与列表同一口径）
+                val memberLabel = full.member?.name ?: stringResource(R.string.entry_member_unknown)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = full.category?.name ?: stringResource(R.string.uncategorized),
@@ -132,6 +134,7 @@ internal fun EntryDetailPane(
                             append(" ")
                             append(DateTimes.timeLabel(DateTimes.toLocalTime(full.entry.entryTime)))
                             section?.let { append(" · ${it.name}") }
+                            append(" · $memberLabel")
                         },
                         style = SlType.meta,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

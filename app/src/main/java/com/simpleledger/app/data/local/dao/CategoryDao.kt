@@ -13,6 +13,10 @@ interface CategoryDao {
     @Query("SELECT * FROM categories ORDER BY sortOrder, id")
     fun observeAll(): Flow<List<CategoryEntity>>
 
+    /** 存量导出（RoomInitialExporter）：全部分类行 */
+    @Query("SELECT * FROM categories ORDER BY id")
+    suspend fun getAll(): List<CategoryEntity>
+
     /** 不分归属，按类型列出全部（跨分区检索 / 明细页筛选用） */
     @Query("SELECT * FROM categories WHERE type = :type ORDER BY sortOrder, id")
     fun observeByType(type: Int): Flow<List<CategoryEntity>>
@@ -44,6 +48,32 @@ interface CategoryDao {
 
     @Query("SELECT * FROM categories WHERE id = :id")
     suspend fun getById(id: Long): CategoryEntity?
+
+    /** v5 同步身份查找（远端操作回放按 syncId 定位逻辑行） */
+    @Query("SELECT * FROM categories WHERE syncId = :syncId")
+    suspend fun getBySyncId(syncId: String): CategoryEntity?
+
+    /** 某分区的全部专属分类（删除分区的逐行埋点用，T-3） */
+    @Query("SELECT * FROM categories WHERE sectionId = :sectionId ORDER BY sortOrder, id")
+    suspend fun listBySection(sectionId: Long): List<CategoryEntity>
+
+    /**
+     * 远端回放 upsert：按 syncId 有则更新、无则插入（理由同 [SectionDao.upsertRemote]）。
+     * 原子性由外层 OpApplier 单事务保证。
+     */
+    suspend fun upsertRemote(row: CategoryEntity): Long {
+        val existing = getBySyncId(row.syncId)
+        return if (existing == null) {
+            insert(row)
+        } else {
+            update(row.copy(id = existing.id))
+            existing.id
+        }
+    }
+
+    /** 远端回放删除（行整体死亡） */
+    @Query("DELETE FROM categories WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 
     @Query("SELECT * FROM categories WHERE name = :name AND type = :type LIMIT 1")
     suspend fun findByName(name: String, type: Int): CategoryEntity?

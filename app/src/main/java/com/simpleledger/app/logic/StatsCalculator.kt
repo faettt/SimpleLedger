@@ -2,6 +2,7 @@ package com.simpleledger.app.logic
 
 import com.simpleledger.app.data.local.entity.CategoryTotal
 import com.simpleledger.app.data.local.entity.EntryEntity
+import com.simpleledger.app.data.local.entity.EntryFull
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionTotal
 import java.time.LocalDate
@@ -87,6 +88,34 @@ object StatsCalculator {
         return if (percent <= 0) "<1%" else "$percent%"
     }
 
+    /**
+     * 按人维度（U-7/R-18，G3「长度管数值、不给颜色加语义」的数据源）。
+     *
+     * 口径与 [sectionShares] 同源：**只按支出聚合**（这张图回答的是「谁花的」，收入不计入）；
+     * 记账人不可考（`memberId` 为空或成员行缺失）归入 [unknownLabel] 桶，不静默丢数据。
+     * 返回按金额降序；支出合计为 0 时返回空列表。
+     *
+     * @param unknownLabel 「未知成员」桶的显示名（默认中文，UI 层可传 strings.xml 文案）
+     */
+    fun memberShares(entries: List<EntryFull>, unknownLabel: String = "未知成员"): List<MemberShare> {
+        val expense = entries.filter { it.entry.type == EntryType.EXPENSE }
+        val grand = expense.sumOf { it.entry.amountCents }
+        if (grand <= 0) return emptyList()
+        return expense
+            .groupBy { it.entry.memberId }
+            .map { (memberId, list) ->
+                val amount = list.sumOf { it.entry.amountCents }
+                MemberShare(
+                    memberSyncId = memberId,
+                    name = list.first().member?.name ?: unknownLabel,
+                    amountCents = amount,
+                    count = list.size,
+                    fraction = amount.toDouble() / grand,
+                )
+            }
+            .sortedByDescending { it.amountCents }
+    }
+
     fun toLocalDate(epochMillis: Long, zone: ZoneId): LocalDate =
         java.time.Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate()
 }
@@ -108,5 +137,25 @@ data class CategoryShare(
 data class SectionShare(
     val section: SectionTotal,
     /** 0.0 ~ 1.0（分母 = 全部分区的支出合计） */
+    val fraction: Double,
+)
+
+/**
+ * 「按人」条形图的一根条（U-7/R-18）。
+ *
+ * 与 [CategoryShare] / [SectionShare] 分开：身份维度是**成员**（全书唯一名，
+ * 可改名但身份不变），且刻意**不带颜色字段** —— G3「不给颜色加语义」，
+ * 按人图全部条同墨色，长度管数值、楷体名标签管身份。
+ *
+ * @param memberSyncId 成员 syncId；null = 记账人不可考（「未知成员」桶）
+ * @param amountCents  该成员的支出合计（分）
+ * @param count        笔数
+ * @param fraction     0.0 ~ 1.0（分母 = 全账支出合计）
+ */
+data class MemberShare(
+    val memberSyncId: String?,
+    val name: String,
+    val amountCents: Long,
+    val count: Int,
     val fraction: Double,
 )

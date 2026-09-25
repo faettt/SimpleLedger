@@ -9,10 +9,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.simpleledger.app.data.local.dao.CategoryDao
 import com.simpleledger.app.data.local.dao.EntryDao
 import com.simpleledger.app.data.local.dao.SectionDao
+import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.data.local.entity.CategoryEntity
+import com.simpleledger.app.data.local.entity.ConflictTrashEntity
 import com.simpleledger.app.data.local.entity.EntryEntity
 import com.simpleledger.app.data.local.entity.EntryImageEntity
+import com.simpleledger.app.data.local.entity.MemberEntity
+import com.simpleledger.app.data.local.entity.RemoteFileEntity
 import com.simpleledger.app.data.local.entity.SectionEntity
+import com.simpleledger.app.data.local.entity.SyncOpEntity
 
 @Database(
     entities = [
@@ -20,8 +25,12 @@ import com.simpleledger.app.data.local.entity.SectionEntity
         CategoryEntity::class,
         EntryEntity::class,
         EntryImageEntity::class,
+        MemberEntity::class,
+        SyncOpEntity::class,
+        ConflictTrashEntity::class,
+        RemoteFileEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +38,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sectionDao(): SectionDao
     abstract fun categoryDao(): CategoryDao
     abstract fun entryDao(): EntryDao
+
+    /** 同步支撑表专用查询（v5）：outbox / 游标 / 回收站 / 成员 */
+    abstract fun syncDao(): SyncDao
 
     companion object {
         private const val DB_NAME = "simple_ledger.db"
@@ -97,6 +109,21 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * v4 → v5：多端同步身份（syncId / versionSeq）+ 四张同步支撑表。
+         *
+         * 全程**零 DROP、零重建表**（外键 / RESTRICT 零接触）：
+         * 新表 CREATE TABLE → ADD COLUMN → 随机 syncId 回填 → 种子行确定性覆盖
+         * （与 [seed] 共用 [SeedIds] 同一函数，新装 / 升级 / 多设备默认数据是同一逻辑行）
+         * → CREATE INDEX。语句全部冻结在 [MigrationSql.V5_STATEMENTS]，由
+         * `MigrationSqlTest` 钉死文本与顺序、`tools/verify_migration_v5.py` 实跑断言。
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MigrationSql.V5_STATEMENTS.forEach { (_, sql) -> db.execSQL(sql) }
+            }
+        }
+
+        /**
          * v3 → v4 的前置守卫：本迁移**要求外键处于关闭状态**。
          *
          * 为什么这不是多余的检查（完整论证见 [MigrationSql] 的 v3→v4 段）：
@@ -128,7 +155,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -144,18 +171,23 @@ abstract class AppDatabase : RoomDatabase() {
          * 最后按分区名回查 id 插分区专属分类——保证「新装」与「升级」初始态一致。
          *
          * v4 起图标写 `iconId`（不再是 emoji），分区额外写 `colorIndex`。
+         *
+         * v5 起种子行的 `syncId` 走 [SeedIds] **确定性派生**（与 [MigrationSql] 回填共用
+         * 同一函数）：两台设备各自新装出的默认分区 / 分类是同一逻辑行，合并不重复（H7）。
+         * `versionSeq = 0`（种子行从未被操作覆盖；首个编辑产生 seq = 1）。
          */
         private fun seed(db: SupportSQLiteDatabase) {
             val now = System.currentTimeMillis()
 
-            // 1) 分区（含图标与胶带色）
+            // 1) 分区（含图标、胶带色与确定性 syncId）
             SectionFirstSeed.sections.forEachIndexed { index, section ->
                 db.execSQL(
-                    "INSERT INTO sections (name, iconId, note, budgetCents, colorIndex, sortOrder, createdAt) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO sections (name, iconId, note, budgetCents, colorIndex, sortOrder, createdAt, syncId, versionSeq, updatedAt) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     arrayOf<Any?>(
                         section.name, section.iconId, section.note,
                         section.budgetCents, section.colorIndex, index, now,
+                        SeedIds.section(section.name), 0L, now,
                     ),
                 )
             }
@@ -165,8 +197,23 @@ abstract class AppDatabase : RoomDatabase() {
             SectionFirstSeed.globalCategories.forEach { category ->
                 val order = nextOrder(counters, category.type, null)
                 db.execSQL(
-                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder) VALUES (?, ?, ?, NULL, ?)",
-                    arrayOf<Any?>(category.name, category.iconId, category.type, order),
+                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder, syncId, versionSeq, updatedAt) " +
+                        "VALUES (?, ?, ?, NULL, ?, ?, ?, ?)",
+                    arrayOf<Any?>(
+                        category.name, category.iconId, category.type, order,
+                        SeedIds.category(category.type, category.sectionName, category.name), 0L, now,
+                    ),
+                )
+            }
+
+            // 2.5) 「未分类」哨兵（B1）：普通分类行、确定性 syncId、排在全局作用域末尾。
+            // 升级库走 LedgerRepository.ensureUnclassified() 补种（同一 missingCategories 口径）。
+            SectionFirstSeed.Unclassified.missingCategories(emptySet()).forEach { row ->
+                val order = nextOrder(counters, row.type, null)
+                db.execSQL(
+                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder, syncId, versionSeq, updatedAt) " +
+                        "VALUES (?, ?, ?, NULL, ?, ?, ?, ?)",
+                    arrayOf<Any?>(row.name, row.iconId, row.type, order, row.syncId, 0L, now),
                 )
             }
 
@@ -180,8 +227,12 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 val order = nextOrder(counters, category.type, sectionId)
                 db.execSQL(
-                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder) VALUES (?, ?, ?, ?, ?)",
-                    arrayOf<Any?>(category.name, category.iconId, category.type, sectionId, order),
+                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder, syncId, versionSeq, updatedAt) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(
+                        category.name, category.iconId, category.type, sectionId, order,
+                        SeedIds.category(category.type, category.sectionName, category.name), 0L, now,
+                    ),
                 )
             }
         }

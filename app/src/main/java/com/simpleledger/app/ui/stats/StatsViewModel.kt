@@ -10,6 +10,7 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionTotal
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.logic.CategoryShare
+import com.simpleledger.app.logic.MemberShare
 import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
 import com.simpleledger.app.util.DateTimes
@@ -31,6 +32,8 @@ data class StatsUiState(
     val shares: List<CategoryShare> = emptyList(),
     /** 分区占比（分区占比环图），支出为 0 的分区已剔除 */
     val sectionShares: List<SectionShare> = emptyList(),
+    /** 按人支出（U-7/R-18「按人」条形图），金额降序、只按支出聚合 */
+    val memberShares: List<MemberShare> = emptyList(),
     val sections: List<SectionTotal> = emptyList(),
     /** 双图联动：当前被点选的分区；null = 未选中（条形图显示全部分类） */
     val selectedSectionId: Long? = null,
@@ -65,6 +68,8 @@ class StatsViewModel(private val repo: LedgerRepository) : ViewModel() {
                 shares = StatsCalculator.categoryShares(categoryTotals),
                 // 分区环图：扇区 = 分区，只按支出聚合、支出为 0 的分区剔除
                 sectionShares = StatsCalculator.sectionShares(sectionTotals),
+                // 按人（U-7/R-18）：同口径「只按支出」；entries 自带 member 关系，零 DAO 改动
+                memberShares = StatsCalculator.memberShares(entries),
                 sections = sectionTotals,
                 daily = StatsCalculator.dailyExpense(entries.map { it.entry })
                     .map { (date, cents) -> date.dayOfMonth to cents },

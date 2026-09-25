@@ -8,6 +8,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import kotlin.math.max
 
@@ -17,7 +18,14 @@ import kotlin.math.max
  * 1. [importToPending]：用户选好图片后**立即**调用（此时系统授予的读权限一定有效），
  *    把图片压缩写入 cache 待入库目录。Photo Picker 返回的 content Uri 授权是短时效的，
  *    拖到点「保存」时再读会失败，所以必须前置。
- * 2. [promoteToStorage]：保存账目时把待入库文件移入应用私有正式目录并返回最终路径。
+ * 2. [promoteToStorage]：保存账目时把待入库文件移入应用私有正式目录，返回最终路径与
+ *    **明文 JPEG 的 SHA-256**（v5 内容寻址，R-16）。
+ *
+ * v5 起正式目录的文件名 = `<sha256>.jpg`（[pathForHash]）：
+ * - 同一张照片（同字节）只占一份磁盘、云端只有一个假名文件（内容寻址去重）；
+ * - 跨设备同步来的照片按 hash 直接对上路径，无需额外映射表；
+ * - 删除文件前**必须**按 `entry_images.contentHash` 引用计数判定（>1 不删，
+ *   防共享照片误删）——计数查询在 `EntryDao.countByContentHash`，由调用方（仓库）执行。
  *
  * 两阶段都失败时记录日志并返回 null，由调用方决定如何提示用户。
  */
@@ -46,23 +54,36 @@ class ImageStorage(private val context: Context) {
         }.getOrNull()
     }
 
-    /** 保存账目时调用：把待入库图片移入正式目录，返回最终路径 */
-    suspend fun promoteToStorage(pendingPath: String): String? = withContext(Dispatchers.IO) {
+    /**
+     * 保存账目时调用：把待入库图片移入正式目录（内容寻址 `<sha256>.jpg`）。
+     *
+     * 目标已存在（同内容照片）时直接丢弃源文件复用既有文件——天然去重，
+     * 两笔账目/两台设备的同一照片共享一个文件（删除走引用计数，见类注释）。
+     */
+    suspend fun promoteToStorage(pendingPath: String): PromotedImage? = withContext(Dispatchers.IO) {
         runCatching {
             val source = File(pendingPath)
             if (!source.exists()) error("待入库图片已不存在")
-            val target = File(storageDir, source.name)
-            if (!source.renameTo(target)) {
+            val bytes = source.readBytes()
+            val contentHash = sha256Hex(bytes)
+            val target = File(storageDir, "$contentHash.jpg")
+            if (target.exists()) {
+                source.delete()
+            } else if (!source.renameTo(target)) {
                 source.copyTo(target, overwrite = true)
                 source.delete()
             }
-            target.absolutePath
+            PromotedImage(path = target.absolutePath, contentHash = contentHash)
         }.onFailure { throwable ->
             Log.e(TAG, "贴图入库失败: $pendingPath", throwable)
         }.getOrNull()
     }
 
-    /** 删除图片文件（正式目录与待入库目录通用，忽略不存在的情况） */
+    /** 内容寻址路径：`filesDir/images/<sha256>.jpg`（远端照片按 hash 落同一路径） */
+    fun pathForHash(contentHash: String): String =
+        File(storageDir, "$contentHash.jpg").absolutePath
+
+    /** 删除图片文件（正式目录与待入库目录通用，忽略不存在的情况）；引用计数判定由调用方做 */
     suspend fun deleteFiles(paths: List<String>) = withContext(Dispatchers.IO) {
         paths.forEach { path -> runCatching { File(path).delete() } }
         Unit
@@ -77,6 +98,9 @@ class ImageStorage(private val context: Context) {
     /**
      * 删除账目时把贴图「暂存」而非直接销毁，让 4 秒撤销窗口内可以完整恢复。
      * 返回暂存后的新路径（顺序与入参一致，失败的项被丢弃）。
+     *
+     * ⚠️ 共享文件（contentHash 引用计数 > 1）**不能**移走——其余账目还指着它，
+     * 调用方（LedgerRepository）只把独享文件交给本方法。
      */
     suspend fun parkFiles(paths: List<String>): List<String> = withContext(Dispatchers.IO) {
         paths.mapNotNull { path ->
@@ -98,6 +122,28 @@ class ImageStorage(private val context: Context) {
         runCatching { parkedDir.listFiles()?.forEach { it.delete() } }
         Unit
     }
+
+    /**
+     * 撤销恢复：把暂存文件移回正式路径（[parkFiles] 的逆操作）。
+     * 目标已存在（内容寻址共享场景）时直接丢弃暂存副本复用既有文件。
+     */
+    suspend fun unparkFile(parkedPath: String, targetPath: String): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val source = File(parkedPath)
+                if (!source.exists()) return@runCatching false
+                val target = File(targetPath)
+                target.parentFile?.mkdirs()
+                if (target.exists()) {
+                    source.delete()
+                } else if (!source.renameTo(target)) {
+                    source.copyTo(target, overwrite = true)
+                    source.delete()
+                }
+                true
+            }.onFailure { Log.e(TAG, "暂存归位失败: $parkedPath -> $targetPath", it) }
+                .getOrDefault(false)
+        }
 
     private val parkedDir: File
         get() = File(context.cacheDir, "parked_images").apply { mkdirs() }
@@ -132,5 +178,13 @@ class ImageStorage(private val context: Context) {
 
     private companion object {
         const val TAG = "SimpleLedger.Image"
+
+        /** 明文 JPEG 的 SHA-256（64hex 小写）——内容寻址身份 */
+        fun sha256Hex(bytes: ByteArray): String =
+            MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
     }
 }
+
+/** 入库结果：正式路径 + 明文内容哈希（`entry_images.contentHash` 同步写入） */
+data class PromotedImage(val path: String, val contentHash: String)

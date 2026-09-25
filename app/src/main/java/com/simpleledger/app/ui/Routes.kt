@@ -21,6 +21,11 @@ object Routes {
     /** 「我的 → 记账 → 全局分类」入口页面 */
     const val GLOBAL_CATEGORIES = "global-categories"
 
+    /** 「我的 → 同步」三入口（T-5）：同步设置 · 成员管理 · 冲突回收站 */
+    const val SYNC_SETTINGS = "sync-settings"
+    const val MEMBER_MANAGE = "member-manage"
+    const val CONFLICT_TRASH = "conflict-trash"
+
     /** 分区详情：section/{sectionId} */
     const val SECTION_DETAIL = "section/{sectionId}"
 
