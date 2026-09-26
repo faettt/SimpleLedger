@@ -280,16 +280,25 @@ fun LazyItemScope.slAnimateItem(modifier: Modifier = Modifier): Modifier = modif
 
 /**
  * 从 12 点方向顺时针扫过 [sweepDeg] 度的扇形路径（图表「画出来」入场用）。
- * 返回 **android.graphics.Path**：配合 `nativeCanvas.save()/clipPath()/restore()`
+ * 写入调用方提供的 [out] 并返回之：配合 `nativeCanvas.save()/clipPath()/restore()`
  * 做扫入裁剪（与图表里的 nativeCanvas.drawText 同一绘制通道）。
+ *
+ * ⚠️ 生长期间**每帧**调用（OPT-13 同源）：路径由调用方 `remember { android.graphics.Path() }`
+ * 提供并复用，本函数只 `reset()` 重建——new Path() 留在这里会随帧数翻倍分配。
  */
-fun sweepClipPath(cx: Float, cy: Float, radius: Float, sweepDeg: Float): android.graphics.Path =
-    android.graphics.Path().apply {
-        moveTo(cx, cy)
-        addArc(
-            cx - radius, cy - radius, cx + radius, cy + radius,
-            -90f,
-            sweepDeg.coerceAtLeast(0.01f),
-        )
-        close()
-    }
+fun sweepClipPath(
+    out: android.graphics.Path,
+    cx: Float,
+    cy: Float,
+    radius: Float,
+    sweepDeg: Float,
+): android.graphics.Path = out.apply {
+    reset()
+    moveTo(cx, cy)
+    addArc(
+        cx - radius, cy - radius, cx + radius, cy + radius,
+        -90f,
+        sweepDeg.coerceAtLeast(0.01f),
+    )
+    close()
+}

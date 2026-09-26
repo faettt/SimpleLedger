@@ -233,6 +233,14 @@ fun DonutChart(
         )
     }
 
+    // 扇面路径画布：环带每片一个闭合路径，生长期间逐帧重建。
+    // 提升到组合作用域 remember + 每片 reset() 复用（OPT-13）：
+    // DrawScope 内 new Path() 会随扇区数 × 帧数翻倍分配（8 片 × 25 帧 ≈ 200 个）。
+    // drawPath 在记录时即消费当前路径内容，先 reset→建→画、串行复用同一 Path 是安全的。
+    val ringPath = remember { Path() }
+    // 扇形扫入裁剪窗：生长期间逐帧重建 —— remember + reset() 复用（OPT-13，见 sweepClipPath）
+    val revealClip = remember { android.graphics.Path() }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -289,7 +297,7 @@ fun DonutChart(
                 val revealCanvas = drawContext.canvas.nativeCanvas
                 revealCanvas.save()
                 revealCanvas.clipPath(
-                    sweepClipPath(g.cx, g.cy, size.width, 360f * chartGrow(timeline)),
+                    sweepClipPath(revealClip, g.cx, g.cy, size.width, 360f * chartGrow(timeline)),
                 )
                 // ---- 手绘环带（规范 §2.5「手绘甜甜圈：外圈抖动描边」）----
                 // 沿外缘/内缘各采样一排点，半径按角度散列微抖（确定性，同手绘隐喻与
@@ -337,20 +345,26 @@ fun DonutChart(
                     val rOut = g.diameter / 2f + band / 2f
                     val rIn = g.diameter / 2f - band / 2f
 
-                    val path = Path().apply {
+                    val path = ringPath.apply {
+                        reset()
                         // 外缘：起点 → 终点（顺时针）
                         var a = ringStart
-                        moveTo(edge(a, rOut, 11).x, edge(a, rOut, 11).y)
+                        // 每顶点只取一次 edge（原来 x/y 各调一次 → 三角函数与采样全翻倍）
+                        var p = edge(a, rOut, 11)
+                        moveTo(p.x, p.y)
                         while (a < ringEnd - 0.01f) {
                             a = minOf(a + stepDeg, ringEnd)
-                            lineTo(edge(a, rOut, 11).x, edge(a, rOut, 11).y)
+                            p = edge(a, rOut, 11)
+                            lineTo(p.x, p.y)
                         }
                         // 内缘：终点 → 起点（逆时针）
                         var b = ringEnd
-                        lineTo(edge(b, rIn, 23).x, edge(b, rIn, 23).y)
+                        p = edge(b, rIn, 23)
+                        lineTo(p.x, p.y)
                         while (b > ringStart + 0.01f) {
                             b = maxOf(b - stepDeg, ringStart)
-                            lineTo(edge(b, rIn, 23).x, edge(b, rIn, 23).y)
+                            p = edge(b, rIn, 23)
+                            lineTo(p.x, p.y)
                         }
                         close()
                     }
@@ -520,6 +534,8 @@ fun CategoryBarChart(
             textAlign = android.graphics.Paint.Align.RIGHT
         }
     }
+    // 条形路径画布：每条一个闭合路径，生长逐帧重建 —— remember + reset() 复用（OPT-13）
+    val rowPath = remember { Path() }
 
     Canvas(
         modifier = modifier
@@ -556,7 +572,8 @@ fun CategoryBarChart(
             val len = (row.amountCents.toFloat() / maxCents) * barW * chartGrow(timeline, index)
             // 马克笔涂条：左端整齐（都在同一条起跑线上才可比），右端微不规则 + 圆角
             val r = minOf(barH / 2f, 4f)
-            val path = Path().apply {
+            val path = rowPath.apply {
+                reset()
                 moveTo(barX, centerY - barH / 2f)
                 lineTo(barX + len - r, centerY - barH / 2f)
                 quadraticTo(barX + len, centerY - barH / 2f, barX + len, centerY - barH / 2f + r)
@@ -663,6 +680,8 @@ fun DailyBarChart(
             typeface = kaiTypeface
         }
     }
+    // 柱形路径画布：每柱一个闭合路径，生长逐帧重建 —— remember + reset() 复用（OPT-13）
+    val barPath = remember { Path() }
 
     Canvas(
         modifier = modifier
@@ -719,7 +738,7 @@ fun DailyBarChart(
             val rLeft = rMax * (0.62f + markerJitter(day, 2) * 0.38f)
             val rRight = rMax * (0.62f + markerJitter(day, 3) * 0.38f)
             drawPath(
-                path = markerBarPath(left, top, barWidth, barHeight, rLeft, rRight),
+                path = markerBarPath(barPath, left, top, barWidth, barHeight, rLeft, rRight),
                 color = barColor,
             )
 
@@ -753,15 +772,20 @@ fun DailyBarChart(
 /**
  * 马克笔涂条的轮廓：底边直角（严格贴基线），顶边左右各有不同圆角。
  * 左上/右上半径分开传入 —— 这是「手画」与「矩形」在轮廓上最省力的差别。
+ *
+ * [out] 为调用方复用的路径画布（remember + reset）：生长期间 31 根柱逐帧重建，
+ * 每次 new Path() 会随帧数翻倍分配（OPT-13）。
  */
 private fun markerBarPath(
+    out: Path,
     left: Float,
     top: Float,
     width: Float,
     height: Float,
     rLeft: Float,
     rRight: Float,
-): Path = Path().apply {
+): Path = out.apply {
+    reset()
     val right = left + width
     val bottom = top + height
     moveTo(left, bottom)
