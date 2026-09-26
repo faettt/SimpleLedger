@@ -165,34 +165,31 @@ abstract class AppDatabase : RoomDatabase() {
                 .build()
 
         /**
-         * 首次启动时按 [SectionFirstSeed] 的**理想结构**预置数据（用户可随意增删改）。
+         * 首次启动预置数据。
          *
-         * 与 `MIGRATION_2_3` / `MIGRATION_3_4` 同源：先插分区、再插全局分类（sectionId = NULL）、
-         * 最后按分区名回查 id 插分区专属分类——保证「新装」与「升级」初始态一致。
+         * **v1.4.1 起示例分区退场**（用户裁定 2026-09-26）：新装**不再预置**
+         * [SectionFirstSeed.sections]（日常开支 / 装修 / 旅行）与分区专属分类
+         * （装修专属 7 个）——示例内容（26 万装修预算等）带个人生活色彩，不该随 app 出厂。
+         * 保留 [SectionFirstSeed.globalCategories]（12 个常用分类，上手即用）
+         * 与「未分类」哨兵（B1，删除兜底迁移的必需品）。
          *
-         * v4 起图标写 `iconId`（不再是 emoji），分区额外写 `colorIndex`。
+         * ⚠️ **升级路径不动用户数据**（同裁定）：老库已存在的示例分区**不删**——
+         * 「装修」很可能是用户真实工地账，迁移里清数据是事故；示例分区由用户在
+         * app 内手动删。因此「新装」与「升级」的初始态自 v1.4.1 起**刻意不一致**，
+         * [MigrationSql] 历史迁移（2_3 补装修分类 / 3_4 色对齐 / 5 syncId 回填）
+         * 全部原样保留，只为老库兼容，不再对齐到新装态。
          *
-         * v5 起种子行的 `syncId` 走 [SeedIds] **确定性派生**（与 [MigrationSql] 回填共用
-         * 同一函数）：两台设备各自新装出的默认分区 / 分类是同一逻辑行，合并不重复（H7）。
+         * [SectionFirstSeed] 的分区 / 专属分类定义**保留不删**：历史迁移与
+         * [SeedIds] 确定性派生仍在引用（改定义会毁老库兼容与同步合并对齐）。
+         *
+         * v4 起图标写 `iconId`（不再是 emoji）；v5 起种子行 `syncId` 走 [SeedIds]
+         * 确定性派生（两台设备各自新装出的默认分类是同一逻辑行，合并不重复，H7）。
          * `versionSeq = 0`（种子行从未被操作覆盖；首个编辑产生 seq = 1）。
          */
         private fun seed(db: SupportSQLiteDatabase) {
             val now = System.currentTimeMillis()
 
-            // 1) 分区（含图标、胶带色与确定性 syncId）
-            SectionFirstSeed.sections.forEachIndexed { index, section ->
-                db.execSQL(
-                    "INSERT INTO sections (name, iconId, note, budgetCents, colorIndex, sortOrder, createdAt, syncId, versionSeq, updatedAt) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    arrayOf<Any?>(
-                        section.name, section.iconId, section.note,
-                        section.budgetCents, section.colorIndex, index, now,
-                        SeedIds.section(section.name), 0L, now,
-                    ),
-                )
-            }
-
-            // 2) 全局分类（sectionId = NULL）；sortOrder 按 (type, 全局) 作用域递增
+            // 1) 全局分类（sectionId = NULL）；sortOrder 按 (type, 全局) 作用域递增
             val counters = HashMap<String, Int>()
             SectionFirstSeed.globalCategories.forEach { category ->
                 val order = nextOrder(counters, category.type, null)
@@ -206,7 +203,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
 
-            // 2.5) 「未分类」哨兵（B1）：普通分类行、确定性 syncId、排在全局作用域末尾。
+            // 2) 「未分类」哨兵（B1）：普通分类行、确定性 syncId、排在全局作用域末尾。
             // 升级库走 LedgerRepository.ensureUnclassified() 补种（同一 missingCategories 口径）。
             SectionFirstSeed.Unclassified.missingCategories(emptySet()).forEach { row ->
                 val order = nextOrder(counters, row.type, null)
@@ -214,25 +211,6 @@ abstract class AppDatabase : RoomDatabase() {
                     "INSERT INTO categories (name, iconId, type, sectionId, sortOrder, syncId, versionSeq, updatedAt) " +
                         "VALUES (?, ?, ?, NULL, ?, ?, ?, ?)",
                     arrayOf<Any?>(row.name, row.iconId, row.type, order, row.syncId, 0L, now),
-                )
-            }
-
-            // 3) 分区专属分类；按 sectionName 回查分区 id
-            SectionFirstSeed.sectionCategories.forEach { category ->
-                val sectionId = db.query(
-                    "SELECT id FROM sections WHERE name = ? ORDER BY id LIMIT 1",
-                    arrayOf(category.sectionName),
-                ).use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getLong(0) else null
-                }
-                val order = nextOrder(counters, category.type, sectionId)
-                db.execSQL(
-                    "INSERT INTO categories (name, iconId, type, sectionId, sortOrder, syncId, versionSeq, updatedAt) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    arrayOf<Any?>(
-                        category.name, category.iconId, category.type, sectionId, order,
-                        SeedIds.category(category.type, category.sectionName, category.name), 0L, now,
-                    ),
                 )
             }
         }
