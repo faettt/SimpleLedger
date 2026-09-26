@@ -27,7 +27,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.simpleledger.app.ui.LocalReduceMotion
@@ -66,6 +68,8 @@ import com.simpleledger.app.ui.theme.slPress
  *                会拿不到按压状态（slPress 静默失效）。
  * @param onLongClick 传入则支持长按（combinedClickable，与 onClick 共用同一
  *                    interactionSource；A1「长按分区卡 → 纸片菜单」的承载口）。
+ *                    长按会依官方做法**显式**触发一次 `HapticFeedbackType.LongPress`
+ *                    （combinedClickable 默认不产生触觉，详见实现处注释）。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -87,6 +91,8 @@ fun SlipCard(
     val hovered by hoverInteractionSource.collectIsHoveredAsState()
     val reduceMotion = LocalReduceMotion.current
     val density = LocalDensity.current.density
+    // 触觉入口（= View.performHapticFeedback 的 Compose 封装）。仅在 onLongClick 里使用一次。
+    val haptics = LocalHapticFeedback.current
 
     val hoverLift by animateFloatAsState(
         targetValue = if (hovered && !reduceMotion) SlMotion.HoverLiftDp else 0f,
@@ -144,7 +150,19 @@ fun SlipCard(
                             interactionSource = interactionSource,
                             indication = LocalIndication.current,
                             onClick = onClick,
-                            onLongClick = onLongClick,
+                            // ── 长按触觉 ── 本工程触觉的**唯一使用点之一**（另一处为 LedgerRows.EntryRow）。
+                            // combinedClickable **默认不产生触觉**，须显式调；官方 Compose「tap-and-press」
+                            // 文档的标准示例即如此：haptics.performHapticFeedback(HapticFeedbackType.LongPress)。
+                            // 走 LocalHapticFeedback（= View.performHapticFeedback 的 Compose 封装）：
+                            //  ① **零权限**——不需要也不加 VIBRATE，不动 Manifest（View 路径官方明确免权限）；
+                            //  ② 系统设置 HAPTIC_FEEDBACK_ENABLED=0 时**自动静默**（官方明确 performHapticFeedback
+                            //     会尊重该开关），故刻意**不挂 LocalReduceMotion**——那是动画时长开关，与触觉无关；
+                            //  ③ LongPress 映射平台 LONG_PRESS（API 3）→ minSdk 26 全机型可用。
+                            // ⚠️ 模拟器**无振动器** → 此调用静默 no-op，**无法在模拟器验证**，待真机体感。
+                            onLongClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onLongClick()
+                            },
                         )
                         onClick != null -> Modifier.clickable(
                             interactionSource = interactionSource,

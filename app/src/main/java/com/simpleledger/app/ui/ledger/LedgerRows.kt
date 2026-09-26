@@ -32,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -124,7 +126,8 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
  *
  * 长按弹出快捷菜单（复制一笔 / 移动到其它分区 / 删除）。菜单锚定在本行而非手指坐标：
  * 行内交互用锚定行更可预期，也能保住 combinedClickable 带来的涟漪反馈与读屏语义
- * （自行处理指针事件会失去这两者）。
+ * （自行处理指针事件会失去这两者）。长按还会依官方做法**显式**触发一次
+ * `HapticFeedbackType.LongPress`（combinedClickable 默认不产生触觉，详见实现处注释）。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -158,6 +161,8 @@ internal fun EntryRow(
     val hasNote = full.entry.note.isNotBlank()
     val imageCount = full.images.size
     var menuOpen by remember { mutableStateOf(false) }
+    // 触觉入口（= View.performHapticFeedback 的 Compose 封装）。仅长按出菜单时使用一次。
+    val haptics = LocalHapticFeedback.current
     val uncategorizedLabel = stringResource(R.string.uncategorized)
 
     // F4 的例外（规范 §2.4 末尾 + §188）：**「全部分区」筛选视图**下补回分区文字前缀。
@@ -246,7 +251,19 @@ internal fun EntryRow(
                 .combinedClickable(
                     onClick = onClick,
                     onLongClickLabel = moreActionsLabel,
-                    onLongClick = { menuOpen = true },
+                    // ── 长按触觉 ── 本工程触觉的**唯一使用点之一**（另一处为 SlipCard 的长按路径）。
+                    // combinedClickable **默认不产生触觉**，须显式调；官方 Compose「tap-and-press」
+                    // 文档的标准示例即如此：haptics.performHapticFeedback(HapticFeedbackType.LongPress)。
+                    // 走 LocalHapticFeedback（= View.performHapticFeedback 的 Compose 封装）：
+                    //  ① **零权限**——不需要也不加 VIBRATE，不动 Manifest（View 路径官方明确免权限）；
+                    //  ② 系统设置 HAPTIC_FEEDBACK_ENABLED=0 时**自动静默**（官方明确 performHapticFeedback
+                    //     会尊重该开关），故刻意**不挂 LocalReduceMotion**——那是动画时长开关，与触觉无关；
+                    //  ③ LongPress 映射平台 LONG_PRESS（API 3）→ minSdk 26 全机型可用。
+                    // ⚠️ 模拟器**无振动器** → 此调用静默 no-op，**无法在模拟器验证**，待真机体感。
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuOpen = true
+                    },
                 )
                 // start 留 12dp 给色条（3dp 色条 + 9dp 呼吸）
                 .padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
