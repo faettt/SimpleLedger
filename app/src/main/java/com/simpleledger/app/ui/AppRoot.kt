@@ -272,12 +272,21 @@ private fun AppNavHost(
     val stdShift = with(LocalDensity.current) { SlMotion.ShiftStandard.roundToPx() }
 
     // 换章（底部 4 签互切）：交叉淡化 + 8dp 微升 —— 同层切换没有方向语义，不做横移
-    val tabEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+    val chapterEnter: () -> EnterTransition = {
         fadeIn(slStandard(SlMotion.PaperOut)) +
             slideInVertically(slStandard(SlMotion.PaperOut)) { microShift }
     }
-    val tabExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+    val chapterExit: () -> ExitTransition = {
         fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn))
+    }
+    // 翻页（§3.1）里的「下层纸」：压栈微退 16dp + 淡出；回栈微进 16dp + 淡入
+    val pageUnderExit: () -> ExitTransition = {
+        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+            slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { -halfPageShift }
+    }
+    val pageUnderEnter: () -> EnterTransition = {
+        fadeIn(slStandard(SlMotion.PaperOut)) +
+            slideInHorizontally(slStandard(SlMotion.PaperOut)) { -halfPageShift }
     }
     // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来
     val formEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
@@ -287,6 +296,28 @@ private fun AppNavHost(
     val formExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
             slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { stdShift }
+    }
+
+    // 一级 4 签路由的进出按「对端」定语义（三模式互斥）：
+    //  · 同层互切（对端也是 4 签）= 换章；
+    //  · 与层级页（详情/管理/设置等）压栈、回栈 = 翻页（§3.1 下层微退/微进 16dp）；
+    //  · 与全屏表单（记一笔）= 铺页（下层只淡化，不位移）。
+    // 2026-09-26 实机问题 ②：此前四签把 popEnter 也绑成换章，返回上一页时
+    // 上一页只有淡入 + 8dp 微升、不横移，违背 §3.1「pop 回入为微进 16dp」——
+    // 这就是「返回上一页的过渡动画没改」的根因；压栈方向同病（下层该微退却只淡出）。
+    val tabExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        when {
+            targetState.destination.route in Routes.topLevel -> chapterExit()
+            targetState.destination.route == Routes.ENTRY_EDIT -> chapterExit()
+            else -> pageUnderExit()
+        }
+    }
+    val tabPopEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        when {
+            initialState.destination.route in Routes.topLevel -> chapterEnter()
+            initialState.destination.route == Routes.ENTRY_EDIT -> chapterEnter()
+            else -> pageUnderEnter()
+        }
     }
 
     NavHost(
@@ -300,14 +331,8 @@ private fun AppNavHost(
             fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
                 slideInHorizontally(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { pageShift }
         },
-        exitTransition = {
-            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { -halfPageShift }
-        },
-        popEnterTransition = {
-            fadeIn(slStandard(SlMotion.PaperOut)) +
-                slideInHorizontally(slStandard(SlMotion.PaperOut)) { -halfPageShift }
-        },
+        exitTransition = { pageUnderExit() },
+        popEnterTransition = { pageUnderEnter() },
         popExitTransition = {
             fadeOut(slStandard(SlMotion.PaperIn)) +
                 slideOutHorizontally(slStandard(SlMotion.PaperIn)) { pageShift }
@@ -316,8 +341,8 @@ private fun AppNavHost(
         // 分区首屏（默认落点）
         composable(
             Routes.SECTIONS,
-            enterTransition = tabEnter, exitTransition = tabExit,
-            popEnterTransition = tabEnter, popExitTransition = tabExit,
+            enterTransition = { chapterEnter() }, exitTransition = tabExit,
+            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
         ) {
             SectionHomeScreen(
                 onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
@@ -381,8 +406,8 @@ private fun AppNavHost(
         // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
         composable(
             Routes.LEDGER,
-            enterTransition = tabEnter, exitTransition = tabExit,
-            popEnterTransition = tabEnter, popExitTransition = tabExit,
+            enterTransition = { chapterEnter() }, exitTransition = tabExit,
+            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
         ) { entry ->
             LedgerScreen(
                 resultHandle = entry.savedStateHandle,
@@ -406,13 +431,13 @@ private fun AppNavHost(
         // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
         composable(
             Routes.STATS,
-            enterTransition = tabEnter, exitTransition = tabExit,
-            popEnterTransition = tabEnter, popExitTransition = tabExit,
+            enterTransition = { chapterEnter() }, exitTransition = tabExit,
+            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
         ) { StatsScreen(layout = layout) }
         composable(
             Routes.MINE,
-            enterTransition = tabEnter, exitTransition = tabExit,
-            popEnterTransition = tabEnter, popExitTransition = tabExit,
+            enterTransition = { chapterEnter() }, exitTransition = tabExit,
+            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
         ) {
             MineScreen(
                 layout = layout,
@@ -427,8 +452,8 @@ private fun AppNavHost(
         // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
         composable(
             Routes.ENTRY_EDIT,
-            enterTransition = formEnter, exitTransition = tabExit,
-            popEnterTransition = tabEnter, popExitTransition = formExit,
+            enterTransition = formEnter, exitTransition = { chapterExit() },
+            popEnterTransition = { chapterEnter() }, popExitTransition = formExit,
         ) { entry ->
             val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
                 ?: Routes.NEW_ENTRY_ID
@@ -604,6 +629,10 @@ private fun IndexTab(
         label = "tabIcon",
     )
     val borderColor = MaterialTheme.colorScheme.outlineVariant
+    // 描边路径画布：形变期间每帧重建 —— remember + reset() 复用（OPT-13 同源）。
+    // 4 签 × 形变帧数若留在 DrawScope 内 new 会翻倍分配；几何只依赖尺寸，
+    // drawPath 记录时即消费内容，串行复用安全。
+    val outlinePath = remember { Path() }
 
     Box(
         modifier = modifier
@@ -642,7 +671,8 @@ private fun IndexTab(
                 .drawBehind {
                     val w = 0.5.dp.toPx()
                     val r = 7.dp.toPx()
-                    val outline = Path().apply {
+                    val outline = outlinePath.apply {
+                        reset()
                         moveTo(0f, size.height)
                         lineTo(0f, r)
                         quadraticTo(0f, 0f, r, 0f)
