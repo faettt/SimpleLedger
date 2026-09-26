@@ -1,6 +1,5 @@
 package com.simpleledger.app.ui.sync
 
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -83,7 +82,7 @@ fun SyncStatusBadge(
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = SlMotion.SlowMs * 6, easing = LinearEasing),
+                animation = tween(durationMillis = SlMotion.SlowMs * 6, easing = SlMotion.Linear),
                 repeatMode = RepeatMode.Restart,
             ),
             label = "syncSpinAngle",

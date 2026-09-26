@@ -99,10 +99,16 @@ fun SlipCard(
         label = "slipUnderlay",
     )
 
+    // 按需挂按压反馈：slPress 必须与 clickable(interactionSource = 同一个) 配对才有意义。
+    // 不可点的信息卡（回收站/同步设置/成员卡等）永远收不到 PressInteraction，
+    // 无条件挂载只会多出一个恒等 graphicsLayer 节点和一个永不触发的收集协程。
+    // hoverLift 不受此处影响（悬停去留是独立的观感项，另行拍板）。
+    val interactive = onClick != null || onLongClick != null
+
     Box(
         modifier = modifier
             .hoverable(hoverInteractionSource)
-            .slPress(interactionSource),
+            .then(if (interactive) Modifier.slPress(interactionSource) else Modifier),
     ) {
         // 垫纸：与纸片同尺寸、错位 3dp，露出右下两条边 → 读作「下面还压着一张」。
         // 必须声明在纸签**之前**（Box 内后声明的画在上层）。

@@ -118,7 +118,7 @@ data class DonutSlice(
  * 环缘波形三档（2026-09-23「圆弧不自然」排查用）。
  * **定稿裁决（2026-09-23）：正式档 = [SMOOTH]**，用户看真机三案对比后拍板。
  *
- *  · [STEPPED] 历史对照（bug 现场，勿用于生产路径）：每 6° 一个折线顶点、半径按
+ *  · [STEPPED] **历史对照档，保留**（「圆弧不自然」bug 现场，勿用于生产路径）：每 6° 一个折线顶点、半径按
  *    「6° 分桶方波」抖 ±2.5px。实测顶点折角 mean 6.35° / max 14.64°、每 25.7px 一次
  *    —— 肉眼读作「多边形/手撕」而不是手画的弧（这就是「不自然」的根因）。
  *  · [SMOOTH] ✅ 正式档：抖动为**低频连续波**（整圈 6 + 17 个周期，θ=0/360 相位闭合），
@@ -185,6 +185,29 @@ fun DonutChart(
     val currentSlices = androidx.compose.runtime.rememberUpdatedState(slices)
     val currentOnSliceClick = androidx.compose.runtime.rememberUpdatedState(onSliceClick)
 
+    // 原生画笔提升到组合作用域并 remember（key 覆盖主题色/字号/字族）——
+    // 生长期间时间线每帧驱动重组重画，若留在 DrawScope 内 new 会每帧重建 2 个 Paint。
+    // DrawScope 内只读、不改（leadPaint 的 textAlign 每次使用前重设，单线程 draw 安全）。
+    val paint = remember(labelColor, labelPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = labelColor.toArgb()
+            textSize = labelPx
+            isAntiAlias = true
+            // 楷体 Regular：11sp 在禁粗档（决策一），不再用 DEFAULT_BOLD 合成粗
+            typeface = kaiTypeface
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+    // 环外标签画笔：与 [paint] 同字号同字重（P2-1「统一」：数字样式只有一套）
+    val leadPaint = remember(leadTextColor, labelPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = leadTextColor.toArgb()
+            textSize = labelPx
+            isAntiAlias = true
+            typeface = kaiTypeface
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -222,21 +245,7 @@ fun DonutChart(
                 },
         ) {
             val g = DonutGeometry(size.width, size.height)
-            val paint = android.graphics.Paint().apply {
-                color = labelColor.toArgb()
-                textSize = labelPx
-                isAntiAlias = true
-                // 楷体 Regular：11sp 在禁粗档（决策一），不再用 DEFAULT_BOLD 合成粗
-                typeface = kaiTypeface
-                textAlign = android.graphics.Paint.Align.CENTER
-            }
-            // 环外标签画笔：与 [paint] 同字号同字重（P2-1「统一」：数字样式只有一套）
-            val leadPaint = android.graphics.Paint().apply {
-                color = leadTextColor.toArgb()
-                textSize = labelPx
-                isAntiAlias = true
-                typeface = kaiTypeface
-            }
+            // paint / leadPaint 已在组合作用域 remember（OPT-08）：此处只读、不改
 
             if (slices.isEmpty()) {
                 drawArc(
@@ -467,6 +476,25 @@ fun CategoryBarChart(
     // 全部展开（用户裁定）：条数 = 分类数，高度随条数走，不做限高/折叠
     val height = rowPitch * rows.size + 6.dp
 
+    // 原生画笔提升到组合作用域并 remember（OPT-08）：生长期间每帧重画，避免每帧 new 2 个 Paint
+    val labelPaint = remember(labelColor, labelPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = labelColor.toArgb()
+            textSize = labelPx
+            isAntiAlias = true
+            typeface = kaiTypeface
+        }
+    }
+    val amountPaint = remember(amountColor, amountPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = amountColor.toArgb()
+            textSize = amountPx
+            isAntiAlias = true
+            typeface = kaiTypeface
+            textAlign = android.graphics.Paint.Align.RIGHT
+        }
+    }
+
     Canvas(
         modifier = modifier
             .fillMaxWidth()
@@ -477,19 +505,7 @@ fun CategoryBarChart(
                 )
             },
     ) {
-        val labelPaint = android.graphics.Paint().apply {
-            color = labelColor.toArgb()
-            textSize = labelPx
-            isAntiAlias = true
-            typeface = kaiTypeface
-        }
-        val amountPaint = android.graphics.Paint().apply {
-            color = amountColor.toArgb()
-            textSize = amountPx
-            isAntiAlias = true
-            typeface = kaiTypeface
-            textAlign = android.graphics.Paint.Align.RIGHT
-        }
+        // labelPaint / amountPaint 已在组合作用域 remember（OPT-08）：此处只读、不改
 
         // 标签列宽随最长的标签走（中文 1 字 ≈ 1em），金额列宽随最长的金额走。
         // 写死会要么截断「装修·设计费」，要么在只有两三个分类时留出大片空白。
@@ -561,8 +577,14 @@ fun CategoryBarChart(
 private fun markerJitter(day: Int, salt: Int): Float {
     // 必须是**确定性**的：随机数会让每根柱在每次重组时都换一个宽度，
     // 看起来像画面在抖。用「日期 × 大素数」做散列，同一天永远得到同一个值。
-    val h = day * 73_856_093 xor (salt * 19_349_663)
-    return ((h and 0x7FFF_FFFF) % 1000) / 1000f
+    //
+    // ⚠️ 用 Long 运算：`day * 73_856_093` 在 day≥30 会溢出 Int 中间量
+    // （31× = 2,289,538,883 > Int.MAX）。原 `and 0x7FFF_FFFF` 的 31 位掩码
+    // 恰好消解了 32 位回绕——掩码后「32 位回绕值」与「64 位精确值」逐位等价
+    // （见 02-可行性与性能核验 §1），故改 Long 后**全表输出逐位不变**。
+    // 改 Long 是为意图显式化（消除"看似溢出"的中间量），勿回退成 Int。
+    val h = day.toLong() * 73_856_093L xor (salt.toLong() * 19_349_663L)
+    return ((h and 0x7FFF_FFFFL) % 1000).toFloat() / 1000f
 }
 
 /**
@@ -596,6 +618,25 @@ fun DailyBarChart(
     // 入场生长（Motion④）：柱从基线长起、按日错峰 —— 柱底严格贴基线不参与生长
     val timeline = rememberSlChartTimeline()
     val speech = barChartSpeech(daily, daysInMonth, hidden)
+
+    // 原生画笔提升到组合作用域并 remember（OPT-08）：生长期间每帧重画，避免每帧 new 2 个 Paint
+    val barPaint = remember(axisLabelColor, peakLabelPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = axisLabelColor.toArgb()
+            textSize = peakLabelPx
+            isAntiAlias = true
+            typeface = kaiTypeface
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+    val paint = remember(axisLabelColor, axisLabelPx, kaiTypeface) {
+        android.graphics.Paint().apply {
+            color = axisLabelColor.toArgb()
+            textSize = axisLabelPx
+            isAntiAlias = true
+            typeface = kaiTypeface
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -635,13 +676,7 @@ fun DailyBarChart(
             strokeWidth = 2f,
         )
 
-        val barPaint = android.graphics.Paint().apply {
-            color = axisLabelColor.toArgb()
-            textSize = peakLabelPx
-            isAntiAlias = true
-            typeface = kaiTypeface
-            textAlign = android.graphics.Paint.Align.CENTER
-        }
+        // barPaint 已在组合作用域 remember（OPT-08）：此处只读、不改
 
         daily.forEachIndexed { index, (day, cents) ->
             // 生长系数只乘柱高（top 上移），柱底恒贴 baseline
@@ -676,12 +711,7 @@ fun DailyBarChart(
         // 日期刻度：1 / 中旬 / 月末
         // ⚠️ textSize 只认像素。原先写死 24f，在 3x 屏上只有 8dp —— 缩到根本读不出。
         // 必须经 LocalDensity 换算，才能在任意密度下都是设计稿里的 10sp。
-        val paint = android.graphics.Paint().apply {
-            color = axisLabelColor.toArgb()
-            textSize = axisLabelPx
-            isAntiAlias = true
-            typeface = kaiTypeface
-        }
+        // paint 已在组合作用域 remember（OPT-08）：此处只读、不改
         listOf(1, daysInMonth / 2, daysInMonth).forEach { day ->
             val x = slot * (day - 1) + slot / 2f
             drawContext.canvas.nativeCanvas.drawText(

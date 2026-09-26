@@ -1,8 +1,8 @@
 {
  "$meta": {
   "name": "简账 SimpleLedger · 手账风格设计令牌",
-  "version": "2.0.0",
-  "updated": "2026-09-20",
+  "version": "2.3.0",
+  "updated": "2026-09-25",
   "supersedes": "tokens.json (温和人文派 1.0.0)",
   "visualDirection": "手账质感派（Journal · Skin-level）",
   "platform": "Android 手机 / 折叠屏 / 平板 / 桌面大屏",
@@ -296,7 +296,10 @@
   },
   "slipPadding": 20,
   "slipGap": 12,
-  "listRowHeight": 62,
+  "listRowHeight": {
+   "noNote": 62.48,
+   "withNote": 70.86
+  },
   "listItemVertical": 10,
   "sectionGap": 24
  },
@@ -336,7 +339,7 @@
   "selectedProtrusion": 12,
   "touchTarget": "未选中签视觉 42dp，但触控区向外扩到 48dp；底栏总高 = 54 + navigationBarsPadding",
   "tabRadius": "7dp 7dp 0 0",
-  "selectedStyle": "顶部 2dp 胶带色描边 + primaryContainer 底 + 墨青图标",
+  "selectedStyle": "primaryContainer 底 + 墨青图标 + 凸出 12dp 形变，无任何「标记」元素（2026-09-21 已删顶部 2dp 胶带横条）",
   "centerAction": "无。4 槽扁平，杜绝任何跳过分区的记账路径",
   "largeScreen": "≥600dp 保留 Navigation Rail；≥840dp 列表–详情双栏（判定用**窗口宽度**，内容区会被 Rail 吃掉 108dp）",
   "historyWarning": "此处曾出现「padding 在 height 之后导致标签被裁」的回归 —— 必须 navigationBarsPadding() 在 height() 之前，且改形态后重测 TalkBack 语义"
@@ -446,29 +449,30 @@
  },
  "motion": {
   "pageTransition": {
-   "duration": 280,
-   "easing": "ease-out"
+   "duration": 320,
+   "easing": "PaperOut (0.05, 0.7, 0.1, 1)"
   },
   "controlState": {
    "duration": 150,
    "easing": "ease-out"
   },
   "snackbar": {
-   "duration": 220,
-   "easing": "ease-in-out"
+   "note": "走 M3 内置档：Snackbar 由 Material3 内部 spec 驱动（经 MotionDurationScale 自动尊重系统设置），未在 Motion.kt 单列"
   },
   "undoWindow": {
    "duration": 4000
   },
   "chartDraw": {
-   "duration": 600,
-   "stagger": 40
+   "duration": 420,
+   "stagger": 30,
+   "staggerCap": 8,
+   "total": 660
   },
   "rules": [
    "只动有因果关系的元素，不做装饰动画",
-   "不做翻页动效（皮肤派不引入实体隐喻，翻页会与「快速记账」节奏相冲）",
+   "翻页横移 32dp（下层微退/微进 16dp 为其一半），320ms PaperOut（v1 已实装）",
    "不做数字滚动特效（会引起对数值准确性的怀疑）",
-   "尊重系统「减少动效」：降级为 0ms 直接切换"
+   "尊重系统「减少动效」：两层降级 —— 时长层自动（MotionDurationScale）＋ 形变层显式（LocalReduceMotion）"
   ]
  },
  "charts": {
@@ -514,7 +518,10 @@
  "touchTarget": {
   "minimum": 48,
   "minimumGap": 8,
-  "listRowHeight": 62,
+  "listRowHeight": {
+   "noNote": 62.48,
+   "withNote": 70.86
+  },
   "navTabVisualHeight": 42,
   "navTabTouchHeight": 48,
   "buttonHeights": [

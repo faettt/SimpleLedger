@@ -30,7 +30,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import com.simpleledger.app.ui.theme.SlType
-import com.simpleledger.app.ui.theme.slAnimateItem
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -136,8 +135,6 @@ internal fun LedgerSearchPane(
                                 showSectionPrefix = true,
                                 onToggleReconciled = { onSetReconciled(full.entry.id, it) },
                                 onSetReimburseState = { onSetReimburse(full.entry.id, it) },
-                                // 增删移位动效（Motion）
-                                modifier = slAnimateItem(),
                             )
                         }
                         item(key = "space_${day.date}") { Spacer(modifier = Modifier.height(8.dp)) }

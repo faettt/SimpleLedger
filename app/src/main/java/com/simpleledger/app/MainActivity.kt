@@ -43,7 +43,8 @@ class MainActivity : FragmentActivity() {
             val secureScreen by settings.secureScreen.collectAsState()
 
             // 系统「移除动画」偏好：Compose 内置动画已自动遵循 ANIMATOR_DURATION_SCALE，
-            // 这里读出来只用于下发给应用自研动效的 LocalReduceMotion（当前无消费方，保持 0 影响）
+            // 这里读出来下发给应用自研动效的 LocalReduceMotion ——
+            // 已被 SlipCard（hover / 垫纸）/ slPress / slHoverLift 消费
             val reduceMotion = rememberReduceMotion()
 
             // 截屏保护跟随开关实时生效（不重启 Activity）：

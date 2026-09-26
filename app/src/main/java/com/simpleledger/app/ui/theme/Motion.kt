@@ -2,6 +2,7 @@ package com.simpleledger.app.ui.theme
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
@@ -128,6 +129,12 @@ object SlMotion {
     val Standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
     /**
+     * 线性：恒定速率、无缓动（图表生长时间线 / 同步角标无限旋转必需）。
+     * 无限循环的首尾必须相接，缓动会在每圈接缝处顿一下；图表单条时间线同样要求恒速。
+     */
+    val Linear: Easing = LinearEasing
+
+    /**
      * 按压回弹弹簧：唯一允许的轻回弹（damping 0.85 ≈ 略欠阻尼）。
      * 更低的阻尼会有果冻感，与「纸几乎不弹」的隐喻冲突。
      */
@@ -170,7 +177,7 @@ fun rememberSlChartTimeline(): Float {
     LaunchedEffect(Unit) {
         timeline.animateTo(
             1f,
-            tween(SlMotion.ChartTotalMs, easing = LinearEasing),
+            tween(SlMotion.ChartTotalMs, easing = SlMotion.Linear),
         )
     }
     return timeline.value

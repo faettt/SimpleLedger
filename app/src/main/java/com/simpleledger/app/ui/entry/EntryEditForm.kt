@@ -32,7 +32,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,6 +68,7 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.ui.components.CategoryDialog
+import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
@@ -571,9 +571,9 @@ private fun CategoryGroup(
                         Text(category.name)
                     }
                 },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                ),
+                // 分类候选 chip 走与其余 8 处筛选 chip 完全相同的统一配色口径
+                // （slFilterChipColors 已同时含 selectedContainerColor + selectedLabelColor）
+                colors = slFilterChipColors(),
             )
         }
     }
