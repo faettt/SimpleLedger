@@ -1,5 +1,11 @@
 package com.simpleledger.app.ui.section
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,7 +66,10 @@ import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.slAnimateItem
+import com.simpleledger.app.ui.theme.slStandard
+import com.simpleledger.app.ui.theme.slTween
 import com.simpleledger.app.ui.theme.SlButtonShape
 import kotlinx.coroutines.launch
 
@@ -184,17 +194,14 @@ fun SectionHomeScreen(
                                 if (menuTargetId == total.sectionId) {
                                     SectionCardMenu(
                                         onEdit = {
-                                            menuTargetId = null
                                             scope.launch {
                                                 editTarget = viewModel.sectionOf(total.sectionId)
                                                 showSectionDialog = true
                                             }
                                         },
-                                        onDelete = {
-                                            menuTargetId = null
-                                            deleteTarget = total
-                                        },
-                                        onDismiss = { menuTargetId = null },
+                                        onDelete = { deleteTarget = total },
+                                        // 退场动画播完才移除菜单态（见 SectionCardMenu 三态说明）
+                                        onDismissFinished = { menuTargetId = null },
                                     )
                                 }
                             }
@@ -265,28 +272,75 @@ private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
  * 分区卡纸片菜单（A1 定案 V1「纸片菜单」）：纸面填充 + 0.5dp 描边 + 3dp 圆角
  * （与 ConfirmDialog / SlipCard 同一套纸语言），无阴影；「删除分区」用朱砂。
  * 锚定卡片右上、下移 57dp（卡头行高度，让菜单贴着触发手指出现在卡片身上）。
+ *
+ * 进出场动效（动效规范「纸的物理」）：
+ *  · 进场 250ms PaperOut：淡入 + 从 0.96 微放大到 1（纸片被「轻放」到右缘锚点）；
+ *  · 出场 150ms PaperIn：淡出 + 缩回 0.96（纸片被「抽走」）；
+ *  · 缩放锚点 TransformOrigin(1f, 0f) = 右上角，与菜单的 TopEnd 对齐方式一致，右缘不漂。
+ *
+ * 三态生命周期（弹出 → 显示 → 退场中 → 移除）：AnimatedVisibility 的进出场动画
+ * 需要一个持续存在的可见态来驱动，而 caller 的 menuTargetId 一旦置空本组合就会被
+ * 立即移除、退场动画被同步销毁吞掉（正是「瞬灭」的根因）。故拆成两步：
+ *  · [Popup] 的 onDismissRequest 只把 visibleState.targetState 翻成 false，触发退场动画；
+ *  · 退场动画真正播完（currentState=false 且 isIdle）才执行 [pending] 回调，
+ *    再调用 [onDismissFinished] 通知 caller 移除菜单。
+ * 菜单项点击同样经 [pending] 延后到退场结束后执行，保证动作发生在动画之后而非之中。
  */
 @Composable
 private fun SectionCardMenu(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onDismiss: () -> Unit,
+    onDismissFinished: () -> Unit,
 ) {
+    // 初始 false → targetState=true：弹入从「不可见」起步，AnimatedVisibility 播放进场动画
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+    // 退场结束后才执行的挂起动作（菜单项点击 / dismiss 回调）
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    LaunchedEffect(visibleState.currentState, visibleState.isIdle) {
+        // 仅在「退场完成」这一瞬触发：currentState 已回到 false 且无动画在跑
+        if (!visibleState.currentState && visibleState.isIdle) {
+            pending?.invoke()
+            pending = null
+            onDismissFinished()
+        }
+    }
+
     Popup(
         alignment = Alignment.TopEnd,
         // 锚定卡片右上、下移 57dp：与 A/B 实测的 DpOffset(0, 57dp) 同位
         offset = IntOffset(0, with(LocalDensity.current) { 57.dp.roundToPx() }),
-        onDismissRequest = onDismiss,
+        onDismissRequest = { visibleState.targetState = false },
         properties = PopupProperties(focusable = true),
     ) {
-        Column(
-            modifier = Modifier
-                .width(168.dp)
-                .background(MaterialTheme.colorScheme.surface, SlipShape)
-                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, SlipShape),
+        AnimatedVisibility(
+            visibleState = visibleState,
+            // 进场：快起慢收（手把纸放下，到位即停）
+            // scaleIn 形参序为 (animationSpec, initialScale, transformOrigin)
+            enter = fadeIn(slStandard(SlMotion.PaperOut)) +
+                scaleIn(slStandard(SlMotion.PaperOut), 0.96f, TransformOrigin(1f, 0f)),
+            // 出场：慢起快收（纸被抽走，末端加速消失）
+            // scaleOut 形参序为 (animationSpec, targetScale, transformOrigin)
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                scaleOut(slTween(SlMotion.FastMs, SlMotion.PaperIn), 0.96f, TransformOrigin(1f, 0f)),
         ) {
-            SectionCardMenuItem(stringResource(R.string.section_menu_edit), danger = false, onClick = onEdit)
-            SectionCardMenuItem(stringResource(R.string.section_menu_delete), danger = true, onClick = onDelete)
+            Column(
+                modifier = Modifier
+                    .width(168.dp)
+                    .background(MaterialTheme.colorScheme.surface, SlipShape)
+                    .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, SlipShape),
+            ) {
+                SectionCardMenuItem(
+                    stringResource(R.string.section_menu_edit),
+                    danger = false,
+                    onClick = { pending = onEdit; visibleState.targetState = false },
+                )
+                SectionCardMenuItem(
+                    stringResource(R.string.section_menu_delete),
+                    danger = true,
+                    onClick = { pending = onDelete; visibleState.targetState = false },
+                )
+            }
         }
     }
 }

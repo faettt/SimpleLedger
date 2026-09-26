@@ -1,5 +1,6 @@
 package com.simpleledger.app.ui.stats
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -44,11 +45,13 @@ import com.simpleledger.app.ui.components.DailyBarChart
 import com.simpleledger.app.ui.components.EmptyHint
 import com.simpleledger.app.ui.components.MonthHeader
 import com.simpleledger.app.ui.components.SectionDonutChart
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlStatus
 import com.simpleledger.app.ui.theme.SlType
 import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
+import com.simpleledger.app.ui.theme.slFast
 import com.simpleledger.app.ui.theme.tapeColor
 import com.simpleledger.app.util.Money
 
@@ -292,12 +295,25 @@ private fun SectionShareSection(
             Column(modifier = Modifier.clearAndSetSemantics {}) {
                 shares.forEachIndexed { index, share ->
                     val selected = index == selectedIndex
+                    // 图例底垫的过渡（与环图扇区加粗同 150ms slFast(Standard)）：
+                    // 选中态在行间移动时，旧行底垫淡出、新行底垫淡入同时进行。
+                    //
+                    // 刻意**不用 animateColorAsState**（口径：2026-09-26 用户真机 A/B 拍板，
+                    // 候选 B′）：Transparent(0x00000000) ↔ surfaceVariant 在 ARGB 空间做线性
+                    // 插值时，alpha 0↔1 的过程里的 RGB 仍从 0 起算，中途会经过一帧「比底色更暗」
+                    // 的垫（暗沉中间态）；只过渡 alpha、颜色恒为 surfaceVariant，就绕开了色相/
+                    // 明度插值，得到的是「同一块纸由淡变实」，与环图上的加粗一一对应。
+                    val legendPadAlpha by animateFloatAsState(
+                        targetValue = if (selected) 1f else 0f,
+                        animationSpec = slFast(SlMotion.Standard),
+                        label = "legendPadAlpha",
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             // 选中行用凹面垫底：与环图上加粗的扇区一一对应，两处看得见的是同一件事
                             .background(
-                                if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = legendPadAlpha),
                                 RoundedCornerShape(3.dp),
                             )
                             .clickable { onSliceClick(index) }

@@ -1,5 +1,6 @@
 package com.simpleledger.app.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -33,9 +34,11 @@ import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.chartGrow
 import com.simpleledger.app.ui.theme.rememberSlChartTimeline
+import com.simpleledger.app.ui.theme.slFast
 import com.simpleledger.app.ui.theme.sweepClipPath
 import com.simpleledger.app.util.Money
 import kotlin.math.atan2
@@ -130,6 +133,12 @@ data class DonutSlice(
 enum class DonutEdge { STEPPED, SMOOTH, CIRCLE }
 
 /**
+ * 选中扇区相对常规环带**额外加粗的像素量**（选中态 = g.stroke + 本值）。
+ * 保持与旧实现完全一致（12f），只把「二值跳变」换成 150ms 过渡。
+ */
+private const val DONUT_SELECTED_BAND_EXTRA = 12f
+
+/**
  * 环形图：**通用的环图绘制器**，不知道也不关心扇区代表什么。
  *
  * 两条实现约定（都来自「读图兜底」）：
@@ -137,7 +146,8 @@ enum class DonutEdge { STEPPED, SMOOTH, CIRCLE }
  *    以该扇区在环带中线处的弧长是否容得下这段文字为准，而不是拍一个固定角度阈值
  *    ——阈值写死会在窄图上溢出、在宽图上白留空间。
  * ② 选中扇区**加粗环带**（stroke + 12f）——规范 §2.1 的「选中态不止变色，还有形变」
- *    同样适用于图表：形变比变色更有信息量。
+ *    同样适用于图表：形变比变色更有信息量。加粗量不再是二值突变，而走 150ms 过渡
+ *    （见 [DonutChart] 内的 bandExtras）：选中态在扇区之间移动时**旧片收、新片张同时进行**。
  *
  * @param onSliceClick 点到某个扇区时回调其下标（双图联动的入口）；null = 不可点。
  *   命中判定用环带内外半径 + 极角，与 Canvas 的几何完全共用 [DonutGeometry]。
@@ -206,6 +216,21 @@ fun DonutChart(
             isAntiAlias = true
             typeface = kaiTypeface
         }
+    }
+
+    // 选中扇区加粗环带的过渡（形变，见组件说明②）。
+    // 每片独立 animateFloatAsState：**选中态在扇区之间移动时，旧片收（extra→0）、
+    // 新片张（extra→12）同时进行**，而不是「旧片瞬间复原 + 新片瞬间加粗」的二值突变。
+    // 时长 150ms slFast(SlMotion.Standard)：两端软、中段快的形变曲线，与全站小状态切换同档。
+    // 口径：2026-09-26 用户真机 A/B 拍板结果（B′）；目标值语义与旧实现完全一致 ——
+    // 仍是 g.stroke + extra，extra ∈ [0, 12]。列表用 mapIndexed（inline）在组合作用域内
+    // 逐片发起动画，Canvas（DrawScope 非组合上下文）里只读取结果。
+    val bandExtras = slices.mapIndexed { index, _ ->
+        animateFloatAsState(
+            targetValue = if (index == selectedIndex) DONUT_SELECTED_BAND_EXTRA else 0f,
+            animationSpec = slFast(SlMotion.Standard),
+            label = "donutBandExtra$index",
+        )
     }
 
     Box(
@@ -306,8 +331,9 @@ fun DonutChart(
                 slices.forEachIndexed { index, slice ->
                     val sweep = (slice.fraction * 360f).toFloat()
                     val ringEnd = ringStart + sweep
-                    // 选中扇区环带加粗（形变，见组件说明②）
-                    val band = if (index == selectedIndex) g.stroke + 12f else g.stroke
+                    // 选中扇区环带加粗（形变，见组件说明②）：extra 现由动画驱动（0f ↔ 12f），
+                    // 与旧实现「g.stroke + extra」语义一致，只是 extra 不再是二值。
+                    val band = g.stroke + bandExtras[index].value
                     val rOut = g.diameter / 2f + band / 2f
                     val rIn = g.diameter / 2f - band / 2f
 
