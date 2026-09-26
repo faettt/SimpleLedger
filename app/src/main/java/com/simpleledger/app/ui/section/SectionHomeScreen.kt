@@ -236,7 +236,13 @@ fun SectionHomeScreen(
             title = stringResource(R.string.delete_section_title, target.name),
             text = sectionDeleteMessage(impact),
             confirmLabel = stringResource(R.string.delete),
-            onConfirm = { viewModel.deleteSection(target.sectionId) },
+            onConfirm = {
+                viewModel.deleteSection(target.sectionId)
+                // ConfirmDialog 的确认按钮只回调 onConfirm、不代管关窗
+                // （与 SectionManageScreen 的 CategoryDeleteDialog 同口径）：
+                // 必须在这里清锚点，否则删完弹窗不消失（2026-09-26 实机问题 ①）
+                deleteTarget = null
+            },
             onDismiss = { deleteTarget = null },
             // P2-4：影响描述是异步加载的，加载完成前 impact 为 null——此时必须保持禁用，
             // 否则首帧会出现「闪现可点」，用户抢在数据返回前点删会以空影响执行删除。

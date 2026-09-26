@@ -206,6 +206,10 @@ fun EmptyHint(
  * 通用确认弹窗。
  *
  * [confirmEnabled] = false 时确认按钮禁用（用于「当前不可删」这类阻塞态，如最后一个分区仍有账目）。
+ *
+ * 确认即关窗：确认按钮执行 [onConfirm] 后统一走 [onDismiss] 收尾（调用方无须再自行关窗，
+ * 重复关窗是幂等无害的）。此前确认按钮只回调 onConfirm，调用方漏清锚点会导致弹窗不消失
+ * （2026-09-26 实机问题 ①），故把「确认 = 终态」固化进组件契约。
  */
 @Composable
 fun ConfirmDialog(
@@ -221,7 +225,13 @@ fun ConfirmDialog(
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = confirmEnabled) {
+            TextButton(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                enabled = confirmEnabled,
+            ) {
                 Text(
                     text = confirmLabel ?: stringResource(R.string.delete),
                     color = if (confirmEnabled) {
