@@ -51,8 +51,12 @@ sealed class SetupResult {
     /** 凭证表单非法（UI 映射具体字段提示） */
     data class InvalidCred(val issue: WebDavCredIssue) : SetupResult()
 
-    /** 其余失败（网络 / 凭证 / 超额 / 损坏…） */
-    data class Failed(val reason: SyncError) : SetupResult()
+    /**
+     * 其余失败（网络 / 凭证 / 超额 / 损坏…）。
+     * [detail] 诊断信息（失败步骤 + 异常摘要，如「写元文件: WebDAV PUT … → HTTP 405」）——
+     * UNKNOWN 档 UI 透出，让「同步出错」可定位（v1.4.2 排障口）。
+     */
+    data class Failed(val reason: SyncError, val detail: String? = null) : SetupResult()
 }
 
 /**
@@ -155,17 +159,20 @@ class SyncManager(
 
         val keys: SyncKeys
         val kdf: KdfParams
+        var step = "探云端元文件"
         try {
             // ① 无口令发现（placeholder keys 只碰 nameKey 直取 + 56B 头兜底探测）
             val header = remoteFactory(cred, PLACEHOLDER_KEYS, PLACEHOLDER_KDF).peekMetaHeader()
             if (header != null) {
                 // ② 有 meta：从明文头取 kdf/salt → 派生 → KCV 比对（R-04：下载任何数据前失败）
                 kdf = header.kdf
+                step = "派生密钥"
                 keys = deriveTimed(password, kdf)
-                val expectKcv = header.kcv ?: return SetupResult.Failed(SyncError.CORRUPTED)
+                val expectKcv = header.kcv ?: return SetupResult.Failed(SyncError.CORRUPTED, "meta 头缺少 KCV")
                 if (!crypto.checkPassword(keys, expectKcv)) return SetupResult.BadPassword
             } else {
                 // ③ 无 meta：本机建账（首写 If-None-Match:*；412 竞争 → 内部重读校验口令）
+                step = "生成派生参数"
                 kdf = KdfParams(
                     mKiB = SyncPrefs.KDF_DEFAULT_MEMORY_KIB,
                     t = SyncPrefs.KDF_DEFAULT_ITERATIONS,
@@ -174,7 +181,9 @@ class SyncManager(
                 )
                 keys = deriveTimed(password, kdf)
                 val remote = remoteFactory(cred, keys, kdf)
+                step = "建协议目录"
                 remote.ensureLayout()
+                step = "写元文件"
                 try {
                     remote.writeMetaOnce(
                         MetaBody(bookId = UUID.randomUUID().toString(), createdAt = System.currentTimeMillis())
@@ -184,7 +193,7 @@ class SyncManager(
                 }
             }
         } catch (t: Throwable) {
-            return SetupResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)))
+            return failedAt(step, t)
         }
 
         // 持久化凭证 + 派生密钥（自动同步需本地持钥，§7-10 取舍；忘口令 = resetSync 清掉）
@@ -193,14 +202,25 @@ class SyncManager(
 
         // 成员认领（U-2）→ 存量导出 → 首轮双向同步（S5：无「选哪边」）
         val memberSyncId = claimMember(memberName)
-            ?: return SetupResult.Failed(SyncError.UNKNOWN)
+            ?: return SetupResult.Failed(SyncError.UNKNOWN, "成员名为空")
         val exportedOps = try {
             exporter.export()
         } catch (t: Throwable) {
-            return SetupResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)))
+            return failedAt("存量导出", t)
         }
         val outcome = syncNow(SyncTrigger.MANUAL)
         return SetupResult.Success(memberSyncId, exportedOps, outcome)
+    }
+
+    /**
+     * 诊断收口（v1.4.2 排障口）：失败步骤 + 异常摘要进 [SetupResult.Failed.detail]
+     * （UNKNOWN 档 UI 透出），并 println 落 Logcat（口径同 deriveTimed：JVM 单测不炸）。
+     */
+    private fun failedAt(step: String, t: Throwable): SetupResult.Failed {
+        val detail = "$step: ${t.message ?: t.javaClass.name}"
+        println("[SyncManager] setup failed at $detail")
+        t.printStackTrace()
+        return SetupResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)), detail)
     }
 
     /**

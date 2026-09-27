@@ -93,6 +93,12 @@ class WebDavRemote(
     /**
      * 首写元文件（`If-None-Match: *`）。与他机竞争失败（412）时改走「有 meta」路径：
      * 重读 meta 完成 KCV 校验（口令不符自然抛 [DavException.BadPassword]）。
+     *
+     * 条件写降级（v1.4.2）：不少 WebDAV 实现不支持 `If-None-Match` 条件头，如实回
+     * 400/405/409/501（quirk 矩阵实测 reject400/501 复现「同步出错」）。降级策略：
+     * 回读已有 meta（他机赢了）→ KCV 校验收敛；确无 meta → 去条件普通 PUT 重试一次。
+     * 竞态注记：两机同刻首开且服务器不支持条件写时可能双写 meta（后写覆盖），
+     * 窗口仅限首次接入同刻并发，可接受（条件写正常的服务器不受影响）。
      */
     suspend fun writeMetaOnce(body: MetaBody) {
         val name = FilenameNym.metaName(keys.nameKey)
@@ -100,9 +106,16 @@ class WebDavRemote(
         try {
             dav.put("$DIR/$name", blob.toRequestBody(BINARY_TYPE), ifNoneMatchStar = true)
         } catch (e: DavException.Http) {
-            if (e.code != 412) throw e
-            // 首写竞争：他机已写入。校验口令一致即视为成功。
-            readMeta() ?: throw e
+            when {
+                e.code == 412 ->
+                    // 首写竞争：他机已写入。校验口令一致即视为成功。
+                    readMeta() ?: throw e
+                e.code == 400 || e.code == 405 || e.code == 409 || e.code == 501 -> {
+                    if (readMeta() != null) return // 他机已建账：KCV 校验通过即收敛
+                    dav.put("$DIR/$name", blob.toRequestBody(BINARY_TYPE), ifNoneMatchStar = false)
+                }
+                else -> throw e
+            }
         }
     }
 
@@ -224,13 +237,20 @@ class WebDavRemote(
         else throw e
     }
 
-    /** meta 密文获取：先按本机假名直取，404 走 56B 头探测（口令不一致也能发现「家里已有账」） */
+    /**
+     * meta 密文获取：先按本机假名直取，缺失走 56B 头探测（口令不一致也能发现「家里已有账」）。
+     *
+     * 缺失容错 404/409/400 三档（v1.4.2）：RFC 4918 缺文件应 404，但真实服务器分叉大——
+     * 409 Conflict（父目录不存在时 GET，坚果云类常见）、400 Bad Request（部分实现对
+     * 不存在路径的 GET 如此回）语义都是「没有这个文件」。误判安全性：即便云端其实有 meta，
+     * 下游 writeMetaOnce 的 `If-None-Match:*` 会 412 → 内部重读校验口令，一致性收敛（§4.2）。
+     */
     private suspend fun fetchMetaBlob(): ByteArray? {
         val name = FilenameNym.metaName(keys.nameKey)
         try {
             return dav.get("$DIR/$name").use { it.body.bytes() }
         } catch (e: DavException.Http) {
-            if (e.code != 404) throw e
+            if (e.code != 404 && e.code != 409 && e.code != 400) throw e
         }
         // 兜底 56B 头探测。家目录尚不存在（= 全新账本，「家里无账」）时 [listHomeOrEmpty]
         // 回空 → null，交 setupAccount 走本机建账分支

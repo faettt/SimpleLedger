@@ -159,7 +159,10 @@ class SyncEngine(
                 photo = photoReport,
             )
         } catch (t: Throwable) {
-            // S6 静默收口：任何失败都不外抛，只落角标 + lastError
+            // S6 静默收口：任何失败都不外抛，只落角标 + lastError；
+            // v1.4.2 补日志（println 口径同 deriveTimed：JVM 单测不炸、Android 落 Logcat）
+            println("[SyncEngine] syncOnce($trigger) failed: ${t.message ?: t.javaClass.name}")
+            t.printStackTrace()
             val error = SyncError.fromName(DavErrors.toSyncErrorName(t))
             store.markSyncError(error.name)
             _state.value = SyncState.Failed(error, System.currentTimeMillis())

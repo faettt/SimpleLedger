@@ -295,6 +295,8 @@
     <string name="sync_setup_ok">同步已开启，已导出 %1$d 条历史记录</string>
     <string name="sync_setup_bad_password">同步口令不一致，请核对后重试</string>
     <string name="sync_event_failed">操作失败：%1$s</string>
+    <!-- v1.4.2 排障口：带失败步骤+异常摘要（如「写元文件: … HTTP 405」），供报障截图定位 -->
+    <string name="sync_event_failed_detail">操作失败：%1$s（%2$s）</string>
     <string name="sync_last_skipped">已跳过（60 秒内已同步过）</string>
     <string name="sync_last_done">已同步：上传 %1$d 条 · 应用 %2$d 条</string>
     <string name="sync_reset_done">同步已重置，本地账目不受影响</string>

@@ -38,7 +38,10 @@ sealed interface SyncEvent {
     data class SetupOk(val exportedOps: Int, val outcome: SyncOutcome) : SyncEvent
     data object SetupBadPassword : SyncEvent
     data class SetupInvalid(val issue: WebDavCredIssue) : SyncEvent
-    data class SetupFailed(val error: SyncError) : SyncEvent
+    /**
+     * 接入失败；[detail] 诊断信息（失败步骤 + 异常摘要），UNKNOWN 档 UI 透出（v1.4.2 排障口）。
+     */
+    data class SetupFailed(val error: SyncError, val detail: String? = null) : SyncEvent
 
     data class SyncDone(val outcome: SyncOutcome) : SyncEvent
     data object ResetDone : SyncEvent
@@ -161,7 +164,7 @@ class SyncSettingsViewModel(
 
             SetupResult.BadPassword -> SyncEvent.SetupBadPassword
             is SetupResult.InvalidCred -> SyncEvent.SetupInvalid(result.issue)
-            is SetupResult.Failed -> SyncEvent.SetupFailed(result.reason)
+            is SetupResult.Failed -> SyncEvent.SetupFailed(result.reason, result.detail)
         }
         _state.update { it.copy(busy = false, event = event) }
     }

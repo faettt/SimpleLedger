@@ -438,7 +438,16 @@ private fun eventText(context: Context, event: SyncEvent): String = when (event)
     is SyncEvent.SetupOk -> context.getString(R.string.sync_setup_ok, event.exportedOps)
     SyncEvent.SetupBadPassword -> context.getString(R.string.sync_setup_bad_password)
     is SyncEvent.SetupInvalid -> context.getString(credIssueRes(event.issue))
-    is SyncEvent.SetupFailed -> context.getString(R.string.sync_event_failed, errorText(context, event.error))
+    is SyncEvent.SetupFailed ->
+        if (event.detail != null) {
+            context.getString(
+                R.string.sync_event_failed_detail,
+                errorText(context, event.error),
+                event.detail,
+            )
+        } else {
+            context.getString(R.string.sync_event_failed, errorText(context, event.error))
+        }
     is SyncEvent.SyncDone -> outcomeText(context, event.outcome)
     SyncEvent.ResetDone -> context.getString(R.string.sync_reset_done)
     SyncEvent.ResetFailed -> context.getString(R.string.sync_reset_failed)
