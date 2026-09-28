@@ -3,6 +3,7 @@ package com.simpleledger.app.ui.section
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,9 +14,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +27,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,17 +41,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.R
 import com.simpleledger.app.data.settings.LocalHideAmounts
+import com.simpleledger.app.logic.SectionDetailFilterPlan
 import com.simpleledger.app.ui.Routes
 import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.components.EmptyHint
+import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.entry.EntryEditHost
 import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.ledger.DayHeader
@@ -67,16 +70,20 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.graphics.Color
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
+import java.time.YearMonth
 
 /**
  * 分区详情（FR-16~20）。
  *
  * - 顶部：返回 + 「emoji 分区名」+ 右上「管理」
- * - 列表：按天分组的该分区账目（Q-12，复用 [DayHeader] / [EntryRow]）
+ * - 筛选条：时间窗「全部」chip + 月份入口 / ‹ 月 › 步进（默认「全部时间」，任务书裁定原文）
+ * - 列表：按天分组的该分区账目（Q-12，复用 [DayHeader] / [EntryRow]）；全部模式插月份分隔头
  * - 底部：「记一笔」（拇指可达）
  *
  * 承载形态随窗口变化（同步点 #7）：Compact 走全屏路由；Medium 居中浮层；Expanded 右侧面板。
  * 保存后**停留**在分区详情（EC-11d），可连续记账；列表与首屏卡片数据源同为 Flow，自动刷新（EC-11b）。
+ * 月筛选下保存 / 复制「账目落哪月筛哪月」（仅月筛选生效，裁定见
+ * [SectionDetailFilterPlan.landTarget]）；离开页面筛选复位「全部」（活在 VM）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +110,9 @@ fun SectionDetailScreen(
     var editingEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     suspend fun showSavedNotice(entryId: Long) {
+        // 「账目落哪月筛哪月」：月模式下跟随账目落月（编辑改期跟去新月 / 保存同月空操作）；
+        // 全部模式不跳（landTarget null 分支裁定，见 SectionDetailFilterPlan.landTarget）
+        viewModel.entryMonthOf(entryId)?.let { viewModel.landOn(it) }
         val label = viewModel.describeEntry(entryId) ?: return
         val result = snackbarHostState.showSnackbar(
             message = context.getString(R.string.saved_toast, label),
@@ -126,6 +136,8 @@ fun SectionDetailScreen(
 
     suspend fun duplicateWithNotice(entryId: Long) {
         val newId = viewModel.duplicateEntry(entryId)
+        // 复制的时间改为此刻：月筛选下跟随落月（通常即当月 = 空操作）；全部模式不跳
+        if (newId != null) viewModel.entryMonthOf(newId)?.let { viewModel.landOn(it) }
         snackbarHostState.showSnackbar(
             message = context.getString(
                 if (newId != null) R.string.duplicate_done else R.string.duplicate_failed
@@ -154,6 +166,18 @@ fun SectionDetailScreen(
     }
     val rowClick: (Long) -> Unit = { id ->
         if (inPlaceEdit) editingEntryId = id else onEditEntry(id)
+    }
+
+    // 显式回顶：仅筛选值真的变化时拽顶（切月 / 回全部）。标记刻意用 remember 而非
+    // rememberSaveable——进程死亡重建时 VM 的 monthFilter 复位 null、标记初值同为 null，
+    // 两者相等即跳过滚动，rememberLazyListState 内部 saver 恢复的阅读位置得以保留。
+    val listState = rememberLazyListState()
+    var lastFilterKey by remember { mutableStateOf<YearMonth?>(null) }
+    LaunchedEffect(state.monthFilter) {
+        if (state.monthFilter != lastFilterKey) {
+            lastFilterKey = state.monthFilter
+            listState.scrollToItem(0)
+        }
     }
 
     Scaffold(
@@ -203,18 +227,53 @@ fun SectionDetailScreen(
                     }
                 }
 
-                SectionSummary(state.expenseCents, state.incomeCents)
+                SectionSummary(state.expenseCents, state.incomeCents, state.monthFilter)
+
+                // 时间窗筛选条（纸感 chip 行，规范 §2.4 口径）
+                MonthFilterBar(
+                    monthFilter = state.monthFilter,
+                    onShowAll = { viewModel.setMonthFilter(null) },
+                    onEnterMonth = { viewModel.enterMonthMode() },
+                    onStep = { delta -> viewModel.stepMonth(delta) },
+                )
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    when {
-                        state.isEmpty -> EmptyHint(
-                            text = stringResource(R.string.section_detail_empty),
+                    when (SectionDetailFilterPlan.emptyBranch(
+                        hasAnyEntry = state.hasAnyEntry,
+                        windowEmpty = state.isEmpty,
+                        monthFilter = state.monthFilter,
+                    )) {
+                        // 分区从无账目：引导记一笔
+                        SectionDetailFilterPlan.SectionDetailBranch.NO_ENTRY_EVER -> EmptyHint(
+                            text = stringResource(R.string.empty_all),
                             actionLabel = stringResource(R.string.add_entry),
                             onAction = startCreate,
                         )
 
-                        else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        // 分区有账目、当前筛选月为空：一键清筛选回全部时间
+                        SectionDetailFilterPlan.SectionDetailBranch.MONTH_EMPTY -> EmptyHint(
+                            text = stringResource(R.string.empty_month),
+                            actionLabel = stringResource(R.string.show_all),
+                            onAction = { viewModel.setMonthFilter(null) },
+                        )
+
+                        SectionDetailFilterPlan.SectionDetailBranch.CONTENT -> LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            var lastMonth: YearMonth? = null
                             state.groups.forEach { group ->
+                                val groupMonth = YearMonth.from(group.date)
+                                // 月份分隔头仅全部模式插头：月模式整表同月，筛选条标签即锚点
+                                if (state.monthFilter == null) {
+                                    SectionDetailFilterPlan.monthBoundary(lastMonth, groupMonth)
+                                        ?.let { headerMonth ->
+                                            item(key = "month_$headerMonth") {
+                                                SectionMonthHeader(headerMonth)
+                                            }
+                                        }
+                                }
+                                lastMonth = groupMonth
                                 item(key = "header_${group.date}") {
                                     DayHeader(
                                         dateLabel = DateTimes.dayLabel(group.date),
@@ -278,9 +337,90 @@ fun SectionDetailScreen(
     }
 }
 
+/**
+ * 时间窗筛选条：首位「全部」chip 常驻（口径同明细页 chip 行首位 = 清时间窗筛选，
+ * 月模式下也是回全部的出口）；右侧按模式换形——
+ * 全部模式给「筛选」入口（进月模式，落点=最新账目月），月模式给 ‹ 月 › 步进。
+ * 「筛选」复用明细页同名通用词，不为本条另立新字符串。
+ */
 @Composable
-private fun SectionSummary(expenseCents: Long, incomeCents: Long) {
+private fun MonthFilterBar(
+    monthFilter: YearMonth?,
+    onShowAll: () -> Unit,
+    onEnterMonth: () -> Unit,
+    onStep: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilterChip(
+            selected = monthFilter == null,
+            onClick = onShowAll,
+            modifier = Modifier.minimumInteractiveComponentSize(),
+            colors = slFilterChipColors(),
+            label = { Text(stringResource(R.string.filter_all), style = SlType.label) },
+        )
+        if (monthFilter == null) {
+            TextButton(
+                onClick = onEnterMonth,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text(stringResource(R.string.filter), style = SlType.label)
+            }
+        } else {
+            IconButton(
+                onClick = { onStep(-1) },
+                modifier = Modifier.minimumInteractiveComponentSize(),
+            ) {
+                Icon(
+                    SlIcons.Ui.ArrowLeft,
+                    contentDescription = stringResource(R.string.a11y_month_prev),
+                )
+            }
+            Text(
+                text = DateTimes.monthLabel(monthFilter),
+                style = SlType.label,
+                modifier = Modifier.padding(horizontal = 2.dp),
+            )
+            IconButton(
+                onClick = { onStep(1) },
+                modifier = Modifier.minimumInteractiveComponentSize(),
+            ) {
+                Icon(
+                    SlIcons.Ui.ArrowRight,
+                    contentDescription = stringResource(R.string.a11y_month_next),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 月份分隔头（仅全部模式渲染）：照搜索结果 SearchMonthHeader 先例（label + primary），
+ * 格式统一 [DateTimes.monthLabel]「2026年9月」不补零。
+ */
+@Composable
+private fun SectionMonthHeader(month: YearMonth) {
+    Text(
+        text = DateTimes.monthLabel(month),
+        style = SlType.label,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun SectionSummary(expenseCents: Long, incomeCents: Long, monthFilter: YearMonth?) {
     val hidden = LocalHideAmounts.current
+    // 口径区分：全部时间 =「累计」（与首屏「本月」卡片相区分）；月模式 = 平词
+    val expenseLabel = if (monthFilter == null) R.string.expense_all else R.string.expense_plain
+    val incomeLabel = if (monthFilter == null) R.string.income_all else R.string.section_detail_income
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -290,7 +430,7 @@ private fun SectionSummary(expenseCents: Long, incomeCents: Long) {
     ) {
         Text(
             text = stringResource(
-                R.string.section_detail_expense,
+                expenseLabel,
                 if (hidden) "••••" else Money.formatWithSymbol(expenseCents),
             ),
             style = SlType.bodySm,
@@ -298,7 +438,7 @@ private fun SectionSummary(expenseCents: Long, incomeCents: Long) {
         )
         Text(
             text = stringResource(
-                R.string.section_detail_income,
+                incomeLabel,
                 if (hidden) "••••" else Money.formatWithSymbol(incomeCents),
             ),
             style = SlType.bodySm,

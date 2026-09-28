@@ -93,7 +93,19 @@
 
     <!-- 分区详情（section_detail_*） -->
     <string name="section_manage">管理</string>
-    <string name="section_detail_empty">这个分区本月还没有账目，点下方「记一笔」开始</string>
+
+    <!-- 分区详情：时间窗筛选（默认「全部时间」，任务书裁定）。
+         空态两分支：分区从无账目引导记一笔；筛选月为空引导「看全部时间」清筛选。
+         汇总标签按模式区分口径——全部 =「累计」（与首屏「本月」卡片相区分），月 = 平词。
+         月份步进的读屏词（‹ › 两个 IconButton 的 contentDescription）。 -->
+    <string name="empty_all">这个分区还没有账目，点下方「记一笔」开始</string>
+    <string name="empty_month">这个月还没有账目</string>
+    <string name="show_all">看全部时间</string>
+    <string name="expense_all">累计支出 %1$s</string>
+    <string name="expense_plain">支出 %1$s</string>
+    <string name="income_all">累计收入 %1$s</string>
+    <string name="a11y_month_prev">上一月</string>
+    <string name="a11y_month_next">下一月</string>
 
     <!-- 分区管理（section_manage_*） -->
     <string name="section_manage_title">分区管理</string>
@@ -184,8 +196,7 @@
     <string name="section_card_remaining">剩余 %1$s</string>
     <string name="section_card_overspent">⚠ 已超支 %1$s</string>
 
-    <!-- 分区详情：本月汇总 -->
-    <string name="section_detail_expense">本月支出 %1$s</string>
+    <!-- 分区详情：汇总（月模式收入标签；支出按模式用 expense_all / expense_plain） -->
     <string name="section_detail_income">收入 %1$s</string>
 
     <!-- 分区管理：分区信息卡（复用 budget_none） -->

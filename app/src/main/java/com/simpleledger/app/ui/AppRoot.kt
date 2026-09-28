@@ -7,6 +7,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -265,58 +267,125 @@ private fun AppNavHost(
     onStopEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // ——— 导航动效规格（Motion.kt「纸的物理」；dp 位移在此换算成 px 供 transition 闭包使用）———
-    val pageShift = with(LocalDensity.current) { SlMotion.ShiftPage.roundToPx() }
-    val halfPageShift = pageShift / 2
+    // ——— 导航动效规格（Motion.kt「纸页对偶」装配层；dp 位移在此换算成 px 供转场闭包使用）———
+    // 减少动效在组合体捕获（与下方 dp 换算同层）：转场 lambda 的签名是
+    // AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?/ExitTransition?，
+    // 非 @Composable，不得在 lambda 里内读 LocalReduceMotion.current（API 契约）。
+    // 设置变更经重组在此捕获新值；进行中的转场保持旧值，下一次转场生效。
+    val reduceMotion = LocalReduceMotion.current
+    val navShiftIn = with(LocalDensity.current) { SlMotion.NavShiftIn.roundToPx() }
+    val navShiftUnder = with(LocalDensity.current) { SlMotion.NavShiftUnder.roundToPx() }
+    // 换章 8dp 微升的换算（本文件仅剩 chapterEnter 一处消费）
     val microShift = with(LocalDensity.current) { SlMotion.ShiftMicro.roundToPx() }
-    val stdShift = with(LocalDensity.current) { SlMotion.ShiftStandard.roundToPx() }
 
-    // 换章（底部 4 签互切）：交叉淡化 + 8dp 微升 —— 同层切换没有方向语义，不做横移
+    // 换章（底部 4 签互切）：交叉淡化 + 8dp 微升 —— 同层切换没有方向语义，不做横移。
+    // 减少动效下微升属装饰性位移，降级为纯淡化
     val chapterEnter: () -> EnterTransition = {
-        fadeIn(slStandard(SlMotion.PaperOut)) +
-            slideInVertically(slStandard(SlMotion.PaperOut)) { microShift }
+        if (reduceMotion) {
+            fadeIn(slStandard())
+        } else {
+            fadeIn(slStandard(SlMotion.PaperOut)) +
+                slideInVertically(slStandard(SlMotion.PaperOut)) { microShift }
+        }
     }
+    // 换章离场本就是纯淡化、无位移可降；减少动效下统一走标准档淡化
     val chapterExit: () -> ExitTransition = {
-        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn))
+        if (reduceMotion) {
+            fadeOut(slStandard())
+        } else {
+            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn))
+        }
     }
-    // 翻页（§3.1）里的「下层纸」：压栈微退 16dp + 淡出；回栈微进 16dp + 淡入
-    val pageUnderExit: () -> ExitTransition = {
-        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-            slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { -halfPageShift }
+
+    // 页面转场四段编排（纸页对偶，规格全在 Motion.kt 装配层；减少动效一律降级为纯淡化）：
+    //  · push 顶页进场：x +NavShiftIn(32dp)→0 · scale NavScaleSink(0.94)→1 · α 0→1，
+    //    tween(NavEnterMs=320, PaperOut)
+    //  · push 底页让位：x 0→−NavShiftUnder(24dp) · scale 1→0.94 · α 1→0.5，
+    //    tween(NavExitMs=250, PaperOut)——250ms 早于顶页 320ms 先收 70ms
+    //  · pop  顶页离场：x 0→+NavShiftIn · scale 1→0.94 · α 1→0，tween(NavExitMs=250, PaperIn)
+    //  · pop  底页归位：x −NavShiftUnder→0 · scale 0.94→1 · α NavAlphaReturnStart(0)→1，
+    //    tween(NavExitMs=250, PaperOut)——归位起点从全透明亮起，与让位终点 0.5 解耦
+    //    （AnimatedContent 恒把进场底页画在离场顶页上层，从 0.5 起步会隔层面纱
+    //    盖住抽走的顶页；裁定与依据见 Motion.kt 装配块注释）
+    val navPushEnter: () -> EnterTransition = {
+        if (reduceMotion) {
+            fadeIn(slStandard())
+        } else {
+            fadeIn(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut)) +
+                slideInHorizontally(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut)) { navShiftIn } +
+                scaleIn(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut), initialScale = SlMotion.NavScaleSink)
+        }
     }
-    val pageUnderEnter: () -> EnterTransition = {
-        fadeIn(slStandard(SlMotion.PaperOut)) +
-            slideInHorizontally(slStandard(SlMotion.PaperOut)) { -halfPageShift }
+    val navPushExit: () -> ExitTransition = {
+        if (reduceMotion) {
+            fadeOut(slStandard())
+        } else {
+            slideOutHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperOut)) { -navShiftUnder } +
+                scaleOut(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), targetScale = SlMotion.NavScaleSink) +
+                fadeOut(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), targetAlpha = SlMotion.NavAlphaUnder)
+        }
     }
-    // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来
-    val formEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-        fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
-            slideInVertically(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { stdShift }
+    val navPopExit: () -> ExitTransition = {
+        if (reduceMotion) {
+            fadeOut(slStandard())
+        } else {
+            slideOutHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperIn)) { navShiftIn } +
+                scaleOut(slTween(SlMotion.NavExitMs, SlMotion.PaperIn), targetScale = SlMotion.NavScaleSink) +
+                fadeOut(slTween(SlMotion.NavExitMs, SlMotion.PaperIn))
+        }
     }
-    val formExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-        fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-            slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { stdShift }
+    val navPopEnter: () -> EnterTransition = {
+        if (reduceMotion) {
+            fadeIn(slStandard())
+        } else {
+            slideInHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperOut)) { -navShiftUnder } +
+                scaleIn(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), initialScale = SlMotion.NavScaleSink) +
+                // 归位起点用 NavAlphaReturnStart(0) 而非让位终点 NavAlphaUnder(0.5)：
+                // pop 时本页画在离场顶页上层，从 0.5 起步会盖住抽走的顶页（见 Motion.kt 装配块）
+                fadeIn(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), initialAlpha = SlMotion.NavAlphaReturnStart)
+        }
+    }
+
+    // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来；减少动效下降级为纯淡化
+    val formEnter: () -> EnterTransition = {
+        if (reduceMotion) {
+            fadeIn(slStandard())
+        } else {
+            fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
+                slideInVertically(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { navShiftUnder }
+        }
+    }
+    val formExit: () -> ExitTransition = {
+        if (reduceMotion) {
+            fadeOut(slStandard())
+        } else {
+            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { navShiftUnder }
+        }
     }
 
     // 一级 4 签路由的进出按「对端」定语义（三模式互斥）：
     //  · 同层互切（对端也是 4 签）= 换章；
-    //  · 与层级页（详情/管理/设置等）压栈、回栈 = 翻页（§3.1 下层微退/微进 16dp）；
+    //  · 与层级页（详情/管理/设置等）压栈、回栈 = 纸页对偶：压栈本页让位（24dp 退让 +
+    //    缩沉 0.94 + 变暗 0.5）、回栈本页归位（24dp 归位 + 回升 + 亮起）——底线是
+    //    「tab 页与二级页压栈/回栈必须位移+淡变，绝不退化为换章只淡化」；
     //  · 与全屏表单（记一笔）= 铺页（下层只淡化，不位移）。
     // 2026-09-26 实机问题 ②：此前四签把 popEnter 也绑成换章，返回上一页时
-    // 上一页只有淡入 + 8dp 微升、不横移，违背 §3.1「pop 回入为微进 16dp」——
-    // 这就是「返回上一页的过渡动画没改」的根因；压栈方向同病（下层该微退却只淡出）。
+    // 上一页只有淡入 + 8dp 微升、不横移，违背「pop 回入必须位移+淡变」的底线——
+    // 这就是「返回上一页的过渡动画没改」的根因；压栈方向同病（下层该退让却只淡出）。
+    // 2026-09-28 数值升级为纸页对偶编排（Motion.kt 装配层），对端归位语义判定不变。
     val tabExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         when {
             targetState.destination.route in Routes.topLevel -> chapterExit()
             targetState.destination.route == Routes.ENTRY_EDIT -> chapterExit()
-            else -> pageUnderExit()
+            else -> navPushExit()
         }
     }
     val tabPopEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         when {
             initialState.destination.route in Routes.topLevel -> chapterEnter()
             initialState.destination.route == Routes.ENTRY_EDIT -> chapterEnter()
-            else -> pageUnderEnter()
+            else -> navPopEnter()
         }
     }
 
@@ -324,19 +393,15 @@ private fun AppNavHost(
         navController = navController,
         startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
         modifier = modifier,
-        // ——— 导航动效（Motion.kt「纸的物理」）———
-        // 默认 = 翻页：前进从右 32dp 轻推入（PaperOut），下层微退 16dp；
-        // 后退反向（下层从左微进，本页向右 32dp 抽走 —— PaperIn 加速离场）。
-        enterTransition = {
-            fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
-                slideInHorizontally(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { pageShift }
-        },
-        exitTransition = { pageUnderExit() },
-        popEnterTransition = { pageUnderEnter() },
-        popExitTransition = {
-            fadeOut(slStandard(SlMotion.PaperIn)) +
-                slideOutHorizontally(slStandard(SlMotion.PaperIn)) { pageShift }
-        },
+        // ——— 导航动效（Motion.kt「纸页对偶」装配层）———
+        // 默认 = 纸页对偶（层级页压栈/回栈）：push 顶页从右 32dp 轻推进场
+        // （缩沉 0.94→1、淡入，320ms PaperOut），底页 24dp 退让 + 缩沉 0.94 + 变暗 0.5
+        // （250ms PaperOut，早 70ms 先收）；pop 反向：顶页向右 32dp 抽走
+        // （缩沉 0.94、淡出，250ms PaperIn 加速离场），底页 24dp 归位 + 回升 + 亮起。
+        enterTransition = { navPushEnter() },
+        exitTransition = { navPushExit() },
+        popEnterTransition = { navPopEnter() },
+        popExitTransition = { navPopExit() },
     ) {
         // 分区首屏（默认落点）
         composable(
@@ -452,8 +517,8 @@ private fun AppNavHost(
         // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
         composable(
             Routes.ENTRY_EDIT,
-            enterTransition = formEnter, exitTransition = { chapterExit() },
-            popEnterTransition = { chapterEnter() }, popExitTransition = formExit,
+            enterTransition = { formEnter() }, exitTransition = { chapterExit() },
+            popEnterTransition = { chapterEnter() }, popExitTransition = { formExit() },
         ) { entry ->
             val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
                 ?: Routes.NEW_ENTRY_ID

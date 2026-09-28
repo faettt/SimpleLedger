@@ -28,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import com.simpleledger.app.ui.LocalReduceMotion
 
 /* ============================================================
-   动效语言 —— 「纸的物理」（唯一事实源：docs/design/motion-spec）
+   动效语言 —— 「纸的物理」（令牌与规格的唯一事实源：本文件 SlMotion；
+   视觉版式真源：docs/design/journal-style-spec-2026-09-20.md，其中不含
+   页面转场规格——旧版此处误引的 docs/design/motion-spec 并不存在）
    ============================================================
 
    整套动效只说一件事：**纸很轻、摩擦大、几乎不弹**。
@@ -117,6 +119,58 @@ object SlMotion {
 
     /** 鼠标悬停拈起量（dp，负值向上）。仅鼠标/触控板触发，触屏无 hover 事件 */
     const val HoverLiftDp = -1f
+
+    // ——— 页面转场 · 纸页对偶（装配层）———
+    // 四段编排，属性方向逐镜像；数值**全部取自上方既有档位**，本块只做装配
+    // （4 个别名 + 3 个新量）。微调只动这里的别名与新量；若真要引入
+    // 档位之外的值，必须同步头部②的「位移三档 / 时长档」自述。
+    //
+    //   · push 顶页进场：x +NavShiftIn→0 · scale NavScaleSink→1 · α 0→1，
+    //     tween(NavEnterMs, PaperOut)
+    //   · push 底页让位：x 0→−NavShiftUnder · scale 1→NavScaleSink · α 1→NavAlphaUnder，
+    //     tween(NavExitMs, PaperOut)——250ms 早于顶页 320ms 收尾，层次感来自这 70ms 时差
+    //   · pop  顶页离场：x 0→+NavShiftIn · scale 1→NavScaleSink · α 1→0，tween(NavExitMs, PaperIn)
+    //   · pop  底页归位：x −NavShiftUnder→0 · scale NavScaleSink→1 · α NavAlphaReturnStart→1，
+    //     tween(NavExitMs, PaperOut)
+    //
+    // ⚠️ 归位起点 ≠ 让位终点（两个量解耦，勿再合并）：AnimatedContent 恒把
+    // 进场页（pop 时 = 底页）画在离场顶页**上层**——togetherWith 默认
+    // targetContentZIndex = 0f，navigation-compose 全库也不做 zIndex 管理，
+    // 等 zIndex 时按组合序 target 末位即最上。若归位从让位终点 0.5 亮起，
+    // 首帧就是一层 50% 面纱盖住正被抽走的顶页，规格「顶页离场」被遮挡失效。
+    // 故 pop 底页从 [NavAlphaReturnStart]（0，全透明）亮起：让位终点只服务
+    // push 的层次语义，归位起点只服务 pop 的绘制顺序约束。
+    //
+    // 曲线契约：让位/归位都是「纸 settle」类，一律 PaperOut；PaperIn 只属于
+    // 顶页**真离场**（pop 顶页抽走）。时长成对自洽：顶页对 320↔250、底页对 250↔250。
+    /** push 顶页进场/离场横移（= 页面位移档：整页翻动的轻推与抽走） */
+    val NavShiftIn: Dp = ShiftPage
+
+    /** 底页让位/归位横移（= 标准位移档：下层纸的退让与回正） */
+    val NavShiftUnder: Dp = ShiftStandard
+
+    /** push 顶页进场时长（= 慢档：整页翻动） */
+    const val NavEnterMs = SlowMs
+
+    /** 顶页离场与底页让位/归位时长（= 标准档） */
+    const val NavExitMs = StandardMs
+
+    /** 底页缩沉量：让位时压到 94%、归位从它回升——纸被上层纸压低一线的纵深 */
+    const val NavScaleSink = 0.94f
+
+    /** 底页变暗量：**push 让位**降到 50% 不透明度的终点（pop 归位起点见 [NavAlphaReturnStart]） */
+    const val NavAlphaUnder = 0.5f
+
+    /**
+     * pop 底页归位的透明度起点（0 = 全透明起亮）。
+     *
+     * 与 [NavAlphaUnder]（让位终点 0.5）解耦：AnimatedContent 恒把进场页
+     * （pop 时 = 底页）画在离场顶页上层，归位若从 0.5 亮起，首帧即隔一层
+     * 半透明面纱看顶页抽走，规格「顶页离场」观感被遮挡。让位终点是 push 的
+     * 层次语义；归位起点是 pop 的绘制顺序约束——两者不再共用一个量。
+     * （装配依据见上方「纸页对偶」块注释；真机首验项：pop 顶页是否清晰可读地抽走）
+     */
+    const val NavAlphaReturnStart = 0f
 
     // ——— 曲线三档 ———
     /** 进场 / 展开：快起慢收（手把纸放下，到位即停） */
