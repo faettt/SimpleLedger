@@ -30,8 +30,8 @@ android {
         applicationId = "com.simpleledger.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 12
-        versionName = "1.4.5"
+        versionCode = 13
+        versionName = "1.4.6"
     }
 
     signingConfigs {
