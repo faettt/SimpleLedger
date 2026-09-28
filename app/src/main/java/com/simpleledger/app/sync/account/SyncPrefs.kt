@@ -9,6 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import org.json.JSONObject
 
 /**
  * 同步本地持久化（SharedPreferences `simple_ledger_sync`），实现 [SyncStore] 端口。
@@ -119,6 +120,48 @@ class SyncPrefs(context: Context) : SyncStore {
     /** 本月照片流量读数 (上行, 下行)，口径与 [addPhotoTraffic] 一致（R-19） */
     override fun monthlyPhotoUsage(): Pair<Long, Long> = monthlyPhotoUp to monthlyPhotoDown
 
+    // —— U-7 损坏分片隔离状态 ——
+    // 失败计数存单键 JSON 对象 {分片名: 连续失败次数}（分片名是 32hex 假名，键无泄露面）；
+    // 隔离名单用 StringSet。两者都随 clearAll() 一并清空（resetSync 逃生口径）。
+
+    override fun recordChunkFailure(chunkName: String): Int {
+        val map = chunkFailureMap()
+        val next = map.optInt(chunkName, 0) + 1
+        map.put(chunkName, next)
+        prefs.edit().putString(KEY_CHUNK_FAILURES, map.toString()).apply()
+        return next
+    }
+
+    override fun clearChunkFailure(chunkName: String) {
+        val map = chunkFailureMap()
+        if (!map.has(chunkName)) return
+        map.remove(chunkName)
+        prefs.edit().putString(KEY_CHUNK_FAILURES, map.toString()).apply()
+    }
+
+    override fun chunkFailureCount(chunkName: String): Int = chunkFailureMap().optInt(chunkName, 0)
+
+    override fun quarantinedChunks(): Set<String> =
+        prefs.getStringSet(KEY_QUARANTINED_CHUNKS, emptySet()) ?: emptySet()
+
+    override fun quarantineChunk(chunkName: String) {
+        prefs.edit()
+            .putStringSet(KEY_QUARANTINED_CHUNKS, quarantinedChunks() + chunkName)
+            .apply()
+    }
+
+    override fun clearQuarantinedChunk(chunkName: String) {
+        prefs.edit()
+            .putStringSet(KEY_QUARANTINED_CHUNKS, quarantinedChunks() - chunkName)
+            .apply()
+    }
+
+    /** 失败计数读取（损坏的存量 JSON 按空表兜底——计数错了大不了多试两次，不能炸同步） */
+    private fun chunkFailureMap(): JSONObject {
+        val raw = prefs.getString(KEY_CHUNK_FAILURES, null) ?: return JSONObject()
+        return runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
+    }
+
     /**
      * KDF 参数（三件套 + 盐，Base64 编码持久化）与口令校验值 KCV（架构 §1.6 密钥派生链）。
      * T-2 的 `crypto/SyncCrypto.kt` 把它们组装为 `KdfParams(mKiB = kdfMemoryKib, t = kdfIterations,
@@ -226,8 +269,7 @@ class SyncPrefs(context: Context) : SyncStore {
     /** 计数是否属于当前月份 */
     private fun inCurrentMonth(): Boolean = monthlyKey == currentMonthKey()
 
-    private fun currentMonthKey(): String =
-        MONTH_FORMAT.format(Date())
+    private fun currentMonthKey(): String = monthKey(Date())
 
     companion object {
         private const val PREFS_NAME = "simple_ledger_sync"
@@ -247,12 +289,23 @@ class SyncPrefs(context: Context) : SyncStore {
         private const val KEY_KCV = "kcv"
         private const val KEY_ENC_KEY = "enc_key"
         private const val KEY_NAME_KEY = "name_key"
+        private const val KEY_CHUNK_FAILURES = "chunk_failures"
+        private const val KEY_QUARANTINED_CHUNKS = "quarantined_chunks"
 
         /** Argon2id 定案参数（架构 V1）：m = 64 MiB、t = 2、p = 1；参数随密文头存储、可调不破兼容 */
         const val KDF_DEFAULT_MEMORY_KIB = 65_536
         const val KDF_DEFAULT_ITERATIONS = 2
         const val KDF_DEFAULT_PARALLELISM = 1
 
-        private val MONTH_FORMAT = SimpleDateFormat("yyyyMM", Locale.US)
+        /**
+         * 月键 = "yyyyMM"（R-19 跨月归零判据）。U-15：SimpleDateFormat 非线程安全，
+         * 而 [currentMonthKey] 会被主线程（设置页 `monthlyPhotoUsage` 读数）与同步 IO
+         * 线程（PHOTOS 阶段 `addPhotoTraffic` 记账）**并发调用**——共享单例实例可能把
+         * internal calendar 写坏，产出的错键使 `inCurrentMonth` 恒 false、月流量读数永久
+         * 归零，R-19 额度门静默失效。每次调用新建实例：调用频率极低（每次照片记账 /
+         * 读数各一次），开销可忽略，换取无锁线程安全。
+         */
+        fun monthKey(at: Date): String =
+            SimpleDateFormat("yyyyMM", Locale.US).format(at)
     }
 }

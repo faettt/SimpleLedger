@@ -11,6 +11,7 @@ import com.simpleledger.app.data.local.entity.MemberEntity
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.sync.SyncManager
 import com.simpleledger.app.sync.account.SyncPrefs
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,14 +53,19 @@ class MemberManageViewModel(
     private val _claimConflict = MutableStateFlow(false)
     val claimConflict: StateFlow<Boolean> = _claimConflict.asStateFlow()
 
-    private val _event = MutableStateFlow<MemberManageEvent?>(null)
-    val event: StateFlow<MemberManageEvent?> = _event.asStateFlow()
+    /**
+     * 一次性事件通道（U-18）：StateFlow 承载会合并吞掉同值事件、展示中离页回页重放；
+     * Channel「接收即消费」两症皆除（机制与缺陷说明见 [UiEventChannel]）。
+     * 页面单消费者：LaunchedEffect for 循环。
+     */
+    private val eventBus = UiEventChannel<MemberManageEvent>()
+    val events: ReceiveChannel<MemberManageEvent> = eventBus.events
 
     /** 首次认领成员名（全书唯一；撞名提示换名，不静默复用他人身份） */
     fun claim(name: String) = viewModelScope.launch {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
-            _event.update { MemberManageEvent(MemberManageMessage.NAME_REQUIRED) }
+            eventBus.send(MemberManageEvent(MemberManageMessage.NAME_REQUIRED))
             return@launch
         }
         if (syncDao.findMemberByName(trimmed) != null) {
@@ -68,11 +74,11 @@ class MemberManageViewModel(
         }
         val syncId = syncManager.claimMember(trimmed)
         if (syncId == null) {
-            _event.update { MemberManageEvent(MemberManageMessage.OP_FAILED) }
+            eventBus.send(MemberManageEvent(MemberManageMessage.OP_FAILED))
         } else {
             _selfMemberId.update { syncId }
             _claimConflict.update { false }
-            _event.update { MemberManageEvent(MemberManageMessage.CLAIM_OK, trimmed) }
+            eventBus.send(MemberManageEvent(MemberManageMessage.CLAIM_OK, trimmed))
         }
     }
 
@@ -82,33 +88,31 @@ class MemberManageViewModel(
     fun rename(syncId: String, newName: String) = viewModelScope.launch {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) {
-            _event.update { MemberManageEvent(MemberManageMessage.NAME_REQUIRED) }
+            eventBus.send(MemberManageEvent(MemberManageMessage.NAME_REQUIRED))
             return@launch
         }
         val ok = repository.renameMember(syncId, trimmed)
-        _event.update {
+        eventBus.send(
             if (ok) {
                 MemberManageEvent(MemberManageMessage.RENAME_OK, trimmed)
             } else {
                 MemberManageEvent(MemberManageMessage.NAME_TAKEN)
-            }
-        }
+            },
+        )
     }
 
     /** 隐藏 / 取消隐藏（成员可隐藏不可删） */
     fun setHidden(syncId: String, hidden: Boolean) = viewModelScope.launch {
         val name = members.value.firstOrNull { it.syncId == syncId }?.name ?: ""
         val ok = repository.setMemberHidden(syncId, hidden)
-        _event.update {
+        eventBus.send(
             when {
                 !ok -> MemberManageEvent(MemberManageMessage.OP_FAILED)
                 hidden -> MemberManageEvent(MemberManageMessage.HIDE_OK, name)
                 else -> MemberManageEvent(MemberManageMessage.UNHIDE_OK, name)
-            }
-        }
+            },
+        )
     }
-
-    fun clearEvent() = _event.update { null }
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

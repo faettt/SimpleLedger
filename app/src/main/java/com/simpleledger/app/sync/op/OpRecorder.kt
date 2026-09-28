@@ -101,8 +101,9 @@ class OpRecorder(
      * 记回收站动作（TRASH_ACT）。返回 TRASH_ACT 操作 opId。
      *
      * `action = RESTORE` 且带 [restoreSnapshot] 时，**同事务**补记回插 UPSERT
-     * （原 syncId、`seq = maxSeqOf + 1`、`baseSeq = maxSeqOf`——串行回插，§3.5-8-4，
-     * 被覆盖的现版本不留底）；行投影由调用方随后 `OpApplier.materializeRow` 重算。
+     * （原 syncId、`seq = max(MAX(seq), 该行全部 DELETE.baseSeq 的最大值) + 1`、
+     * `baseSeq = maxSeq`——串行回插，§3.5-8-4 + U-13，被覆盖的现版本不留底）；
+     * 行投影由调用方随后 `OpApplier.materializeRow` 重算。
      *
      * `action = PURGE` 用于彻底删除与「4 秒撤销」撤下刚产生的留底（§3.8）。
      * 条目 `resolved` 状态同步推进（RESTORE→RESTORED / PURGE→PURGED）。
@@ -130,7 +131,24 @@ class OpRecorder(
 
         if (action == TrashAction.RESTORE && restoreSnapshot != null && trash != null) {
             val targetKind = RowKind.fromValue(trash.rowKind)
-            val maxSeq = syncDao.maxSeqOf(trash.rowKind, trash.rowSyncId)
+            // U-13：回插 seq 不能只看 MAX(seq)。v4 迁移/种子行的 versionSeq = 0（存量导出
+            // 即以 seq = 0 声明存在）。缺陷史：其 DELETE 的 baseSeq 曾被写路径
+            // `coerceAtLeast(1L)` 伪抬成 1（该 coerce 已在 data/repo 收口时移除，DELETE
+            // 现携真实 versionSeq），行内 MAX(seq) 却仍 = 0——若回插 seq = 1，则
+            // observed(1, 1) = true，回插 UPSERT 落在该 DELETE 的观察范围内被 OpMerge
+            // 判死（live = ∅ → removeRow），而此时留底已翻 RESTORED：恢复静默失败且
+            // 内容处处不可见。
+            // 口径：seq = max(MAX(seq), 该行全部 DELETE.baseSeq 的最大值) + 1——回插必须
+            // 严格晚于删除所「声称观察到」的最高版本，保证 observed(baseSeq, seq) 恒 false；
+            // 正常路径 DELETE.baseSeq ≤ MAX(seq)，此 max 不改变既有行为。
+            val ops = syncDao.opsOfRow(trash.rowKind, trash.rowSyncId)
+            val maxSeq = maxOf(
+                ops.maxOfOrNull { it.seq } ?: 0L,
+                ops.filter { it.opType == OpType.DELETE.value }
+                    .mapNotNull { it.baseSeq }
+                    .maxOrNull()
+                    ?: 0L,
+            )
             val restoreOp = SyncOp(
                 opId = newOpId(),
                 rowKind = targetKind,
@@ -138,7 +156,7 @@ class OpRecorder(
                 opType = OpType.UPSERT,
                 actorId = actorIdOf(),
                 memberId = memberIdOf(),
-                seq = (maxSeq ?: 0L) + 1,
+                seq = maxSeq + 1,
                 baseSeq = maxSeq, // 串行覆盖：观察到当前 max 版本 ⇒ 不产生 OVERWRITE 留底
                 payload = restoreSnapshot,
                 createdAt = now,

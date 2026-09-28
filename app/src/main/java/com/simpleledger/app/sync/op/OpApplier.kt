@@ -492,7 +492,15 @@ class OpApplier(
      * 幂等：判据不满足的 hash 多次传入无副作用。
      */
     suspend fun releaseRetainedPhotos(rows: List<ConflictTrashEntity>) {
-        val hashes = TrashAggregation.imageHashesOf(rows)
+        releasePhotoHashes(TrashAggregation.imageHashesOf(rows))
+    }
+
+    /**
+     * U-17：按 contentHash 的释放端口转发。AppContainer 给 [com.simpleledger.app.sync.SyncManager]
+     * 的 R-21 到期清理接线复用本入口，与生产判据（[photoRelease]）单一真源；
+     * 幂等同 [releaseRetainedPhotos]：判据不满足的 hash 多次传入无副作用。
+     */
+    suspend fun releasePhotoHashes(hashes: Set<String>) {
         if (hashes.isNotEmpty()) photoRelease(hashes)
     }
 

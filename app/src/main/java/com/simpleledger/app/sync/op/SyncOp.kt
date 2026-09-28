@@ -37,7 +37,7 @@ enum class RowKind(val value: String) {
     companion object {
         fun fromValue(value: String): RowKind =
             entries.firstOrNull { it.value == value }
-                ?: error("未知 rowKind: $value")
+                ?: throw UnknownOpEnumException("未知 rowKind: $value")
     }
 }
 
@@ -51,9 +51,20 @@ enum class OpType(val value: String) {
     companion object {
         fun fromValue(value: String): OpType =
             entries.firstOrNull { it.value == value }
-                ?: error("未知 opType: $value")
+                ?: throw UnknownOpEnumException("未知 opType: $value")
     }
 }
+
+/**
+ * 分片解码遇到本版本不认识的 rowKind/opType（U-7 判据收录，原 `error()` 裸抛
+ * `IllegalStateException` 会穿透隔离判据使整轮同步永久失败）。
+ *
+ * 密文已通过 GCM 认证（内容确实出自某个同步端），只是枚举值更新——典型成因是
+ * 版本偏斜（新版 App 先写了新枚举，§7-5 的字段演进路径）或编码器 bug。属**确定性
+ * 内容损坏**：该分片重拉多少次都一样，必须进 U-7 计数/隔离，不得拖死整轮。
+ * 继承 [IllegalStateException] 保持既有 catch 语义（如事务回滚测试）不变。
+ */
+class UnknownOpEnumException(message: String) : IllegalStateException(message)
 
 /** 回收站动作（TRASH_ACT 载荷的 `action` 字段） */
 object TrashAction {

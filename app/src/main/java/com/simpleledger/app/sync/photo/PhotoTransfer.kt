@@ -111,7 +111,15 @@ class PhotoTransfer(
         var paused = false
 
         for (hash in refs.contentHashes().filter { it.isNotEmpty() }.distinct()) {
-            val local = photos.readBytes(hash)
+            var local = photos.readBytes(hash)
+            if (local != null && sha256Hex(local) != hash) {
+                // U-16：本地字节与内容寻址哈希不符 = 进程中途死亡留下的截断坏文件
+                // （写路径已原子化，此处兼容存量坏文件）。坏文件**不照传不记台账**——
+                // 照传会让对端每轮下载必抛 Corrupted、整轮同步永久失败无自愈。
+                // 视同缺失走下行分支：云端有权威副本即原子覆写自愈；云端也没有则跳过
+                // （字节本地已损坏，失败轮循环只会拖死全部同步）。
+                local = null
+            }
             if (local != null) {
                 // ---- 上行：本地有文件 → 确保云端有 ----
                 val name = remote.photoRemoteName(hash)
@@ -231,7 +239,19 @@ class FilePhotoStore(private val pathForHash: (String) -> String) : PhotoStore {
     override fun writeBytes(contentHash: String, bytes: ByteArray) {
         val file = fileOf(contentHash)
         file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        // U-16：先写临时文件再 rename 原子替换。直写在中途死亡（Worker 后台被杀是常态）
+        // 会留下内容截断的坏哈希文件，而本类上行路径此前不校验本地哈希，坏文件照传记台账
+        // 后对端每轮下载必抛 Corrupted——temp+rename 保证 filesDir 里永远只有完整文件。
+        // rename 失败（异常文件系统）直接抛错走整轮失败重试，与写入失败同语义，不退回直写。
+        val tmp = File(file.parentFile, "${file.name}.tmp${System.nanoTime()}")
+        try {
+            tmp.writeBytes(bytes)
+            if (!tmp.renameTo(file)) {
+                throw java.io.IOException("照片原子替换失败：${file.name}")
+            }
+        } finally {
+            if (tmp.exists()) tmp.delete()
+        }
     }
 
     override fun pathForHash(contentHash: String): String = pathForHash.invoke(contentHash)

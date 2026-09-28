@@ -16,13 +16,11 @@ import com.simpleledger.app.sync.SyncManager
 import com.simpleledger.app.sync.account.SyncPrefs
 import com.simpleledger.app.sync.op.OpApplier
 import com.simpleledger.app.sync.op.OpRecorder
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -103,8 +101,13 @@ class ConflictTrashViewModel(
             .map { list -> aggregate(list) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _message = MutableStateFlow<TrashEvent?>(null)
-    val message: StateFlow<TrashEvent?> = _message.asStateFlow()
+    /**
+     * 一次性提示通道（U-18）：StateFlow 承载会合并吞掉同值提示（如连续两次恢复失败）、
+     * 展示中离页回页还会重放；Channel「接收即消费」两症皆除（机制与缺陷说明见
+     * [UiEventChannel]）。页面单消费者：LaunchedEffect for 循环。
+     */
+    private val messageBus = UiEventChannel<TrashEvent>()
+    val messages: ReceiveChannel<TrashEvent> = messageBus.events
 
     init {
         // R-21 自动清理：90 天前留底全部清除（无论 resolved 状态），不影响正常账目；
@@ -122,7 +125,7 @@ class ConflictTrashViewModel(
     /** 恢复：整包恢复（包头 + 成员账目 + 贴图按分层序逐行回插），单笔带死分区兜底 */
     fun restore(deleteOpId: String) = viewModelScope.launch {
         val group = findGroup(deleteOpId) ?: run {
-            _message.update { TrashEvent(TrashMessage.OP_FAILED) }
+            messageBus.send(TrashEvent(TrashMessage.OP_FAILED))
             return@launch
         }
         // rows 已按恢复顺序（SECTION → ENTRY → IMAGE）排好：分区先回来，
@@ -132,7 +135,7 @@ class ConflictTrashViewModel(
                 .getOrDefault(false)
         }
         if (!allOk) {
-            _message.update { TrashEvent(TrashMessage.OP_FAILED) }
+            messageBus.send(TrashEvent(TrashMessage.OP_FAILED))
             return@launch
         }
         // A1 单笔兜底：原分区已死（恢复后仍挂 0 占位）→ 迁到存活分区排序最前的一个
@@ -144,24 +147,24 @@ class ConflictTrashViewModel(
             }.getOrNull()
             if (rehomeId != null) {
                 val sectionName = runCatching { sectionDao.getById(rehomeId)?.name }.getOrNull() ?: ""
-                _message.update { TrashEvent(TrashMessage.RESTORE_REHOME, sectionName) }
+                messageBus.send(TrashEvent(TrashMessage.RESTORE_REHOME, sectionName))
                 return@launch
             }
         }
-        _message.update { TrashEvent(TrashMessage.RESTORE_OK) }
+        messageBus.send(TrashEvent(TrashMessage.RESTORE_OK))
     }
 
     /** 彻底删除：整包逐行 TRASH_ACT(PURGE)；逐行触发照片释放判据（A2） */
     fun purge(deleteOpId: String) = viewModelScope.launch {
         val group = findGroup(deleteOpId) ?: run {
-            _message.update { TrashEvent(TrashMessage.OP_FAILED) }
+            messageBus.send(TrashEvent(TrashMessage.OP_FAILED))
             return@launch
         }
         val allOk = group.rows.all { row ->
             runCatching { opApplier.purgeTrashEntry(opRecorder, row.deleteOpId) }
                 .getOrDefault(false)
         }
-        _message.update { TrashEvent(if (allOk) TrashMessage.PURGE_OK else TrashMessage.OP_FAILED) }
+        messageBus.send(TrashEvent(if (allOk) TrashMessage.PURGE_OK else TrashMessage.OP_FAILED))
     }
 
     /** 手动清空：逐条走 purge（每条记 TRASH_ACT，其余设备同步隐藏） */
@@ -171,10 +174,8 @@ class ConflictTrashViewModel(
             runCatching { opApplier.purgeTrashEntry(opRecorder, entry.deleteOpId) }
                 .getOrDefault(false)
         }
-        _message.update { TrashEvent(if (allOk) TrashMessage.CLEAR_OK else TrashMessage.OP_FAILED) }
+        messageBus.send(TrashEvent(if (allOk) TrashMessage.CLEAR_OK else TrashMessage.OP_FAILED))
     }
-
-    fun clearMessage() = _message.update { null }
 
     // ------------------------------------------------------------------ 聚合与投影
 

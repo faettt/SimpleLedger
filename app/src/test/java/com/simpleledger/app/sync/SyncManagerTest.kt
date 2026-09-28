@@ -1,7 +1,9 @@
 package com.simpleledger.app.sync
 
 import com.simpleledger.app.data.local.entity.SectionEntity
+import com.simpleledger.app.data.local.entity.ConflictTrashEntity
 import com.simpleledger.app.data.local.entity.MemberEntity
+import com.simpleledger.app.data.local.entity.SyncOpEntity
 import com.simpleledger.app.sync.account.WebDavCred
 import com.simpleledger.app.sync.account.WebDavCredIssue
 import com.simpleledger.app.sync.crypto.KdfParams
@@ -9,12 +11,17 @@ import com.simpleledger.app.sync.crypto.SyncCrypto
 import com.simpleledger.app.sync.crypto.SyncKeys
 import com.simpleledger.app.sync.dav.MiniWebDavClient
 import com.simpleledger.app.sync.dav.WebDavRemote
+import com.simpleledger.app.sync.op.OpApplier
+import com.simpleledger.app.sync.op.OpCodec
 import com.simpleledger.app.sync.op.OpRecorder
+import com.simpleledger.app.sync.op.OpType
 import com.simpleledger.app.sync.op.RowKind
+import com.simpleledger.app.sync.op.SyncOp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -254,6 +261,146 @@ class SyncManagerTest {
         assertEquals(2, fx.dao.memberTable.size)
     }
 
+    // ------------------------------------------------------------ U-12：裁剪后再同步仍收敛
+
+    @Test
+    fun afterTrimNextSyncRoundStillConverges() = runBlocking {
+        val fx = fixture()
+        val dao = fx.dao
+        // 行 X（账目）：v1 老·非胜者、v2 老·胜者；S1（分区）胜者；C2（分类）到过已死（UPSERT + DELETE）
+        dao.insertOp(op("s1", rowKind = RowKind.SECTION.value, rowSyncId = "S1", createdAt = 1_000L))
+        dao.insertOp(op("x-v1", seq = 1L, createdAt = 1_000L))
+        dao.insertOp(op("x-v2", seq = 2L, createdAt = 2_000L))
+        dao.insertOp(op("c2-up", rowKind = RowKind.CATEGORY.value, rowSyncId = "C2", createdAt = 1_500L))
+        dao.insertOp(
+            op(
+                "c2-del", rowKind = RowKind.CATEGORY.value, rowSyncId = "C2", opType = "DELETE",
+                seq = 0L, baseSeq = 1L, createdAt = 1_600L,
+            ),
+        )
+
+        // 第一轮：成功收尾裁掉 x-v1，其余全部保底
+        val first = fx.manager.syncNow(SyncTrigger.MANUAL)
+        assertTrue(first.success)
+        assertNull("老非胜者已被裁", dao.getOp("x-v1"))
+        assertNotNull("行胜者保底", dao.getOp("x-v2"))
+        assertNotNull("DELETE 永不裁", dao.getOp("c2-del"))
+        assertNotNull("C2 胜者保底（引用判定依据）", dao.getOp("c2-up"))
+        assertNotNull("S1 胜者保底", dao.getOp("s1"))
+        assertTrue("裁剪后 C2 操作全集不空（引用三分判据）", dao.countOpsOfRow(RowKind.CATEGORY.value, "C2") > 0)
+
+        // 裁剪后 Lamport 连续：maxSeqOf 仍取保留胜者的 seq，本地编辑接着 v2 记账
+        assertEquals(2L, dao.maxSeqOf(RowKind.ENTRY.value, "X"))
+        val recorder = OpRecorder(dao, { "dev-test" }, { null })
+        val editOpId = recorder.onUpsert(
+            rowKind = RowKind.ENTRY,
+            rowSyncId = "X",
+            seq = 3L,
+            baseSeq = 2L,
+            snapshot = JSONObject("""{"amountCents":400}"""),
+        )
+        assertNotNull("裁剪后本地新操作照常落账", dao.getOp(editOpId))
+
+        // 引用三分判定（裁剪后仍有效）：远端 ENTRY 引用「到过已死」的 C2 → 0 占位而非永久挂起
+        val store = FakeRowStore(dao)
+        store.rows[RowKind.SECTION to "S1"] = FakeRowStore.FakeRow(
+            kind = RowKind.SECTION,
+            syncId = "S1",
+            versionSeq = 1L,
+            payload = OpCodec.sectionSnapshot("生活", 1, "", 0, 0, 0, 1_000L),
+        )
+        val applier = OpApplier(dao, store, FakeTx(listOf(dao, store)))
+        val remoteEntry = SyncOp(
+            opId = "remote-e1",
+            rowKind = RowKind.ENTRY,
+            rowSyncId = "E1",
+            opType = OpType.UPSERT,
+            actorId = "B",
+            memberId = null,
+            seq = 1L,
+            baseSeq = null,
+            payload = OpCodec.entrySnapshot(
+                type = 0, amountCents = 500, categorySyncId = "C2", sectionSyncId = "S1",
+                entryTime = 1_000L, note = "引用死分类", reconciled = false, reimburseState = 0,
+                createdAt = 1_000L, updatedAt = 1_000L, memberSyncId = null,
+            ),
+            createdAt = 1_000L,
+        )
+        val applied = applier.applyRemote(listOf(remoteEntry))
+        assertEquals("引用死分类应占位落库而非挂起", 0, applied.deferred)
+        assertEquals(
+            "死分类引用按 0 占位（与 RoomRowStore 口径一致）",
+            "0",
+            store.rows[RowKind.ENTRY to "E1"]?.payload?.optString("categorySyncId"),
+        )
+
+        // 第二轮同步（裁剪后）：正常收敛——成功、零挂起；被新胜者取代的 x-v2 按规则变为可裁
+        val second = fx.manager.syncNow(SyncTrigger.MANUAL)
+        assertTrue("裁剪后下一轮同步正常", second.success)
+        assertEquals(0, dao.countDeferredOps())
+        assertNull("x-v2 已被 edit 串行取代成非胜者，按规则让裁（正确性论证仍覆盖：< 胜者 edit）", dao.getOp("x-v2"))
+        assertNotNull("本地编辑（行胜者）保留", dao.getOp(editOpId))
+        assertNotNull("远端新操作保留（本行胜者）", dao.getOp("remote-e1"))
+        assertNotNull("上一轮保底的 DELETE 仍在", dao.getOp("c2-del"))
+        assertEquals("日志余量精确：s1 + edit + c2-up + c2-del + remote-e1", 5, dao.opLog.size)
+    }
+
+    // ------------------------------------------------------------ U-17：R-21 到期清理释放照片
+
+    /**
+     * U-17 回归：syncNow 收尾的 R-21 到期清理必须与回收站页**三步同口径**——
+     * listTrashBefore 取到期行 → purgeTrashBefore → 按到期 IMAGE 快照的 contentHash
+     * 释放实体照片文件。旧实现只 purge：30 分钟周期同步几乎总先于用户进回收站页，
+     * 被清留底是照片文件挂起期的唯一引用方，从此再无任何路径释放 ⇒ filesDir/images
+     * 永久累积孤儿文件。
+     */
+    @Test
+    fun syncNowPurgeReleasesExpiringTrashPhotos() = runBlocking {
+        val fx = fixture()
+        val dao = fx.dao
+        val expiredHash = "a".repeat(64)
+        val freshHash = "b".repeat(64)
+        val now = System.currentTimeMillis()
+        // 到期留底（IMAGE 快照携带 contentHash）+ 未到期留底 + 到期但非 IMAGE 的散条
+        dao.insertTrash(
+            ConflictTrashEntity(
+                deleteOpId = "old-img-del", rowKind = "IMAGE", rowSyncId = "img-1",
+                snapshot = OpCodec.imageSnapshot("e-9", expiredHash, 0).toString(),
+                deletedAt = 1L, deletedByMemberId = null,
+            ),
+        )
+        dao.insertTrash(
+            ConflictTrashEntity(
+                deleteOpId = "fresh-img-del", rowKind = "IMAGE", rowSyncId = "img-2",
+                snapshot = OpCodec.imageSnapshot("e-9", freshHash, 0).toString(),
+                deletedAt = now, deletedByMemberId = null,
+            ),
+        )
+        dao.insertTrash(
+            ConflictTrashEntity(
+                deleteOpId = "old-entry-del", rowKind = "ENTRY", rowSyncId = "e-8",
+                snapshot = OpCodec.entrySnapshot(
+                    type = 0, amountCents = 100, categorySyncId = "c", sectionSyncId = "s",
+                    entryTime = 1L, note = "", reconciled = false, reimburseState = 0,
+                    createdAt = 1L, updatedAt = 1L, memberSyncId = null,
+                ).toString(),
+                deletedAt = 1L, deletedByMemberId = null,
+            ),
+        )
+
+        val outcome = fx.manager.syncNow(SyncTrigger.MANUAL)
+
+        assertTrue(outcome.success)
+        assertNull("到期留底已被清", dao.getTrash("old-img-del"))
+        assertNull("到期留底（非 IMAGE 散条）同样被清", dao.getTrash("old-entry-del"))
+        assertNotNull("未到期留底保留", dao.getTrash("fresh-img-del"))
+        assertEquals(
+            "释放集合 = 到期 IMAGE 快照引用的 contentHash（不含未到期/非照片行）",
+            listOf(setOf(expiredHash)),
+            fx.releasedHashes,
+        )
+    }
+
     // ------------------------------------------------------------ 夹具
 
     /** manager 一体机：引擎/账户/导出注假件，DAV/远端走真实实现（对 MiniDavServer） */
@@ -264,6 +411,7 @@ class SyncManagerTest {
         val exporter: FakeInitialExporter,
         val engine: FakeSyncRunner,
         val manager: SyncManager,
+        val releasedHashes: MutableList<Set<String>>,
     )
 
     private fun fixture(exportCount: Int = 0): Fixture {
@@ -287,6 +435,7 @@ class SyncManagerTest {
         val remoteFactory: (WebDavCred, SyncKeys, KdfParams) -> WebDavRemote = { cred, k, params ->
             WebDavRemote(davFactory(cred), k, params, workDir)
         }
+        val releasedHashes = mutableListOf<Set<String>>()
         val manager = SyncManager(
             engine = engine,
             store = store,
@@ -299,14 +448,43 @@ class SyncManagerTest {
             davFactory = davFactory,
             remoteFactory = remoteFactory,
             scope = CoroutineScope(Dispatchers.Unconfined),
+            photoRelease = { releasedHashes.add(it) }, // U-17：记录释放的 contentHash 集合
         )
-        return Fixture(store, account, dao, exporter, engine, manager)
+        return Fixture(store, account, dao, exporter, engine, manager, releasedHashes)
     }
 
     private fun cred(): WebDavCred = WebDavCred(
         baseUrl = server.baseUrl,
         username = "user",
         appPassword = "app-pass",
+    )
+
+    /** U-12 裁剪用例的操作行工厂（默认 = 老已传已应用的 ENTRY UPSERT；口径同 OpTrimTest） */
+    private fun op(
+        opId: String,
+        rowKind: String = RowKind.ENTRY.value,
+        rowSyncId: String = "X",
+        opType: String = "UPSERT",
+        seq: Long = 1L,
+        baseSeq: Long? = null,
+        createdAt: Long,
+        uploaded: Boolean = true,
+        applied: Boolean = true,
+    ) = SyncOpEntity(
+        opId = opId,
+        rowKind = rowKind,
+        rowSyncId = rowSyncId,
+        opType = opType,
+        actorId = "A",
+        memberId = null,
+        seq = seq,
+        baseSeq = baseSeq,
+        payload = "{}",
+        origin = "LOCAL",
+        applied = applied,
+        uploaded = uploaded,
+        chunkName = null,
+        createdAt = createdAt,
     )
 
     private fun exportSection(syncId: String, name: String) = SectionEntity(

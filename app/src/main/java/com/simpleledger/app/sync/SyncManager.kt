@@ -2,6 +2,8 @@ package com.simpleledger.app.sync
 
 import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.data.local.entity.MemberEntity
+import com.simpleledger.app.logic.OpTrimRules
+import com.simpleledger.app.logic.TrashAggregation
 import com.simpleledger.app.sync.account.AccountStore
 import com.simpleledger.app.sync.account.SyncPrefs
 import com.simpleledger.app.sync.account.WebDavCred
@@ -92,6 +94,14 @@ class SyncManager(
     private val davFactory: (WebDavCred) -> MiniWebDavClient,
     private val remoteFactory: (WebDavCred, SyncKeys, KdfParams) -> WebDavRemote,
     private val scope: CoroutineScope,
+    /**
+     * U-17：R-21 到期清理的照片实体文件释放端口（contentHash 集合 → 按 [PhotoRetention]
+     * 判据物理删文件）。生产装配（AppContainer，本批次范围外）应传与
+     * `OpApplier.photoRelease` 同判据的实现（业务引用 + 剩余可见留底引用双归零才删）；
+     * 默认空实现（JVM 测试注入记录器）。⚠️ 生产未接线前，到期清理只删留底行、
+     * 不释放照片文件（孤儿文件照旧累积）。
+     */
+    private val photoRelease: suspend (Set<String>) -> Unit = {},
 ) {
 
     /** 角标状态（U-4 四态）；T-5 `SyncStatusBadge` 订阅 */
@@ -123,11 +133,80 @@ class SyncManager(
         val outcome = runCatching { engine.syncOnce(trigger) }
             .getOrElse { SyncOutcome(success = false, error = SyncError.fromName(DavErrors.toSyncErrorName(it))) }
         // R-21 自动清理：同步收尾顺手清 90 天前的删除留底（失败不影响同步结果；
-        // 与 ConflictTrashViewModel.init 的进页清理互为双挂——不进回收站页也会到期清理）
+        // 与 ConflictTrashViewModel.init 的进页清理互为双挂——不进回收站页也会到期清理）。
+        // U-17：必须与回收站页**三步同口径**——先 listTrashBefore 取到期行、purge 后按
+        // IMAGE 快照的 contentHash 调 [photoRelease] 释放实体文件。留底是 A2 照片挂起
+        // 期间其文件的唯一引用方，30 分钟周期同步几乎总先于用户进回收站页执行：只 purge
+        // 不释放，这批 contentHash 从此没有任何代码路径再覆盖，照片文件在 filesDir/images
+        // 永久累积为孤儿（纯磁盘泄漏，无数据丢失）。
         runCatching {
-            syncDao.purgeTrashBefore(System.currentTimeMillis() - TRASH_RETENTION_MILLIS)
+            val cutoff = System.currentTimeMillis() - TRASH_RETENTION_MILLIS
+            val expiring = syncDao.listTrashBefore(cutoff)
+            syncDao.purgeTrashBefore(cutoff)
+            if (expiring.isNotEmpty()) {
+                photoRelease(TrashAggregation.imageHashesOf(expiring))
+            }
+        }
+        // U-12 操作日志裁剪：与回收站清理并列的成功收尾（失败不影响同步结果）；
+        // 失败 / 跳过轮不裁——裁剪只建立在「本轮账已对齐」的前提上
+        if (outcome.success && !outcome.skipped) {
+            runCatching {
+                val trimmed = trimOps()
+                if (trimmed > 0) println("[SyncManager] trimOps removed $trimmed old ops")
+            }
         }
         return outcome
+    }
+
+    /**
+     * U-12 操作日志裁剪（syncNow 成功收尾）：分批删除「非 outbox（已上传 / REMOTE）+
+     * 已应用 + 超过保留期（对齐 R-21 的 90 天）」的历史 UPSERT。正确性论证见
+     * `logic/OpTrimRules`（每行保留全序最大 UPSERT + 全部 DELETE，引用判定与未来合并
+     * 收敛不受影响）。每轮最多 [TRIM_MAX_BATCHES] 批，防大库首轮裁剪拖长单轮同步。
+     *
+     * 为什么「读每行胜者 + 分批删候选」必须包在**一个事务**里：单飞锁只护
+     * engine.syncOnce，本收尾在其释放后执行——若允许另一轮 syncOnce 的 OpApplier
+     * 并发落账，一条 createdAt 已超保留期的**迟到 REMOTE 操作**可能恰好成为某行新的
+     * 全序胜者，它在旧胜者快照里没有保底，会被下一批候选误删；而其所在云端分片已按
+     * `sync_remote_files` 游标标记已下载、**再不会被重拉** ⇒ 与未裁设备永久分歧。
+     * 单事务对其他写者原子（SQLite 单写者串行）：并发轮要么整体先落账（胜者快照已含它），
+     * 要么整体后落账（本轮不可见、下轮重算胜者后保底），竞态即消除。
+     */
+    private suspend fun trimOps(): Int {
+        return tx.runInTransaction {
+            val cutoff = System.currentTimeMillis() - TRASH_RETENTION_MILLIS
+            val winners = syncDao.latestUpsertPerRow().map {
+                OpTrimRules.RowWinner(it.rowKind, it.rowSyncId, it.winnerKey)
+            }
+            var removedTotal = 0
+            var batches = 0
+            while (batches < TRIM_MAX_BATCHES) {
+                val doomed = OpTrimRules.trimmableOpIds(
+                    candidates = syncDao.trimCandidates(cutoff).map {
+                        OpTrimRules.OpRow(
+                            opId = it.opId,
+                            rowKind = it.rowKind,
+                            rowSyncId = it.rowSyncId,
+                            opType = it.opType,
+                            seq = it.seq,
+                            actorId = it.actorId,
+                            origin = it.origin,
+                            uploaded = it.uploaded,
+                            applied = it.applied,
+                            createdAt = it.createdAt,
+                        )
+                    },
+                    winners = winners,
+                    cutoffMillis = cutoff,
+                )
+                if (doomed.isEmpty()) break
+                val batch = doomed.take(TRIM_BATCH_SIZE).toList()
+                removedTotal += syncDao.deleteOpsByIds(batch)
+                batches++
+                if (batch.size < TRIM_BATCH_SIZE) break // 不足一批 = 已清空
+            }
+            removedTotal
+        }
     }
 
     /** R-01 连通性测试：PROPFIND WebDAV 根（只读探针，不建目录不写数据） */
@@ -289,6 +368,13 @@ class SyncManager(
     fun isConfigured(): Boolean = account.load() != null && store.loadKeys() != null
 
     /**
+     * U-7 状态详情取数：当前被隔离的损坏分片数（0 = 无）。
+     * 隔离不挡其余同步（角标仍是成功口径），内容缺失在状态详情明说——
+     * 「立即同步」会重试被隔离分片，重置同步清空记录。
+     */
+    fun quarantinedChunkCount(): Int = store.quarantinedChunks().size
+
+    /**
      * U-1：Argon2id 派生并记录耗时（验收要求留档）。
      * 用 println 而非 android.util.Log —— JVM 单测里 Log 会 not mocked，
      * println 在 Android 落 Logcat、在 JVM 无副作用。
@@ -309,6 +395,12 @@ class SyncManager(
 
         /** 回收站留底保留期：90 天（R-21 自动清理判据，双挂在 syncNow 收尾 + 回收站 VM） */
         const val TRASH_RETENTION_MILLIS = 90L * 24 * 60 * 60 * 1000
+
+        /** U-12 操作日志裁剪：单批删除条数 */
+        const val TRIM_BATCH_SIZE = 500
+
+        /** U-12 操作日志裁剪：单轮 syncNow 最多批数（防大库首轮拖长同步） */
+        const val TRIM_MAX_BATCHES = 20
 
         private const val SALT_BYTES = 16
 

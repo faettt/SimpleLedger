@@ -12,6 +12,8 @@ import com.simpleledger.app.data.local.entity.RemoteFileKind
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.entity.SyncOpEntity
 import com.simpleledger.app.data.local.entity.TrashResolved
+import com.simpleledger.app.data.local.dao.RowWinnerProjection
+import com.simpleledger.app.logic.OpTrimRules
 import com.simpleledger.app.sync.account.AccountStore
 import com.simpleledger.app.sync.account.WebDavCred
 import com.simpleledger.app.sync.crypto.KdfParams
@@ -254,6 +256,34 @@ internal class FakeSyncDao : SyncDao, Snapshottable {
     }
 
     override suspend fun countRowsWithSyncId(syncId: String): Int = 0
+
+    // —— U-12 操作日志裁剪（内存实现，口径与 SyncDao SQL 逐条对齐）——
+
+    override suspend fun trimCandidates(cutoffMillis: Long): List<SyncOpEntity> =
+        opLog.values.filter {
+            (it.uploaded || it.origin == "REMOTE") && it.applied &&
+                it.createdAt < cutoffMillis && it.opType == "UPSERT" && it.rowKind != "TRASH"
+        }.sortedWith(compareBy({ it.createdAt }, { it.opId }))
+
+    // 与 SyncDao.latestUpsertPerRow 同口径（按 (seq, actorId, opId) 全序取最大）；
+    // SQL 侧语义由 SyncDaoLatestUpsertSqlTest 用真实 SQLite + 生产建表语句钉死。
+    override suspend fun latestUpsertPerRow(): List<RowWinnerProjection> =
+        opLog.values.filter { it.opType == "UPSERT" }
+            .groupBy { it.rowKind to it.rowSyncId }
+            .map { (key, ops) ->
+                val winner = ops.maxWith(compareBy({ it.seq }, { it.actorId }, { it.opId }))
+                RowWinnerProjection(
+                    rowKind = key.first,
+                    rowSyncId = key.second,
+                    winnerKey = OpTrimRules.winnerKey(winner.seq, winner.actorId, winner.opId),
+                )
+            }
+
+    override suspend fun deleteOpsByIds(opIds: List<String>): Int {
+        var removed = 0
+        opIds.forEach { if (opLog.remove(it) != null) removed++ }
+        return removed
+    }
 
     private fun listVisibleTrashSync(): List<ConflictTrashEntity> =
         trashTable.values.filter { it.resolved == TrashResolved.VISIBLE }
@@ -511,6 +541,32 @@ internal class FakeSyncStore : SyncStore {
 
     override fun monthlyPhotoUsage(): Pair<Long, Long> = photoUp to photoDown
 
+    // —— U-7 损坏分片隔离（内存实现）——
+    private val chunkFailures = LinkedHashMap<String, Int>()
+    private val quarantined = LinkedHashSet<String>()
+
+    override fun recordChunkFailure(chunkName: String): Int {
+        val next = (chunkFailures[chunkName] ?: 0) + 1
+        chunkFailures[chunkName] = next
+        return next
+    }
+
+    override fun clearChunkFailure(chunkName: String) {
+        chunkFailures.remove(chunkName)
+    }
+
+    override fun chunkFailureCount(chunkName: String): Int = chunkFailures[chunkName] ?: 0
+
+    override fun quarantinedChunks(): Set<String> = quarantined.toSet()
+
+    override fun quarantineChunk(chunkName: String) {
+        quarantined.add(chunkName)
+    }
+
+    override fun clearQuarantinedChunk(chunkName: String) {
+        quarantined.remove(chunkName)
+    }
+
     override fun clearAll() {
         selfMemberId = null
         wifiOnlyPhotos = true
@@ -520,6 +576,8 @@ internal class FakeSyncStore : SyncStore {
         savedKdf = null
         photoUp = 0L
         photoDown = 0L
+        chunkFailures.clear()
+        quarantined.clear()
     }
 }
 

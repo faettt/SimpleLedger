@@ -48,6 +48,7 @@ import com.simpleledger.app.sync.SyncError
 import com.simpleledger.app.sync.SyncOutcome
 import com.simpleledger.app.sync.SyncState
 import com.simpleledger.app.sync.account.WebDavCredIssue
+import com.simpleledger.app.sync.account.isPlaintextHttp
 import com.simpleledger.app.sync.photo.PhotoTransfer
 import com.simpleledger.app.ui.WindowLayout
 import com.simpleledger.app.ui.components.ConfirmDialog
@@ -84,12 +85,20 @@ fun SyncSettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showPasswordHelp by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
+    var showInsecureHttpConfirm by remember { mutableStateOf(false) }
 
-    // 一次性事件 → 纸签（测试连接成功/失败、接入结果、同步结果、重置结果）
-    LaunchedEffect(state.event) {
-        val event = state.event ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(eventText(context, event))
-        viewModel.clearEvent()
+    // 一次性事件 → 纸签（测试连接成功/失败、接入结果、同步结果、重置结果）。
+    // U-18：事件走 Channel（接收即消费），for 循环逐个展示——同值连发不再被 StateFlow
+    // 合并吞掉；展示中途离开页面时事件已被取走，回页不再重放旧事件。
+    LaunchedEffect(Unit) {
+        for (event in viewModel.events) {
+            if (event is SyncEvent.InsecureHttpConfirm) {
+                // U-8：明文传输确认走弹窗（纸签承接不了「继续/取消」二选一）
+                showInsecureHttpConfirm = true
+                continue
+            }
+            snackbarHostState.showSnackbar(eventText(context, event))
+        }
     }
 
     Scaffold(
@@ -158,6 +167,16 @@ fun SyncSettingsScreen(
                     enabled = !state.configured && !state.busy,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 )
+                // U-8：明文传输警示（http 地址）。不硬禁——局域网自建合法，但必须知情；
+                // 接入/测连时另有一次性知情确认（InsecureHttpConfirm 弹窗）
+                if (isPlaintextHttp(state.baseUrl)) {
+                    Text(
+                        text = stringResource(R.string.sync_insecure_http_warn),
+                        style = SlType.bodySm.merge(SlStatus.warningSm),
+                        color = warnColor(),
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = state.username,
                     onValueChange = viewModel::setUsername,
@@ -327,6 +346,23 @@ fun SyncSettingsScreen(
             onDismiss = { showResetConfirm = false },
         )
     }
+
+    if (showInsecureHttpConfirm) {
+        // U-8：明文传输知情确认（ConfirmDialog 全 App 唯一确认语言；确认后本会话不再重复）
+        ConfirmDialog(
+            title = stringResource(R.string.sync_insecure_http_confirm_title),
+            text = stringResource(R.string.sync_insecure_http_confirm),
+            confirmLabel = stringResource(R.string.sync_insecure_http_continue),
+            onConfirm = {
+                showInsecureHttpConfirm = false
+                viewModel.confirmInsecureHttp()
+            },
+            onDismiss = {
+                showInsecureHttpConfirm = false
+                viewModel.cancelInsecureHttp()
+            },
+        )
+    }
 }
 
 /** U-5 状态详情纸片：四态角标 + 状态文字 + 上次同步 + 最近错误 + 本月照片流量 */
@@ -372,6 +408,16 @@ private fun StatusCard(syncState: SyncState, state: SyncSettingsUiState) {
         if (quotaWarn(state.monthlyUpBytes, state.monthlyDownBytes)) {
             Text(
                 text = stringResource(R.string.sync_quota_warn),
+                style = SlType.bodySm.merge(SlStatus.warningSm),
+                color = warnColor(),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        // U-7：损坏分片隔离透出（隔离不挡其余同步，但内容缺失必须明说非静默；
+        // 文案自带逃生口指引：「立即同步」重试 / 重置清除）
+        if (state.quarantinedChunks > 0) {
+            Text(
+                text = stringResource(R.string.sync_quarantined_chunks, state.quarantinedChunks),
                 style = SlType.bodySm.merge(SlStatus.warningSm),
                 color = warnColor(),
                 modifier = Modifier.padding(top = 4.dp),
@@ -451,6 +497,8 @@ private fun eventText(context: Context, event: SyncEvent): String = when (event)
     is SyncEvent.SyncDone -> outcomeText(context, event.outcome)
     SyncEvent.ResetDone -> context.getString(R.string.sync_reset_done)
     SyncEvent.ResetFailed -> context.getString(R.string.sync_reset_failed)
+    // U-8：知情确认走弹窗路径，永不以纸签呈现（此分支只为 when 穷尽）
+    SyncEvent.InsecureHttpConfirm -> ""
 }
 
 private fun outcomeText(context: Context, outcome: SyncOutcome): String = when {

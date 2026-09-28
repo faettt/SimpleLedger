@@ -101,4 +101,87 @@ class CategoryDeletePlanTest {
         assertNull(CategoryDeletePlan.resolveDestinationId(emptyList(), null))
         assertNull(CategoryDeletePlan.resolveDestinationId(emptyList(), 5L))
     }
+
+    // -------- AU-3：去向候选按受影响账目所在分区收窄 --------
+    // 「账目的分区 = X、分类只属于 Y」是非法组合（SectionMoveRules/EC-06）——
+    // 去向要服务**所有**受影响账目：全局恒合法；专属分类只有当全部受影响账目
+    // 都落在它的归属分区时才合法。
+
+    /** 装修(id=7) 专属分类 */
+    private fun exclusive(id: Long, name: String, sectionId: Long, sortOrder: Int) =
+        CategoryEntity(
+            id = id, name = name, iconId = 44,
+            type = EntryType.EXPENSE, sectionId = sectionId, sortOrder = sortOrder,
+        )
+
+    @Test
+    fun `exclusive candidates of other sections are filtered out`() {
+        val sameType = listOf(
+            cat(1, "餐饮", sortOrder = 0),                    // 全局
+            exclusive(2, "主材", sectionId = 7L, sortOrder = 1), // 装修专属
+            exclusive(3, "机票", sectionId = 8L, sortOrder = 2), // 旅行专属
+            sentinel(9),
+        )
+        // 受影响账目都在旅行(8)：装修专属「主材」非法，旅行专属「机票」合法；
+        // 全局「餐饮」任何分区都可见，恒合法（与本文件 AU-3 节注释口径一致）
+        val plan = CategoryDeletePlan.plan(sameType, targetId = 99L, affectedSectionIds = setOf(8L))
+        assertEquals(listOf(1L, 3L, 9L), plan.destinations.map { it.id })
+        assertEquals(9L, plan.defaultDestinationId)
+    }
+
+    @Test
+    fun `entries spanning two sections leave only global candidates`() {
+        val sameType = listOf(
+            cat(1, "餐饮", sortOrder = 0),
+            exclusive(2, "主材", sectionId = 7L, sortOrder = 1),
+            exclusive(3, "机票", sectionId = 8L, sortOrder = 2),
+            sentinel(9),
+        )
+        // 账目横跨装修+旅行：任何专属分类都服务不了全部账目 → 只剩全局 + 哨兵
+        val plan = CategoryDeletePlan.plan(sameType, targetId = 99L, affectedSectionIds = setOf(7L, 8L))
+        assertEquals(listOf(1L, 9L), plan.destinations.map { it.id })
+    }
+
+    @Test
+    fun `placeholder section 0 in affected set blocks all exclusive candidates`() {
+        val sameType = listOf(
+            cat(1, "餐饮", sortOrder = 0),
+            exclusive(2, "主材", sectionId = 7L, sortOrder = 1),
+            sentinel(9),
+        )
+        // 挂死分区（0 占位）的账目不可能合法挂任何专属分类
+        val plan = CategoryDeletePlan.plan(sameType, targetId = 99L, affectedSectionIds = setOf(0L))
+        assertEquals(listOf(1L, 9L), plan.destinations.map { it.id })
+    }
+
+    @Test
+    fun `null or empty affected set keeps legacy full candidates`() {
+        val sameType = listOf(
+            cat(1, "餐饮", sortOrder = 0),
+            exclusive(2, "主材", sectionId = 7L, sortOrder = 1),
+            sentinel(9),
+        )
+        // 无受影响账目（迁移不会发生）→ 不过滤，与旧口径一致
+        assertEquals(
+            listOf(1L, 2L, 9L),
+            CategoryDeletePlan.plan(sameType, targetId = 99L, affectedSectionIds = null)
+                .destinations.map { it.id },
+        )
+        assertEquals(
+            listOf(1L, 2L, 9L),
+            CategoryDeletePlan.plan(sameType, targetId = 99L, affectedSectionIds = emptySet())
+                .destinations.map { it.id },
+        )
+    }
+
+    @Test
+    fun `target itself stays excluded after narrowing`() {
+        val sameType = listOf(
+            exclusive(2, "主材", sectionId = 7L, sortOrder = 1),
+            sentinel(9),
+        )
+        // 收窄不该把被删分类自己放回候选（即便它按分区看似合法）
+        val plan = CategoryDeletePlan.plan(sameType, targetId = 2L, affectedSectionIds = setOf(7L))
+        assertEquals(listOf(9L), plan.destinations.map { it.id })
+    }
 }

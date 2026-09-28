@@ -83,6 +83,8 @@ data class SyncOutcome(
     val deferredOps: Int = 0,
     /** PHOTOS 阶段报告（Wi-Fi 门控 / 去重 / 续传，R-16/17/19/23） */
     val photo: PhotoSyncReport = PhotoSyncReport.EMPTY,
+    /** 本轮收尾时仍处隔离状态的损坏分片数（U-7：不挡其余同步，状态详情透出） */
+    val quarantinedChunks: Int = 0,
 ) {
     companion object {
         /** 未配置同步 / 单飞占用时的空跑结果 */
@@ -135,6 +137,30 @@ interface SyncStore {
 
     /** 本月照片流量读数 (上行, 下行) */
     fun monthlyPhotoUsage(): Pair<Long, Long>
+
+    // —— U-7 损坏分片隔离：连续解码失败计数 + 隔离名单 ——
+
+    /**
+     * 记一次分片拉取/解码失败，返回该分片**连续**失败次数。
+     * 计数而非首败即隔离：下载截断等偶发损坏表现与真损坏同形（GCM 认证失败），
+     * 达 [com.simpleledger.app.sync.SyncEngine.CHUNK_QUARANTINE_THRESHOLD] 才隔离。
+     */
+    fun recordChunkFailure(chunkName: String): Int
+
+    /** 分片成功解码：清零失败计数（隔离名单由引擎按手动重试口径另行维护） */
+    fun clearChunkFailure(chunkName: String)
+
+    /** 某分片当前连续失败次数 */
+    fun chunkFailureCount(chunkName: String): Int
+
+    /** 当前被隔离的分片名（连续失败达阈值；自动轮跳过回拉，手动「立即同步」重试） */
+    fun quarantinedChunks(): Set<String>
+
+    /** 把分片加入隔离名单 */
+    fun quarantineChunk(chunkName: String)
+
+    /** 解除某分片隔离（手动同步重试前调用；仍损坏则按计数当场重新隔离） */
+    fun clearQuarantinedChunk(chunkName: String)
 
     /** 重置同步（R-05）：清空全部同步侧状态（本地账本零触碰） */
     fun clearAll()

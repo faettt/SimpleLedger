@@ -11,14 +11,17 @@ import com.simpleledger.app.data.local.entity.RemoteFileKind
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.entity.SyncOpEntity
 import com.simpleledger.app.sync.dav.DavErrors
+import com.simpleledger.app.sync.dav.DavException
 import com.simpleledger.app.sync.dav.WebDavRemote
 import com.simpleledger.app.sync.dav.fileName
+import com.simpleledger.app.sync.crypto.SyncCryptoException
 import com.simpleledger.app.sync.op.OpApplier
 import com.simpleledger.app.sync.op.OpCodec
 import com.simpleledger.app.sync.op.OpType
 import com.simpleledger.app.sync.op.RowKind
 import com.simpleledger.app.sync.op.SyncOp
 import com.simpleledger.app.sync.op.TxRunner
+import com.simpleledger.app.sync.op.UnknownOpEnumException
 import com.simpleledger.app.sync.op.toModel
 import com.simpleledger.app.sync.photo.PhotoSyncReport
 import com.simpleledger.app.sync.photo.PhotoTransfer
@@ -27,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.security.MessageDigest
 
@@ -51,7 +55,9 @@ interface SyncRunner {
  *   同操作重复上传靠 opId `INSERT OR IGNORE` 折叠）；
  * - PULL：新分片**全部下载并 MERGE 成功后**才记台账 `downloadedAt`——
  *   任何一步失败都不留「已下载未应用」窗口，下轮整片重拉（幂等重放收敛一致）；
- * - MERGE：`OpApplier.applyRemote` 单事务，失败整体回滚（R-12）。
+ * - MERGE：`OpApplier.applyRemote` 单事务，失败整体回滚（R-12）；
+ * - PULL 遇**确定性损坏**的分片（密文解析/GCM 失败、明文非合法 JSON）：连续 3 次后隔离
+ *   跳过，不拖死整轮（U-7）；手动「立即同步」重试一次作逃生口，状态详情透出隔离数。
  *
  * 与 §3.7 签名的差异（缺口补齐，T-2/3 先例）：
  * - `remote: WebDavRemote` 改为 `remoteProvider: () -> WebDavRemote?`——setupAccount /
@@ -113,12 +119,36 @@ class SyncEngine(
             _state.value = SyncState.Syncing(SyncPhase.PULL_OPS)
             val pending = mutableListOf<SyncOp>()
             val fetched = mutableListOf<RemoteFileEntity>()
+            // U-7 损坏分片隔离：连续解码失败达阈值的分片本轮跳过（防坏分片拖死整轮、
+            // 同步永久卡死）。MANUAL 触发不跳——「立即同步」对被隔离分片重试一次（逃生口）：
+            // 先解除隔离，仍损坏则按计数当场重新隔离，其余分片不受影响。
+            val quarantined = store.quarantinedChunks()
+            val skipSet = if (trigger == SyncTrigger.MANUAL) emptySet() else quarantined
             for (res in remote.listRemote()) {
                 val name = res.fileName()
                 if (!name.endsWith(CHUNK_SUFFIX)) continue // 只认操作分片；照片/元文件另有归属
                 if (syncDao.getRemoteFile(name) != null) continue // 台账差集（增量游标）
-                val plain = remote.downloadChunk(name)
-                pending += OpCodec.decodeChunk(String(plain, Charsets.UTF_8))
+                if (name in skipSet) continue // U-7：隔离跳过；内容缺失经状态详情透出（非静默）
+                if (name in quarantined) store.clearQuarantinedChunk(name) // 手动重试：先解除再试
+                val plain = try {
+                    remote.downloadChunk(name)
+                } catch (t: Throwable) {
+                    // U-7：确定性内容损坏 → 计数/隔离后继续拉其余分片；
+                    // 瞬态错误（网络 / HTTP / 口令）照旧整轮失败（下轮重拉，语义不变）
+                    if (!t.isChunkCorruption()) throw t
+                    onChunkCorrupt(name, t)
+                    continue
+                }
+                val ops = try {
+                    OpCodec.decodeChunk(String(plain, Charsets.UTF_8))
+                } catch (t: Throwable) {
+                    // 同上：密文解开了但明文不是合法分片 JSON，同属确定性损坏（U-7）
+                    if (!t.isChunkCorruption()) throw t
+                    onChunkCorrupt(name, t)
+                    continue
+                }
+                store.clearChunkFailure(name) // U-7：成功即清零（截断下载等偶发损坏不积累）
+                pending += ops
                 fetched += RemoteFileEntity(
                     remoteName = name,
                     kind = RemoteFileKind.OP_CHUNK,
@@ -157,6 +187,7 @@ class SyncEngine(
                 appliedOps = appliedOps,
                 deferredOps = deferredOps,
                 photo = photoReport,
+                quarantinedChunks = store.quarantinedChunks().size,
             )
         } catch (t: Throwable) {
             // S6 静默收口：任何失败都不外抛，只落角标 + lastError；
@@ -177,6 +208,34 @@ class SyncEngine(
     }
 
     // ------------------------------------------------------------------ 内部
+
+    /**
+     * U-7：损坏计数 +1，达 [CHUNK_QUARANTINE_THRESHOLD] 进隔离名单。
+     * 坏分片只是载体、其内容从未被应用过——隔离的代价是该分片内容暂缺且
+     * 状态详情可见（非静默），收益是其余分片照常收敛、同步不再被拖死。
+     */
+    private fun onChunkCorrupt(name: String, t: Throwable) {
+        val failures = store.recordChunkFailure(name)
+        println("[SyncEngine] chunk $name corrupt (consecutive=$failures): ${t.message ?: t.javaClass.name}")
+        if (failures >= CHUNK_QUARANTINE_THRESHOLD) store.quarantineChunk(name)
+    }
+
+    /**
+     * U-7 隔离判据：只认**确定性**内容损坏（密文解析/GCM 认证失败、明文非合法分片 JSON、
+     * 解压失败、未知 rowKind/opType 枚举值）。网络中断、HTTP 错、口令错都是瞬态或全局性
+     * 错误，必须照旧整轮失败——尤其 BadPassword 隔离哪个分片都无意义（整个账本都解不开）。
+     *
+     * 判据补全（本轮）：GCM 认证保证随机损坏在解析前就被判 Corrupted，但**版本偏斜**
+     * （新版 App 写入新 RowKind/OpType，§7-5 字段演进路径）或编码器 bug 产出的分片能
+     * 顺利通过解密与 gzip，死在枚举解析（[UnknownOpEnumException]）或解压（已由
+     * SyncCrypto.open 归为 BadFormat）上——这类确定性损坏原先穿透判据，整轮永久失败、
+     * 永不计数隔离，正是 U-7 承诺消灭的「坏分片拖死同步」。
+     */
+    private fun Throwable.isChunkCorruption(): Boolean =
+        this is DavException.Corrupted ||
+            this is SyncCryptoException ||
+            this is JSONException ||
+            this is UnknownOpEnumException
 
     /** 初始角标由持久化状态推出（冷启动不闪 Never：上次失败 → 直接 Failed） */
     private fun initialState(): SyncState {
@@ -213,6 +272,12 @@ class SyncEngine(
 
         /** 操作分片文件后缀（§7-6：随机 32hex + ".op"） */
         const val CHUNK_SUFFIX = ".op"
+
+        /**
+         * U-7 分片隔离阈值：连续损坏次数达此值才隔离。计 3 次而非首败即隔离——
+         * 下载截断等偶发损坏与真损坏同形（GCM 认证失败），给重试留余地。
+         */
+        const val CHUNK_QUARANTINE_THRESHOLD = 3
     }
 }
 

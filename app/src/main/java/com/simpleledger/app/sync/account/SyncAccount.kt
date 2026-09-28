@@ -15,7 +15,14 @@ data class WebDavCred(
     val username: String,
     val appPassword: String,
 ) {
-    /** 校验不通过返回问题码（UI 映射文案）；null = 通过 */
+    /**
+     * 校验不通过返回问题码（UI 映射文案）；null = 通过。
+     *
+     * 明文传输（http）**不在校验拦截范围**（U-8 裁定）：局域网 NAS / 群晖等自建场景
+     * 合法，硬禁会误伤；但 Basic 认证凭据会明文上网（同步内容本身有 AES-GCM 加密，
+     * 认证没有）——该风险由 UI 层知情确认兜底（设置页警示 + 接入/测连前一次性确认，
+     * 见 `isPlaintextHttp` 与 `SyncSettingsViewModel.gateOnInsecureHttp`）。
+     */
     fun validate(): WebDavCredIssue? = when {
         baseUrl.isBlank() -> WebDavCredIssue.URL_EMPTY
         normalizedUrl() == null -> WebDavCredIssue.URL_INVALID
@@ -29,6 +36,25 @@ data class WebDavCred(
 
     private fun normalizedUrl(): HttpUrl? =
         baseUrl.trim().removeSuffix("/").plus("/").toHttpUrlOrNull()
+}
+
+/**
+ * U-8 明文传输判定：URL scheme 为 http（非 https）→ true。
+ *
+ * 纯函数（JVM 可测）：大小写不敏感、容忍首尾空白；空串 / 无 scheme / 畸形输入
+ * 一律 false——畸形 URL 的拦截是 [WebDavCred.validate] 的职责，这里只回答
+ * 「已解析出 http scheme 吗」。Basic 认证凭据在 http 下明文上网（内容加密不覆盖认证头），
+ * UI 层据此出警示与知情确认。
+ *
+ * U-14：判定必须与 [WebDavCred.validate]/`httpUrl()` **同源解析**（OkHttp 宽容解析）。
+ * 旧实现按 `"://"` 字面切 scheme，`"http:/host"`（少写一个斜杠）被误判为非 http；
+ * 但 OkHttp 会把缺斜杠 URL 正常解析为 http 明文连接——警示横幅与知情确认门全部
+ * Pass，Basic 凭证明文上网。现直接归一化解析后读 scheme：凡 OkHttp 认可的
+ * http URL（含缺斜杠宽容形态）一律判明文，判不出 http 的输入维持 false。
+ */
+fun isPlaintextHttp(url: String): Boolean {
+    val normalized = url.trim().removeSuffix("/").plus("/").toHttpUrlOrNull() ?: return false
+    return normalized.scheme == "http"
 }
 
 /** 凭证校验问题码（数据层不写死文案，UI 从 strings.xml 取） */

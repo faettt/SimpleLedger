@@ -4,6 +4,7 @@ import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -146,7 +147,8 @@ class SyncCrypto(private val random: SecureRandom = SecureRandom()) {
     /**
      * 解开 [seal] 产出的容器，返回原始明文（自动 gunzip）。
      *
-     * @throws SyncCryptoException.BadFormat 头非法（magic/版本/长度）
+     * @throws SyncCryptoException.BadFormat 头非法（magic/版本/长度），或 GCM 认证通过
+     *   但解压失败（密文非本编码器产出——版本偏斜/编码器 bug 的确定性损坏，U-7 判据收录）
      * @throws SyncCryptoException.Tampered  GCM 认证失败（篡改或密钥不符）
      */
     fun open(key: ByteArray, blob: ByteArray): ByteArray {
@@ -168,7 +170,14 @@ class SyncCrypto(private val random: SecureRandom = SecureRandom()) {
         } catch (e: GeneralSecurityException) {
             throw SyncCryptoException.Tampered("GCM 解密失败: ${e.message}", e)
         }
-        return gunzip(compressed)
+        // U-7 判据补全：gunzip 原先在 try 块之外，ZipException 会裸穿透上层
+        // `catch (SyncCryptoException)` 的损坏包装、不进隔离判据——密文解开了但明文
+        // 非合法 gzip 流同样是确定性内容损坏，归 BadFormat（→ CORRUPTED → 计数/隔离）
+        return try {
+            gunzip(compressed)
+        } catch (e: IOException) {
+            throw SyncCryptoException.BadFormat("明文解压失败（内容损坏或非本编码器产出）: ${e.message}")
+        }
     }
 
     /** 「口令不一致」判据（R-04）：比对派生 KCV 与 meta 头里的 KCV（常数时间） */

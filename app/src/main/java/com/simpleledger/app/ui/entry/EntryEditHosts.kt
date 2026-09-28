@@ -172,7 +172,13 @@ fun EntryEditHost(
 
     LaunchedEffect(state.saved) {
         if (state.saved) {
-            onSaved(state.savedEntryId)
+            // U-13：先取局部变量、先消费（复位 VM 的 saved 终态）、再回调——本宿主按
+            // viewModel(key = "entry_$entryId") 在同一返回栈条目内缓存 VM，saved 原先
+            // 永不复位：保存/删除关闭面板后再点开同一笔账，LaunchedEffect 重进组合读到
+            // 残留 true 会立即再回调 onSaved，面板闪现即自动关闭并重复弹「已记入」。
+            val savedId = state.savedEntryId
+            viewModel.consumeSaved()
+            onSaved(savedId)
         }
     }
     LaunchedEffect(state.error) {
@@ -269,8 +275,10 @@ fun EntryEditHost(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除这笔账目？") },
-            text = { Text("删除后可用明细页提示条里的「撤销」恢复，贴图也会一并删除。") },
+            // U-14：文案单一真源（EntryDeleteConfirm.kt）——旧文案承诺的「提示条撤销」
+            // 该路径并不存在，且贴图文件按留底策略保留，据实改写
+            title = { Text(ENTRY_DELETE_CONFIRM_TITLE) },
+            text = { Text(ENTRY_DELETE_CONFIRM_BODY) },
             confirmButton = {
                 TextButton(
                     onClick = {

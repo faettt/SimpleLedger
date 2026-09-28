@@ -59,7 +59,13 @@ fun EntryEditScreen(
     }
 
     LaunchedEffect(state.saved) {
-        if (state.saved) onDone(state.savedEntryId)
+        if (state.saved) {
+            // U-13：与 EntryEditHost 同口径——先消费 saved 终态再回调。Compact 全屏路由
+            // 每次导航新建 VM（不复用），此处消费属防御性对齐，保证两处宿主行为一致。
+            val savedId = state.savedEntryId
+            viewModel.consumeSaved()
+            onDone(savedId)
+        }
     }
     LaunchedEffect(state.error) {
         state.error?.let { message ->
@@ -108,8 +114,10 @@ fun EntryEditScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除这笔账目？") },
-            text = { Text("删除后可用明细页提示条里的「撤销」恢复，贴图也会一并删除。") },
+            // U-14：文案单一真源（EntryDeleteConfirm.kt）——旧文案承诺的「提示条撤销」
+            // 该路径并不存在，且贴图文件按留底策略保留，据实改写
+            title = { Text(ENTRY_DELETE_CONFIRM_TITLE) },
+            text = { Text(ENTRY_DELETE_CONFIRM_BODY) },
             confirmButton = {
                 TextButton(
                     onClick = {

@@ -1,5 +1,6 @@
 package com.simpleledger.app.sync
 
+import com.simpleledger.app.sync.crypto.BlobHeader
 import com.simpleledger.app.sync.crypto.CryptoFormat
 import com.simpleledger.app.sync.crypto.KdfParams
 import com.simpleledger.app.sync.crypto.SyncCrypto
@@ -10,7 +11,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import javax.crypto.Cipher
 import javax.crypto.Mac
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
@@ -172,6 +175,37 @@ class SyncCryptoTest {
         expectBadFormat { crypto.open(keys.encKey, wrongVersion) }
 
         expectBadFormat { crypto.open(keys.encKey, blob.copyOfRange(0, 20)) }
+    }
+
+    /**
+     * U-7 判据补全回归：GCM 认证通过但明文不是合法 gzip 流（编码器 bug / 版本偏斜
+     * 产出的「密文」）。gunzip 原先在 open 的 try 块之外，ZipException 裸穿透上层
+     * `catch (SyncCryptoException)` 的损坏包装、不进隔离判据 ⇒ 坏分片每轮整轮失败。
+     * 现归为 BadFormat（→ CORRUPTED），与「密文解析失败」同一损坏语义。
+     */
+    @Test
+    fun nonGzipPlaintextIsRejectedAsBadFormat() {
+        val keys = crypto.deriveKeys("口令-测试".toCharArray(), testKdf)
+        // 手工构造同格式容器：合法 56B 头 + 非 gzip 明文的 AES-GCM 密文（seal 恒先 gzip，只能手拼）
+        val iv = ByteArray(12) { 3 }
+        val header = CryptoFormat.encodeHeader(
+            BlobHeader(
+                purpose = CryptoFormat.PURPOSE_OPS,
+                version = CryptoFormat.FORMAT_VERSION,
+                kdf = testKdf,
+                iv = iv,
+                kcv = null,
+            ),
+        )
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            SecretKeySpec(keys.encKey, "AES"),
+            GCMParameterSpec(128, iv),
+        )
+        val blob = header + cipher.doFinal("不是 gzip 流的明文".toByteArray(Charsets.UTF_8))
+
+        expectBadFormat { crypto.open(keys.encKey, blob) }
     }
 
     private fun expectTampered(block: () -> Unit) {

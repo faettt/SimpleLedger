@@ -71,15 +71,15 @@ fun ConflictTrashScreen(
     viewModel: ConflictTrashViewModel = viewModel(factory = ConflictTrashViewModel.Factory),
 ) {
     val groups by viewModel.groups.collectAsState()
-    val message by viewModel.message.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    LaunchedEffect(message) {
-        val m = message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(messageText(context, m))
-        viewModel.clearMessage()
+    // 一次性提示 → 纸签；U-18：Channel 承载（接收即消费：展示中离开不回放、同值连发不合并）
+    LaunchedEffect(Unit) {
+        for (m in viewModel.messages) {
+            snackbarHostState.showSnackbar(messageText(context, m))
+        }
     }
 
     Scaffold(

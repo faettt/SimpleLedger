@@ -6,6 +6,8 @@ import com.simpleledger.app.sync.crypto.SyncKeys
 import com.simpleledger.app.sync.dav.DavException
 import com.simpleledger.app.sync.dav.MiniWebDavClient
 import com.simpleledger.app.sync.dav.WebDavRemote
+import com.simpleledger.app.sync.photo.FilePhotoStore
+import com.simpleledger.app.sync.photo.PhotoStore
 import com.simpleledger.app.sync.photo.PhotoSyncReport
 import com.simpleledger.app.sync.photo.PhotoTransfer
 import kotlinx.coroutines.runBlocking
@@ -155,6 +157,77 @@ class PhotoTransferTest {
 
     // ------------------------------------------------------------ 数据完整性
 
+    /**
+     * U-16 回归：本地坏哈希文件（进程写入中途死亡留下的截断内容）**不照传不记台账**——
+     * 旧实现上行路径不校验本地字节哈希，坏文件照传后对端每轮下载必抛 Corrupted、
+     * 整轮同步永久失败无自愈。现判定为缺失转下行：云端权威副本原子覆写自愈。
+     */
+    @Test
+    fun corruptLocalBytesAreNotUploaded_healedFromCloud() = runBlocking {
+        val bytes = ByteArray(48 * 1024).also { Random(7).nextBytes(it) }
+        val hash = PhotoTransfer.sha256Hex(bytes)
+        // 云端先有权威副本（对端正常上传）
+        transferOf(FakePhotoStore().apply { files[hash] = bytes }, listOf(hash))
+            .syncPendingPhotos(remote(File(workRoot, "u16-src")))
+
+        // 本机：同名 hash 下是被截断/篡改过的坏文件
+        val photos = FakePhotoStore().apply { files[hash] = bytes.copyOfRange(0, bytes.size / 2) }
+        val store = FakeSyncStore()
+        val transfer = PhotoTransfer(FakeSyncDao(), photos, FakePhotoRefs(listOf(hash)), FakeNetworkStatus(), store)
+
+        val report = transfer.syncPendingPhotos(remote(File(workRoot, "u16-victim")))
+
+        assertEquals("坏文件不得上行", 0, report.up)
+        assertEquals("转下行自愈", 1, report.down)
+        assertArrayEquals("本地被云端权威副本覆写", bytes, photos.files[hash])
+        // 自愈后归零流量：台账去重命中，零请求零传输（S3）
+        val healed = transfer.syncPendingPhotos(remote(File(workRoot, "u16-victim")))
+        assertEquals(1, healed.skipped)
+        assertEquals(0, healed.up)
+        assertEquals(0, healed.down)
+    }
+
+    /**
+     * U-16 回归：本地坏哈希且云端也没有 → 不上传（防对端永久 CORRUPTED）、不记台账、
+     * 轮次仍成功收场（失败轮循环只会拖死全部同步；字节本地已损坏，无从恢复）。
+     */
+    @Test
+    fun corruptLocalBytesWithNoCloudCopySkipQuietly() = runBlocking {
+        val hash = PhotoTransfer.sha256Hex("原件早已不在".toByteArray())
+        val photos = FakePhotoStore().apply { files[hash] = "截断残片".toByteArray() }
+        val transfer = PhotoTransfer(FakeSyncDao(), photos, FakePhotoRefs(listOf(hash)), FakeNetworkStatus(), FakeSyncStore())
+
+        val report = transfer.syncPendingPhotos(remote(File(workRoot, "u16-lost")))
+
+        assertEquals("坏文件不得上行", 0, report.up)
+        assertEquals("云端无副本只能跳过", 1, report.skipped)
+        assertFalse(report.paused)
+    }
+
+    /**
+     * U-16 回归：`FilePhotoStore.writeBytes` 先写临时文件再 rename 原子替换——
+     * 落盘内容完整、目录里不留 `.tmp` 残骸、同名覆写生效。
+     */
+    @Test
+    fun filePhotoStoreWritesAtomicallyWithoutTmpLeftovers() {
+        val dir = File(workRoot, "u16-store")
+        val store = FilePhotoStore { hash -> File(dir, "$hash.jpg").absolutePath }
+        val bytes = ByteArray(200 * 1024).also { Random(9).nextBytes(it) }
+        val hash = PhotoTransfer.sha256Hex(bytes)
+
+        store.writeBytes(hash, bytes)
+        assertArrayEquals(bytes, store.readBytes(hash))
+        assertEquals("目录只应有内容寻址这一个文件", 1, dir.listFiles()!!.size)
+        assertTrue("不得遗留临时文件", dir.listFiles()!!.none { it.name.contains(".tmp") })
+
+        // 覆写（rename 语义 = 原子替换既有文件）与坏字节修复路径
+        val fixed = ByteArray(64 * 1024).also { Random(10).nextBytes(it) }
+        val fixedHash = PhotoTransfer.sha256Hex(fixed)
+        store.writeBytes(fixedHash, fixed)
+        assertArrayEquals(fixed, store.readBytes(fixedHash))
+        assertEquals(2, dir.listFiles()!!.size)
+    }
+
     @Test
     fun corruptPhotoContentThrowsCorrupted() = runBlocking {
         val expect = "应被保护的内容".toByteArray()
@@ -235,6 +308,9 @@ class PhotoTransferTest {
     }
 
     // ------------------------------------------------------------ 夹具
+
+    private fun transferOf(photos: PhotoStore, hashes: List<String>, store: FakeSyncStore = FakeSyncStore()): PhotoTransfer =
+        PhotoTransfer(FakeSyncDao(), photos, FakePhotoRefs(hashes), FakeNetworkStatus(), store)
 
     private fun remote(workDir: File): WebDavRemote = WebDavRemote(
         MiniWebDavClient(server.baseUrl.toHttpUrl(), "user", "app-pass", newParser = { KXmlParser() }),

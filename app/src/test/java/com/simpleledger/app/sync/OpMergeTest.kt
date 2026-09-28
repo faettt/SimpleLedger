@@ -224,6 +224,38 @@ class OpMergeTest {
         assertEquals(TrashResolved.PURGED, a.dao.trashTable[del2.opId]?.resolved)
     }
 
+    /**
+     * U-13 回归：迁移/种子行（versionSeq = 0）被删后恢复——回插不得落进伪造 baseSeq 的观察范围。
+     *
+     * 链条：v4 迁移/种子行 versionSeq = 0，存量导出以 seq = 0 声明存在；写路径对 DELETE
+     * baseSeq `coerceAtLeast(1L)` ⇒ 该行的 DELETE.baseSeq = 1 而行内 MAX(seq) = 0。
+     * 旧实现回插 seq = maxSeqOf + 1 = 1 ⇒ observed(1, 1) = true ⇒ live = ∅ → removeRow，
+     * 而留底已先翻 RESTORED——恢复静默失败且内容处处不可见。修复后回插
+     * seq = max(MAX(seq), DELETE.baseSeq 最大值) + 1 = 2，恒晚于删除声称观察到的版本。
+     */
+    @Test
+    fun restore_of_migrated_v0_row_survives_faked_delete_baseSeq() = runBlocking {
+        val a = Device("A")
+        // 真实 v0 存量库形态：引用的分区/分类种子行也在（entryPayload 引用 sec-1/cat-1）
+        a.seedRow(RowKind.SECTION, "sec-1", sectionPayload("生活"), versionSeq = 0L)
+        a.seedRow(RowKind.CATEGORY, "cat-1", categoryPayload("吃"), versionSeq = 0L)
+        a.seedRow(RowKind.ENTRY, "e-0", entryPayload(amount = 77), versionSeq = 0L)
+        val snap = entryPayload(amount = 77)
+        // 写路径口径：v0 行删除时 baseSeq 被 coerce 抬为 1（行内 MAX(seq) 仍 = 0）
+        val del = a.localDelete(RowKind.ENTRY, "e-0", baseSeq = 1, snapshot = snap)
+        assertEquals(0L, a.dao.maxSeqOf(RowKind.ENTRY.value, "e-0"))
+
+        assertTrue(a.applier.restoreTrashEntry(a.recorder, del.opId))
+        assertTrue("恢复后行必须复活（旧实现被 observed(1,1) 判死静默丢失）", a.store.exists(RowKind.ENTRY, "e-0"))
+        assertEquals(
+            "回插 seq 必须严格晚于删除声称观察到的 baseSeq",
+            2L,
+            a.dao.maxSeqOf(RowKind.ENTRY.value, "e-0"),
+        )
+        assertEquals(TrashResolved.RESTORED, a.dao.trashTable[del.opId]?.resolved)
+        assertEquals("恢复内容 = 删除时快照", "77", a.store.rows[RowKind.ENTRY to "e-0"]?.payload?.optString("amountCents"))
+    }
+
     /** 口径：每事务原子——第 2 次行写注入故障 → 整轮回滚（操作账/行投影零脏行）。 */
     @Test
     fun transaction_rollback_on_failure() = runBlocking {

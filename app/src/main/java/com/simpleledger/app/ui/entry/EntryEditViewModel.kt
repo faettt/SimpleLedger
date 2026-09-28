@@ -65,6 +65,21 @@ data class EntryEditUiState(
 )
 
 /**
+ * U-13：一次性消费 saved 终态（纯函数，便于 JVM 单测钉死口径）。
+ *
+ * 缺陷背景：保存成功（[EntryEditViewModel.doSave]）与删除成功（[EntryEditViewModel.deleteEntry]）
+ * 都会把 [EntryEditUiState.saved] 置 true 且原先永不复位；而就地编辑宿主按
+ * `viewModel(key = "entry_$entryId")` 在同一返回栈条目内缓存 VM——面板关闭后再打开
+ * 同一笔账时，LaunchedEffect(state.saved) 读到残留的 true 会立刻再回调一次 onSaved，
+ * 编辑面板闪现即自动关闭并重复弹「已记入」，大屏上无法二次编辑同一笔账。
+ *
+ * 口径：saved=true → 返回「复位后的状态 + 本次保存的账目 id」；
+ * saved=false → 返回 null（无可消费事件，即消费过一次后不得再次触发）。
+ */
+internal fun EntryEditUiState.takeSavedOutcome(): Pair<EntryEditUiState, Long?>? =
+    if (saved) copy(saved = false, savedEntryId = null) to savedEntryId else null
+
+/**
  * 记一笔 / 编辑账目的状态与动作。
  *
  * 「分区优先」后的关键变化：
@@ -324,6 +339,16 @@ class EntryEditViewModel(
     }
 
     fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    /**
+     * U-13：消费 saved 终态并复位。宿主在发出 onSaved 回调**之前**调用（先取局部变量、
+     * 先消费、再回调），保证「保存/删除完成」事件在整个 VM 生命周期内至多触发一次——
+     * 即便 VM 被同一返回栈条目按 key 缓存复用（大屏就地编辑），也不会把上一次的终态
+     * 带进下一次打开。
+     */
+    fun consumeSaved() {
+        _state.update { it.takeSavedOutcome()?.first ?: it }
+    }
 
     fun deleteEntry() {
         if (entryId <= 0) return

@@ -10,6 +10,13 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
  * 「未分类」哨兵，默认预选「未分类」；该分类下的账目迁移到所选去向后分类才删除。
  * 取代旧的「同类型 sort-first 兜底链」。
  *
+ * AU-3 分区合法性收窄：账目的「分区 = X、分类只属于 Y」是非法组合（QA P1-1 /
+ * EC-06，[SectionMoveRules] 只在移分区路径强制执行，删除迁移路径此前漏了）。
+ * [affectedSectionIds] 传入受影响账目所在分区的全集后，候选只保留
+ * **全局分类**（任何分区都可见）与「受影响账目**全部**落在其归属分区」的专属分类
+ * ——一个去向要服务所有受影响账目，只要有一笔账目不在其归属分区就是非法迁移。
+ * null（该分类下无账目，迁移不会发生）= 不过滤，保持原全量口径。
+ *
  * 展示序：其余分类按 (sortOrder, id) 升序，「未分类」恒排**末尾**（兜底语义，
  * 不与用户自建分类抢视线）。
  */
@@ -27,9 +34,24 @@ object CategoryDeletePlan {
      *
      * @param sameTypeAll 同类型全部分类（含目标自身与「未分类」哨兵），任意顺序
      * @param targetId 被删分类 id
+     * @param affectedSectionIds 受影响账目所在分区的全集；null = 无受影响账目
+     *   （迁移不会发生），不过滤（AU-3，见类注释）
      */
-    fun plan(sameTypeAll: List<CategoryEntity>, targetId: Long): Plan {
-        val others = sameTypeAll
+    fun plan(
+        sameTypeAll: List<CategoryEntity>,
+        targetId: Long,
+        affectedSectionIds: Set<Long>? = null,
+    ): Plan {
+        // AU-3 分区合法性收窄：全局恒合法；专属分类必须让**每一笔**受影响账目
+        // 都落在它的归属分区（emptySet 按不过滤处理，双保险）。
+        val scoped = if (affectedSectionIds.isNullOrEmpty()) {
+            sameTypeAll
+        } else {
+            sameTypeAll.filter { candidate ->
+                candidate.sectionId == null || affectedSectionIds.all { it == candidate.sectionId }
+            }
+        }
+        val others = scoped
             .filter { it.id != targetId }
             .sortedWith(compareBy({ it.sortOrder }, { it.id }))
         val (sentinel, normal) = others.partition { SectionFirstSeed.Unclassified.isUnclassified(it) }

@@ -175,6 +175,13 @@ interface EntryDao {
     suspend fun listByCategory(categoryId: Long): List<EntryEntity>
 
     /**
+     * 某分类下账目所在分区的全集（AU-3 删除分类去向候选的分区合法性收窄用；
+     * 含 0 占位——挂死分区的账目只能迁去全局分类）。
+     */
+    @Query("SELECT DISTINCT sectionId FROM entries WHERE categoryId = :categoryId")
+    suspend fun sectionIdsOfCategory(categoryId: Long): List<Long>
+
+    /**
      * 内容哈希引用计数（R-16 共享文件保护）：删除文件前查，
      * > 1 说明其余账目/贴图还在用同一文件，不得删/不得暂存。
      */

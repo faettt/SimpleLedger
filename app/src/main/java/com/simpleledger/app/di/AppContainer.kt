@@ -75,18 +75,24 @@ class AppContainer(context: Context) {
         // R-06：本地设置改动 → SETTING 操作（rowSyncId = key，字段级 LWW；防回环在 AppSettings 内）
         settings.localChangeSink = { key, value ->
             settingOpScope.launch {
-                settingOpMutex.withLock {
-                    database.withTransaction {
-                        val maxSeq = database.syncDao().maxSeqOf(RowKind.SETTING.value, key)
-                        opRecorder.onUpsert(
-                            rowKind = RowKind.SETTING,
-                            rowSyncId = key,
-                            seq = (maxSeq ?: 0L) + 1,
-                            baseSeq = maxSeq,
-                            snapshot = OpCodec.settingSnapshot(key, value),
-                        )
+                // AU-10：S6 静默兜底——设置变更（主题/隐藏金额/快捷金额）是高频路径，
+                // 事务内 DB 写失败（磁盘满/IO 错）若外溢，异常沿 SupervisorJob 交给
+                // 默认 handler 直接崩进程；同 SyncManager.requestSync 的 runCatching
+                // 双保险口径，失败只落 Logcat（丢一次 SETTING 操作可接受：下次改动重记）
+                runCatching {
+                    settingOpMutex.withLock {
+                        database.withTransaction {
+                            val maxSeq = database.syncDao().maxSeqOf(RowKind.SETTING.value, key)
+                            opRecorder.onUpsert(
+                                rowKind = RowKind.SETTING,
+                                rowSyncId = key,
+                                seq = (maxSeq ?: 0L) + 1,
+                                baseSeq = maxSeq,
+                                snapshot = OpCodec.settingSnapshot(key, value),
+                            )
+                        }
                     }
-                }
+                }.onFailure { println("[AppContainer] SETTING 操作记账失败 key=$key: $it") }
             }
         }
     }
@@ -98,7 +104,8 @@ class AppContainer(context: Context) {
     val opApplier: OpApplier = OpApplier(database, database.syncDao(), imageStorage, settings::applyRemote)
 
     val repository: LedgerRepository = LedgerRepository(database, imageStorage, opRecorder)
-    val exporter: DataExporter = DataExporter(context, repository)
+    // AU-9：传入 database 供备份走 VACUUM INTO 一致性快照（null 时退回三文件拷贝）
+    val exporter: DataExporter = DataExporter(context, repository, database)
 
     // ================================================================ T-4 同步全家桶
 
@@ -170,5 +177,10 @@ class AppContainer(context: Context) {
         davFactory = davFactory,
         remoteFactory = remoteFactory,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        // U-17：R-21 到期清理的照片实体文件释放端口接线（此前走默认空实现，周期同步
+        // purge 留底后不释放文件 → 孤儿照片泄漏）。转发 opApplier 生产构造内的
+        // PhotoRetention 双归零判据（业务引用 + 剩余可见留底引用双归零才物理删），
+        // 判据单一真源；SyncWorker(PERIODIC) / 设置页手动同步两条 syncNow 路径同口径生效。
+        photoRelease = { hashes -> opApplier.releasePhotoHashes(hashes) },
     )
 }

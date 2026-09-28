@@ -137,6 +137,61 @@ interface SyncDao {
     @Query("DELETE FROM sync_ops WHERE opId IN (:opIds) AND uploaded = 0 AND origin = 'LOCAL'")
     suspend fun removePendingOps(opIds: List<String>): Int
 
+    /* ================================================================ 操作日志裁剪（U-12） */
+
+    /**
+     * 裁剪候选（U-12）：非 outbox（已上传，或 origin = REMOTE——远端操作的 uploaded
+     * 恒为 false，它只是 LOCAL outbox 簿记）+ 已应用 + 早于保留期（对齐 R-21 的 90 天）的
+     * 业务行 UPSERT。DELETE / TRASH_ACT / TRASH 行**永不进候选**（observed-remove
+     * 判据依赖，正确性论证见 `logic/OpTrimRules`）；挂起集（applied = 0）天然不在结果里。
+     */
+    @Query(
+        """
+        SELECT * FROM sync_ops
+        WHERE (uploaded = 1 OR origin = 'REMOTE')
+          AND applied = 1
+          AND createdAt < :cutoffMillis
+          AND opType = 'UPSERT'
+          AND rowKind != 'TRASH'
+        ORDER BY createdAt, opId
+        """
+    )
+    suspend fun trimCandidates(cutoffMillis: Long): List<SyncOpEntity>
+
+    companion object {
+        /**
+         * [latestUpsertPerRow] 的 SQL（常量化：测试直接引用同一份文本，零漂移）。
+         *
+         * 胜者必须是 `max(printf(...))` **聚合**——SQLite 的 GROUP BY 对裸列表达式
+         * 只取组内任意一行（sqlite3 3.50.6 实测为组内第一行），不带 `max` 时返回的
+         * 不是全序最大 UPSERT，而是往往最老的那条：裁剪会把真 LWW 胜者当可裁删除，
+         * 一条 baseSeq 恰在其间的 DELETE 就会造成跨设备永久分歧（评审 R1-high）。
+         * 该「取最大」语义由 `SyncDaoLatestUpsertSqlTest` 对同一建表语句
+         * （`MigrationSql.CREATE_TABLE_SYNC_OPS`）跑真实 SQLite 钉死。
+         */
+        const val LATEST_UPSERT_PER_ROW_SQL: String =
+            """
+            SELECT rowKind, rowSyncId,
+                   max(printf('%020d|%s|%s', seq, actorId, opId)) AS winnerKey
+            FROM sync_ops
+            WHERE opType = 'UPSERT'
+            GROUP BY rowKind, rowSyncId
+            """
+    }
+
+    /**
+     * 每行保留胜者（U-12，**全量口径**含保留期内的新操作）：按 `(seq, actorId, opId)`
+     * 全序取最大 UPSERT（SQL 见 [LATEST_UPSERT_PER_ROW_SQL]，`max(printf(...))` 聚合）——
+     * 复合键构造契约见 `logic/OpTrimRules.winnerKey`
+     * （SQL `printf` 与 Kotlin `%020d|%s|%s` 两侧必须一致，opId = 复合键第二个 `|` 之后）。
+     */
+    @Query(LATEST_UPSERT_PER_ROW_SQL)
+    suspend fun latestUpsertPerRow(): List<RowWinnerProjection>
+
+    /** 按 opId 批量删除（U-12 裁剪执行；只允许传入 `OpTrimRules.trimmableOpIds` 的结果） */
+    @Query("DELETE FROM sync_ops WHERE opId IN (:opIds)")
+    suspend fun deleteOpsByIds(opIds: List<String>): Int
+
     /* ================================================================ 冲突回收站 */
 
     /** 幂等物化留底（键 = deleteOpId，重复推导无副作用） */
@@ -268,3 +323,10 @@ interface SyncDao {
     )
     suspend fun countRowsWithSyncId(syncId: String): Int
 }
+
+/** U-12 裁剪用投影：每行保留胜者的复合键（SQL 列与构造器参数一一对应） */
+data class RowWinnerProjection(
+    val rowKind: String,
+    val rowSyncId: String,
+    val winnerKey: String,
+)

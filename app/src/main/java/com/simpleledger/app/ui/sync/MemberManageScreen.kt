@@ -67,7 +67,6 @@ fun MemberManageScreen(
     val members by viewModel.members.collectAsState()
     val selfMemberId by viewModel.selfMemberId.collectAsState()
     val claimConflict by viewModel.claimConflict.collectAsState()
-    val event by viewModel.event.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -75,10 +74,11 @@ fun MemberManageScreen(
     var renameTarget by remember { mutableStateOf<MemberEntity?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    LaunchedEffect(event) {
-        val e = event ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(eventText(context, e))
-        viewModel.clearEvent()
+    // 一次性事件 → 纸签；U-18：Channel 承载（接收即消费：展示中离开不回放、同值连发不合并）
+    LaunchedEffect(Unit) {
+        for (e in viewModel.events) {
+            snackbarHostState.showSnackbar(eventText(context, e))
+        }
     }
 
     // U-10 同名双留：并发撞名时 DB 双留（不加唯一约束），UI 提示改名消歧
