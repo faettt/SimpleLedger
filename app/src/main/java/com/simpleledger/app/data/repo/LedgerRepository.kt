@@ -307,6 +307,18 @@ class LedgerRepository(
      */
     suspend fun importPendingImage(uri: Uri): String? = imageStorage.importToPending(uri)
 
+    /**
+     * 「保存到相册」主入口：API 29+ 直写 MediaStore 返回 [GalleryExportOutcome.Saved]；
+     * API 26–28 返回 NeedsSaf（建议名 + MIME），UI 拉起 CreateDocument 拿到目标 Uri 后
+     * 调 [writeExportImageToSafTarget] 落盘。批次 B（贴图 UI）消费。
+     */
+    suspend fun exportImageToGallery(imagePath: String): GalleryExportOutcome =
+        imageStorage.exportImageToGallery(imagePath)
+
+    /** 「保存到相册」SAF 续篇：把贴图原字节写入 CreateDocument 选中的目标 Uri，写失败返回 false */
+    suspend fun writeExportImageToSafTarget(target: Uri, imagePath: String): Boolean =
+        imageStorage.writeExportImageToSafTarget(target, imagePath)
+
     /** 新建 / 编辑并保存（含贴图同步 + 同事务埋点），返回条目 id */
     suspend fun saveEntry(draft: EntryDraft): Long {
         // 1) 事务外先把待入库图片移入正式目录（内容寻址 <sha256>.jpg；文件操作不占事务）

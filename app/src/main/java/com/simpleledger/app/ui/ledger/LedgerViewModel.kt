@@ -1,5 +1,6 @@
 package com.simpleledger.app.ui.ledger
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,7 @@ import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.repo.DeletedEntrySnapshot
 import com.simpleledger.app.data.repo.EntryDraft
+import com.simpleledger.app.data.repo.GalleryExportOutcome
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.data.settings.AppSettings
 import com.simpleledger.app.util.DateTimes
@@ -304,6 +306,21 @@ class LedgerViewModel(
 
     /** 撤销窗口结束，清掉暂存的贴图文件 */
     suspend fun discardParkedImages() = repo.discardParkedImages()
+
+    // ---------- 「保存到相册」（D3 分档：29+ 直写 MediaStore / 26–28 交 SAF） ----------
+
+    /**
+     * 贴图导出主入口（转交仓库，签名见 ImageStorage.exportImageToGallery）：
+     * API 29+ 直写相册返回 [GalleryExportOutcome.Saved]；API 26–28 返回
+     * [GalleryExportOutcome.NeedsSaf]（建议名 + 真实 MIME），由 LedgerScreen 拉起
+     * CreateDocument 拿到目标 Uri 后调 [writeExportImageToSafTarget] 落盘。
+     */
+    suspend fun exportImageToGallery(imagePath: String): GalleryExportOutcome =
+        repo.exportImageToGallery(imagePath)
+
+    /** SAF 续篇：把贴图原字节写入 CreateDocument 选中的目标 Uri，写失败返回 false */
+    suspend fun writeExportImageToSafTarget(target: Uri, imagePath: String): Boolean =
+        repo.writeExportImageToSafTarget(target, imagePath)
 
     /** 长按菜单：复制一笔 —— 金额 / 分类 / 分区 / 备注照搬，时间改为此刻，贴图不带 */
     suspend fun duplicateEntry(entryId: Long): Long? {

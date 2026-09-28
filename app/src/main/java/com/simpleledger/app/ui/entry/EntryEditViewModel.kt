@@ -11,6 +11,7 @@ import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryType
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.repo.EntryDraft
+import com.simpleledger.app.data.repo.GalleryExportOutcome
 import com.simpleledger.app.data.repo.LedgerRepository
 import com.simpleledger.app.data.settings.AppSettings
 import com.simpleledger.app.data.local.SectionFirstSeed
@@ -360,6 +361,14 @@ class EntryEditViewModel(
     }
 
     fun clearError() = _state.update { it.copy(error = null) }
+
+    // ---------- 「保存到相册」透传（D3 分档，签名见 ImageStorage.exportImageToGallery） ----------
+
+    suspend fun exportImageToGallery(imagePath: String): GalleryExportOutcome =
+        repo.exportImageToGallery(imagePath)
+
+    suspend fun writeExportImageToSafTarget(target: Uri, imagePath: String): Boolean =
+        repo.writeExportImageToSafTarget(target, imagePath)
 
     companion object {
         fun factory(entryId: Long, sectionId: Long): ViewModelProvider.Factory = viewModelFactory {

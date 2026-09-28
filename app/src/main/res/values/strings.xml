@@ -234,6 +234,19 @@
     <string name="a11y_budget_used">预算已用 %1$d%%</string>
     <string name="a11y_overspent">已超支 %1$s</string>
 
+    <!-- 贴图「保存到相册」（文案随导出 API 先行交付，批次 B 的贴图 UI 只引用；
+         failed 的 %1$s 为数据层 GalleryExportOutcome.Failed.reason 中文短句） -->
+    <string name="save_to_gallery">保存到相册</string>
+    <string name="save_to_gallery_done">已保存到相册</string>
+    <string name="save_to_gallery_failed">保存失败：%1$s</string>
+    <!-- SAF 分档（D3）：CreateDocument 落盘失败时数据层只回 Boolean 无 reason，用固定短句 -->
+    <string name="save_to_gallery_write_failed">保存失败：无法写入所选位置</string>
+
+    <!-- 贴图放大层（明细详情栏）：关闭提示与读屏描述 -->
+    <string name="image_viewer_close_hint">点击任意处关闭</string>
+    <string name="a11y_entry_image_tap_enlarge">贴图，点击放大查看</string>
+    <string name="a11y_image_viewer_enlarged">放大的贴图</string>
+
     <!-- ============================================================
          T-5 多端同步：同步设置 / 成员管理 / 冲突回收站 / 我的入口 / 按人统计
          （全部用户可见文案收口于 strings.xml）

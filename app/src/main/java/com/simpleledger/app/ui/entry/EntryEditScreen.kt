@@ -15,8 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,8 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import com.simpleledger.app.data.repo.GalleryExportOutcome
 import androidx.compose.ui.graphics.Color
 import com.simpleledger.app.ui.components.SlSnackbarHost
+import kotlinx.coroutines.launch
 
 /**
  * 手机（Compact）宿主：全屏页面。
@@ -56,6 +60,50 @@ fun EntryEditScreen(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 6),
     ) { uris ->
         if (uris.isNotEmpty()) viewModel.addImages(uris)
+    }
+
+    // ---------- 「保存到相册」（D3 分档，与 EntryEditHost / LedgerScreen 同口径） ----------
+    val scope = rememberCoroutineScope()
+    var pendingSafExport by remember { mutableStateOf<SafExportRequest?>(null) }
+    val safExportLauncher = key(pendingSafExport?.mimeType ?: "image/*") {
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument(pendingSafExport?.mimeType ?: "image/*"),
+        ) { created ->
+            val request = pendingSafExport
+            pendingSafExport = null
+            if (created != null && request != null) {
+                scope.launch {
+                    val ok = viewModel.writeExportImageToSafTarget(created, request.imagePath)
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(
+                            if (ok) R.string.save_to_gallery_done
+                            else R.string.save_to_gallery_write_failed
+                        ),
+                        duration = androidx.compose.material3.SnackbarDuration.Short,
+                    )
+                }
+            }
+        }
+    }
+    LaunchedEffect(pendingSafExport) {
+        pendingSafExport?.let { request -> safExportLauncher.launch(request.suggestedName) }
+    }
+    suspend fun saveImageWithNotice(imagePath: String) {
+        when (val outcome = viewModel.exportImageToGallery(imagePath)) {
+            is GalleryExportOutcome.Saved -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_done),
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+            is GalleryExportOutcome.NeedsSaf -> pendingSafExport = SafExportRequest(
+                imagePath = imagePath,
+                suggestedName = outcome.suggestedName,
+                mimeType = outcome.mimeType,
+            )
+            is GalleryExportOutcome.Failed -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_failed, outcome.reason),
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+        }
     }
 
     LaunchedEffect(state.saved) {
@@ -108,6 +156,7 @@ fun EntryEditScreen(
             },
             modifier = Modifier.padding(padding),
             quickAmounts = quickAmounts.filter { it > 0 },
+            onSaveImage = { path -> scope.launch { saveImageWithNotice(path) } },
         )
     }
 

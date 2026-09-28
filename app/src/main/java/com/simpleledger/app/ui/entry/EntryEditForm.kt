@@ -1,5 +1,11 @@
 package com.simpleledger.app.ui.entry
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,10 +76,13 @@ import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.ui.components.CategoryDialog
 import com.simpleledger.app.ui.components.slFilterChipColors
 import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.ui.theme.slSegmentShape
+import com.simpleledger.app.ui.theme.slStandard
+import com.simpleledger.app.ui.theme.slTween
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import java.io.File
@@ -105,6 +114,8 @@ fun EntryEditForm(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     quickAmounts: List<Long> = emptyList(),
+    /** 「保存到相册」入口（D3 分档流程由宿主接线）；null = 不显示（除虫评审 #7 的 compact 缺口修复） */
+    onSaveImage: ((String) -> Unit)? = null,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -388,29 +399,64 @@ fun EntryEditForm(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // 贴图放大查看：铺满宿主区域，点击任意处关闭
-        enlargedPath?.let { path ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.92f))
-                    .clickable { enlargedPath = null },
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = File(path),
-                    contentDescription = "放大查看贴图",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = "点击任意处关闭",
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = SlType.bodySm,
+        // 贴图放大查看：铺满宿主区域，点击任意处关闭。
+        // 进出场与纸片菜单（SectionHomeScreen.kt 纸片菜单）同规格：进场标准档 250ms
+        // PaperOut 淡入 + 从 0.96 居中放大（纸被轻放），出场快档 150ms PaperIn 淡出 +
+        // 缩回（纸被抽走），不再瞬现瞬灭。
+        //
+        // enlargedPath 置 null 只应触发退场：visible 已为 false 而内容仍在播退场动画，
+        // 仿 EntryEditHostGate 的 lastValue 保尾值模式，用 lastEnlargedPath 锁住最后
+        // 一次非空路径——否则退场期间图片瞬间消失、只剩空壳动画。
+        var lastEnlargedPath by remember { mutableStateOf(enlargedPath) }
+        if (enlargedPath != null) {
+            lastEnlargedPath = enlargedPath
+        }
+        AnimatedVisibility(
+            visible = enlargedPath != null,
+            enter = fadeIn(slStandard(SlMotion.PaperOut)) +
+                scaleIn(slStandard(SlMotion.PaperOut), 0.96f, TransformOrigin.Center),
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                scaleOut(slTween(SlMotion.FastMs, SlMotion.PaperIn), 0.96f, TransformOrigin.Center),
+        ) {
+            lastEnlargedPath?.let { path ->
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp),
-                )
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.92f))
+                        .clickable { enlargedPath = null },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = File(path),
+                        contentDescription = stringResource(R.string.a11y_image_viewer_enlarged),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                    ) {
+                        // D3「保存到相册」入口（除虫评审 #7：compact 全屏编辑此前无保存路径）；
+                        // 按钮消费自身点击，不会触发背景的「点击任意处关闭」
+                        if (onSaveImage != null) {
+                            TextButton(onClick = { onSaveImage(path) }) {
+                                Text(
+                                    text = stringResource(R.string.save_to_gallery),
+                                    color = Color.White,
+                                    style = SlType.bodySm,
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.image_viewer_close_hint),
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = SlType.bodySm,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
             }
         }
     }

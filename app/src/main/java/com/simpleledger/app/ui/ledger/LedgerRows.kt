@@ -1,5 +1,6 @@
 package com.simpleledger.app.ui.ledger
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -57,6 +57,7 @@ import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
+import com.simpleledger.app.ui.theme.slFast
 import com.simpleledger.app.ui.theme.slHoverLift
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
@@ -120,9 +121,13 @@ internal fun DayHeader(dateLabel: String, expenseCents: Long, incomeCents: Long)
 }
 
 /**
- * 账目行：分类名（主）· 时间/分区/标记（次）· 金额（视觉最重）。
- * 备注定案 V2（问题三）：以 meta 小字**独立第二行**直显（单行 ellipsis），
- * meta 行内仅保留 💬 存在性图标——行高从 62dp 加高到实测 70.86dp。
+ * 账目行：备注（首行大字）/ 分类名（次行小字）· 时间/分区/标记 · 金额（视觉最重）。
+ * D2 裁定（2026-09-28）：备注非空 → 备注升**首行**大字（title 16/22/700，单行 ellipsis），
+ * 分类名降**次行**小字（label 12.5/18 + 0.02em——比 meta 高半级并带字距，避免与第三行
+ * meta 行视觉同权拉平），meta 行（时间 · 分区 · 成员 + 💬 存在性图标）顺移第三行；
+ * 备注为空 → 首行直接回落分类名、次行直接 meta 行，绝无空行。有备注行行高组合
+ * 22+18+16（原 22+16+16），约 +2dp，待实机走查确认（推翻 §H1 V2「备注独立第二行」
+ * 版式，规范 §2.4 行构成表与 §H 记录已随批修订）。
  *
  * 长按弹出快捷菜单（复制一笔 / 移动到其它分区 / 删除）。菜单锚定在本行而非手指坐标：
  * 行内交互用锚定行更可预期，也能保住 combinedClickable 带来的涟漪反馈与读屏语义
@@ -220,6 +225,16 @@ internal fun EntryRow(
 
     val moreActionsLabel = stringResource(R.string.a11y_more_actions)
 
+    // 选中底色淡入：与 StatsScreen 图例底垫同款（2026-09-26 拍板 B′）——to-Transparent 的
+    // animateColorAsState 在 ARGB 插值中 RGB 从 0 起算，会闪一帧比底色更暗的中间态；
+    // 只过渡 alpha、颜色恒为 primaryContainer，即「同一块纸由淡变实」。
+    // 无位移无形变，不需要挂 LocalReduceMotion（时长层降级自动生效）。
+    val rowBgAlpha by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = slFast(),
+        label = "entryRowBgAlpha",
+    )
+
     Box(modifier = modifier.fillMaxWidth()) {
         // 分区胶带色：账目行颜色的**唯一**含义（F4 —— 分区身份由色条承担，
         // 所以分类名不再带「装修 · 」文字前缀，符号簇也不再引入第三套色彩语义）
@@ -232,9 +247,7 @@ internal fun EntryRow(
                 // 悬停拈起（仅指针设备）：密排流水行**不加按压缩放**——整行缩 2.5%
                 // 在长列表里是持续的视觉噪音；点击反馈由涟漪承担，悬停给 1dp 拈起
                 .slHoverLift()
-                .background(
-                    if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-                )
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = rowBgAlpha))
                 // 左侧 3dp 通高色条用 drawBehind 绘制而非加布局节点：
                 // 布局方案要让它的 fillMaxHeight 拿到确定高度，就得引入 IntrinsicSize.Min
                 // 或嵌套一层 Row；绘制方案零结构改动，边界也真正贴到行的上下沿。
@@ -300,15 +313,32 @@ internal fun EntryRow(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
+                // D2 裁定（2026-09-28）：备注非空 → 备注升**首行**大字（title 16/22/700）；
+                // 备注为空 → 首行直接回落分类名（不留空行）。单行 ellipsis——首行是扫读位，
+                // 备注全貌点详情栏看。
                 Text(
-                    text = categoryLabel,
-                    // 列表主信息 = title（16/22/600）
+                    text = if (hasNote) full.entry.note else categoryLabel,
+                    // 列表主信息 = title（16/22/700）
                     style = SlType.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // 分类名降**次行**小字（label 12.5/18 + 0.02em，onSurfaceVariant）：
+                // 比 meta（11.5/16）高半级并带字距，避免与第三行「时间 · 分区 · 成员」
+                // meta 行视觉同权拉平——分类是行内第二重要语义，元信息不是。
+                // 备注为空时分类名已在首行，这里不渲染（绝无空行）。
+                if (hasNote) {
+                    Text(
+                        text = categoryLabel,
+                        style = SlType.label,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 // v4：meta 行拆成「文本 + 行内图标」。图标 12dp（inline 档，描边 1.7），
-                // contentDescription 置 null —— 语义由 speech 串统一给出，避免重复朗读
+                // contentDescription 置 null —— 语义由 speech 串统一给出，避免重复朗读。
+                // D2 后 meta 行顺移**第三行**（原第二行），构成原样保留（含 💬/📷 图标）。
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = meta,
@@ -340,18 +370,6 @@ internal fun EntryRow(
                             modifier = Modifier.size(12.dp),
                         )
                     }
-                }
-                // 备注「独立第二行」（定案 V2，问题三）：meta 行完整保留（时间 · 分区 ·
-                // 成员 + 图标），备注以 SlType.meta（11.5/16）小字另起一行、单行 ellipsis
-                // ——备注可读性优先，实测行高 62dp → 70.86dp（186px @2.625x）。
-                if (hasNote) {
-                    Text(
-                        text = full.entry.note,
-                        style = SlType.meta,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
             Spacer(modifier = Modifier.width(8.dp))

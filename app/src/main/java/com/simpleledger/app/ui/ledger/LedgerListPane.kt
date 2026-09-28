@@ -1,5 +1,10 @@
 package com.simpleledger.app.ui.ledger
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,7 +56,9 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlChipShape
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.slAnimateItem
+import com.simpleledger.app.ui.theme.slTween
 import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -205,7 +212,16 @@ internal fun LedgerListPane(
             }
         }
 
-        if (filtersActive) {
+        // 筛选摘要条淡入 + 纵向展开 / 淡出 + 纵向收拢：小状态走 150ms 快档（Motion ①
+        // 「反馈先于表演」）——瞬现瞬灭会让「筛选已生效/已清除」缺少可视确认。
+        // 进场 PaperOut 快起慢收（纸放下），出场 PaperIn 慢起快收（纸抽走）。
+        AnimatedVisibility(
+            visible = filtersActive,
+            enter = fadeIn(slTween(SlMotion.FastMs, SlMotion.PaperOut)) +
+                expandVertically(slTween(SlMotion.FastMs, SlMotion.PaperOut)),
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                shrinkVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)),
+        ) {
             ActiveFilterBar(state = state, onClearAll = viewModel::clearFilters)
         }
 

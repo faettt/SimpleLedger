@@ -36,8 +36,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,9 +50,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
+import com.simpleledger.app.data.repo.GalleryExportOutcome
 import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.slTween
+import kotlinx.coroutines.launch
 
 /** 记一笔 / 编辑账目在列表页内的两种承载形态 */
 enum class EntryEditHostStyle {
@@ -60,6 +64,13 @@ enum class EntryEditHostStyle {
     /** Expanded（≥840dp）：右侧面板 480dp，与列表并列、不遮挡 */
     Panel,
 }
+
+/** 「保存到相册」SAF 续篇请求（D3 分档，与 LedgerScreen 同口径）：待导出贴图 + CreateDocument 建议名 / MIME */
+internal data class SafExportRequest(
+    val imagePath: String,
+    val suggestedName: String,
+    val mimeType: String,
+)
 
 /**
  * 编辑宿主的**进出闸门**（Motion.kt「纸的物理」）。
@@ -170,6 +181,50 @@ fun EntryEditHost(
         if (uris.isNotEmpty()) viewModel.addImages(uris)
     }
 
+    // ---------- 「保存到相册」（D3 分档，与 LedgerScreen 详情栏同口径） ----------
+    val scope = rememberCoroutineScope()
+    var pendingSafExport by remember { mutableStateOf<SafExportRequest?>(null) }
+    val safExportLauncher = key(pendingSafExport?.mimeType ?: "image/*") {
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument(pendingSafExport?.mimeType ?: "image/*"),
+        ) { created ->
+            val request = pendingSafExport
+            pendingSafExport = null
+            if (created != null && request != null) {
+                scope.launch {
+                    val ok = viewModel.writeExportImageToSafTarget(created, request.imagePath)
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(
+                            if (ok) R.string.save_to_gallery_done
+                            else R.string.save_to_gallery_write_failed
+                        ),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            }
+        }
+    }
+    LaunchedEffect(pendingSafExport) {
+        pendingSafExport?.let { request -> safExportLauncher.launch(request.suggestedName) }
+    }
+    suspend fun saveImageWithNotice(imagePath: String) {
+        when (val outcome = viewModel.exportImageToGallery(imagePath)) {
+            is GalleryExportOutcome.Saved -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_done),
+                duration = SnackbarDuration.Short,
+            )
+            is GalleryExportOutcome.NeedsSaf -> pendingSafExport = SafExportRequest(
+                imagePath = imagePath,
+                suggestedName = outcome.suggestedName,
+                mimeType = outcome.mimeType,
+            )
+            is GalleryExportOutcome.Failed -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_failed, outcome.reason),
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
+
     LaunchedEffect(state.saved) {
         if (state.saved) {
             // U-13：先取局部变量、先消费（复位 VM 的 saved 终态）、再回调——本宿主按
@@ -219,6 +274,7 @@ fun EntryEditHost(
                     bottom = 16.dp,
                 ),
                 quickAmounts = quickAmounts.filter { it > 0 },
+                onSaveImage = { path -> scope.launch { saveImageWithNotice(path) } },
             )
         }
     }

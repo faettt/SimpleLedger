@@ -1,6 +1,8 @@
 package com.simpleledger.app.ui.ledger
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.R
+import com.simpleledger.app.data.repo.GalleryExportOutcome
 import com.simpleledger.app.ui.FoldInfo
 import com.simpleledger.app.ui.FoldState
 import com.simpleledger.app.ui.Routes
@@ -65,6 +69,16 @@ private val MIN_LIST_PANE_WIDTH = 280.dp
 
 /** 双栏之间分隔线宽度：既是栏位边界的视觉提示，也计入详情栏起点的坐标 */
 private val PANE_DIVIDER_WIDTH = 1.dp
+
+/**
+ * 「保存到相册」SAF 续篇请求（D3 分档）：待导出贴图路径 + CreateDocument 的建议名 / MIME。
+ * NeedsSaf 命中后暂存本请求，由 [LedgerScreen] 内的 LaunchedEffect 在重组完成后拉起选择器。
+ */
+private data class SafExportRequest(
+    val imagePath: String,
+    val suggestedName: String,
+    val mimeType: String,
+)
 
 /**
  * 明细页（FR-28/29/30）。
@@ -207,6 +221,61 @@ fun LedgerScreen(
             snackbarHostState.showSnackbar(context.getString(R.string.restored), duration = SnackbarDuration.Short)
         } else {
             viewModel.discardParkedImages()
+        }
+    }
+
+    /* ---------- 「保存到相册」（D3 分档：API 29+ 直写相册 / API 26–28 交 SAF） ---------- */
+
+    // SAF 续篇请求：NeedsSaf 命中后置位，由下方 LaunchedEffect 在**重组完成后**拉起
+    // CreateDocument——嗅探 MIME 变化会让 key() 块重注册 launcher，若在事件回调里直接
+    // launch 会拿到旧 MIME 的旧实例（对话框存续期间 pending 非空、MIME 不变，
+    // 重注册只发生在两次导出之间）。
+    var pendingSafExport by remember { mutableStateOf<SafExportRequest?>(null) }
+    val safExportLauncher = key(pendingSafExport?.mimeType ?: "image/*") {
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument(pendingSafExport?.mimeType ?: "image/*"),
+        ) { created ->
+            val request = pendingSafExport
+            pendingSafExport = null
+            if (created != null && request != null) {
+                scope.launch {
+                    // SAF 落盘失败时数据层只回 Boolean（无 reason），用固定短句反馈
+                    val ok = viewModel.writeExportImageToSafTarget(created, request.imagePath)
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(
+                            if (ok) R.string.save_to_gallery_done
+                            else R.string.save_to_gallery_write_failed
+                        ),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            }
+        }
+    }
+    LaunchedEffect(pendingSafExport) {
+        pendingSafExport?.let { request -> safExportLauncher.launch(request.suggestedName) }
+    }
+
+    /**
+     * 「保存到相册」主流程（明细详情栏贴图操作入口，批次 B）：
+     * API 29+ 直写相册 → 「已保存到相册」；API 26–28 命中 NeedsSaf → 暂存请求转 SAF；
+     * 失败 → 「保存失败：<原因>」。反馈一律 Snackbar（Short 档，与长按菜单操作同款）。
+     */
+    suspend fun saveImageWithNotice(imagePath: String) {
+        when (val outcome = viewModel.exportImageToGallery(imagePath)) {
+            is GalleryExportOutcome.Saved -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_done),
+                duration = SnackbarDuration.Short,
+            )
+            is GalleryExportOutcome.NeedsSaf -> pendingSafExport = SafExportRequest(
+                imagePath = imagePath,
+                suggestedName = outcome.suggestedName,
+                mimeType = outcome.mimeType,
+            )
+            is GalleryExportOutcome.Failed -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.save_to_gallery_failed, outcome.reason),
+                duration = SnackbarDuration.Short,
+            )
         }
     }
 
@@ -371,6 +440,7 @@ fun LedgerScreen(
                                 full = selected,
                                 onEdit = { id -> onStartEdit(id, Routes.NEW_SECTION) },
                                 onDelete = { id -> scope.launch { deleteWithUndo(id) } },
+                                onSaveImage = { path -> scope.launch { saveImageWithNotice(path) } },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }

@@ -1,6 +1,12 @@
 package com.simpleledger.app.ui.ledger
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,9 +32,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -46,8 +58,11 @@ import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.BarShape
 import com.simpleledger.app.ui.theme.SlButtonShape
+import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.SlType
+import com.simpleledger.app.ui.theme.slStandard
+import com.simpleledger.app.ui.theme.slTween
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -56,6 +71,7 @@ import java.io.File
 
 /*
  * 大屏右侧详情栏：展示选中账目的金额、备注、贴图与所属分区。
+ * 贴图可点击放大查看，放大层内提供「保存到相册」（D3 分档流程由 LedgerScreen 承担）。
  * 编辑宿主（EntryEditHost）不在此文件——它由 LedgerScreen 依据窗口形态选择承载方式。
  */
 
@@ -64,9 +80,15 @@ internal fun EntryDetailPane(
     full: EntryFull?,
     onEdit: (Long) -> Unit,
     onDelete: (Long) -> Unit,
+    /** 贴图「保存到相册」入口（批次 B）；null = 放大层不显示保存动作 */
+    onSaveImage: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val hidden = LocalHideAmounts.current
+
+    // 贴图放大查看（与 EntryEditForm 表单内贴图同款交互）。键在选中账目 id 上：
+    // 切换账目时放大层随之收起，上一笔的贴图不盖在新一笔的详情上。
+    var enlargedImagePath by remember(full?.entry?.id) { mutableStateOf<String?>(null) }
 
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (full == null) {
@@ -215,11 +237,12 @@ internal fun EntryDetailPane(
                             items(full.images, key = { it.id }) { image ->
                                 AsyncImage(
                                     model = File(image.filePath),
-                                    contentDescription = "贴图",
+                                    contentDescription = stringResource(R.string.a11y_entry_image_tap_enlarge),
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(96.dp)
-                                        .clip(SlipShape),
+                                        .clip(SlipShape)
+                                        .clickable { enlargedImagePath = image.filePath },
                                 )
                             }
                         }
@@ -310,6 +333,65 @@ internal fun EntryDetailPane(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // 贴图放大查看 + 「保存到相册」（批次 B）。进出场与 EntryEditForm 的贴图放大层
+        // 同规格（纸片菜单语言）：进场标准档 PaperOut 淡入 + 从 0.96 居中放大（纸被轻放），
+        // 出场快档 PaperIn 淡出 + 缩回（纸被抽走）。
+        //
+        // enlargedImagePath 置 null 只应触发退场：visible 已为 false 而内容仍在播退场动画，
+        // 仿 EntryEditHostGate 的 lastValue 保尾值模式，用 lastEnlargedPath 锁住最后一次
+        // 非空路径——否则退场期间图片瞬间消失、只剩空壳动画。
+        var lastEnlargedPath by remember(full?.entry?.id) { mutableStateOf(enlargedImagePath) }
+        if (enlargedImagePath != null) {
+            lastEnlargedPath = enlargedImagePath
+        }
+        AnimatedVisibility(
+            visible = enlargedImagePath != null,
+            enter = fadeIn(slStandard(SlMotion.PaperOut)) +
+                scaleIn(slStandard(SlMotion.PaperOut), 0.96f, TransformOrigin.Center),
+            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
+                scaleOut(slTween(SlMotion.FastMs, SlMotion.PaperIn), 0.96f, TransformOrigin.Center),
+        ) {
+            lastEnlargedPath?.let { path ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.92f))
+                        .clickable { enlargedImagePath = null },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // 放大图装饰性（contentDescription null）：语义由下方保存按钮与关闭提示承担
+                    AsyncImage(
+                        model = File(path),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 24.dp),
+                    ) {
+                        // 保存动作交 LedgerScreen 走 D3 分档：29+ 直写相册 / 26–28 转 SAF，
+                        // 结果以 Snackbar 反馈；未接入口（onSaveImage == null）则不显示
+                        if (onSaveImage != null) {
+                            TextButton(onClick = { onSaveImage(path) }) {
+                                Text(
+                                    text = stringResource(R.string.save_to_gallery),
+                                    color = Color.White,
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.image_viewer_close_hint),
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = SlType.bodySm,
+                        )
+                    }
+                }
+            }
         }
     }
 }
