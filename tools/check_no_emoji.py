@@ -39,27 +39,54 @@ def _strip_strings(line: str) -> str:
     return re.sub(r'"(?:[^"\\]|\\.)*"', '""', line)
 
 
-def is_comment_only(line: str) -> bool:
-    """该行是否纯注释（剥掉字符串与行注释后没有可编译内容）。"""
-    s = _strip_strings(line).split("//")[0].strip()
-    if not s:
-        return True
-    # KDoc/块注释行：以 /* 、 * 开头，或只剩 */
-    return s.startswith("/*") or s.startswith("*") or s == "*/"
+def strip_comments(line: str, in_block: bool) -> tuple[str, bool]:
+    """剥掉注释，返回 (剩余文本, 行末是否仍在块注释内)。
+
+    **必须跨行维护块注释状态**：KDoc 里以 `●`、`⚠️` 起首的续行不以 `*` 开头，
+    只按行首做启发式判断会把它们当成代码 → 误报。旧实现正是如此，
+    导致门禁长期为红、真问题反而被淹没。
+    """
+    out: list[str] = []
+    i, n, in_str = 0, len(line), None
+    while i < n:
+        if in_block:
+            j = line.find("*/", i)
+            if j < 0:
+                return "".join(out), True
+            in_block = False
+            i = j + 2
+            continue
+        ch = line[i]
+        if in_str is not None:
+            if ch == "\\":
+                out.append(line[i:i + 2]); i += 2; continue
+            if line.startswith(in_str, i):
+                out.append(in_str); i += len(in_str); in_str = None; continue
+            out.append(ch); i += 1; continue
+        if line.startswith("//", i):
+            break
+        if line.startswith("/*", i):
+            in_block = True; i += 2; continue
+        if line.startswith('"""', i):
+            in_str = '"""'; out.append('"""'); i += 3; continue
+        if ch in ('"', "'"):
+            in_str = ch; out.append(ch); i += 1; continue
+        out.append(ch); i += 1
+    return "".join(out), in_block
 
 
 def main() -> int:
     problems: list[str] = []
     for p in sorted(SRC.rglob("*.kt")):
         lines = p.read_text(encoding="utf-8").splitlines()
+        in_block = False
         for i, line in enumerate(lines):
-            if not EMOJI.search(line):
+            # 先按跨行状态剥掉注释，再看剩下的代码段里有没有 emoji
+            code_only, in_block = strip_comments(line, in_block)
+            if not EMOJI.search(code_only):
                 continue
-            # 注释行（含 KDoc）里的 emoji 是文档，不是渲染资产
-            if is_comment_only(line):
-                continue
-            # 行尾注释：只看 // 之前的代码段
-            code = _strip_strings(line).split("//")[0]
+            # 保持既有语义：字符串字面量里的 emoji 不计入本门禁
+            code = _strip_strings(code_only)
             if not EMOJI.search(code):
                 continue
             rel = p.relative_to(SRC)

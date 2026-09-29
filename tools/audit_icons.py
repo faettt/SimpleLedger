@@ -25,7 +25,18 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ICON_DIR = ROOT / "docs/design/icons"
+
+# 审查对象必须是**当前出货的那一套**。v3「纸墨手绘」(2026-09-22) 落地后，
+# 出货源是 docs/design/icons-v3/icons/ —— 其生成物 SlIconsV3.kt 与
+# app/src/main/java/com/simpleledger/app/ui/icon/SlIcons.kt 逐字节相同。
+# 旧的 docs/design/icons/ 是 v2.0.0 遗留（路径带手绘抖动），已被取代；
+# 早期版本误指向它，导致几何审查一直在量一套不再出货的图。
+# 可用 --icon-dir <path> 覆盖（见 main()）。
+ICON_DIR = ROOT / "docs/design/icons-v3/icons"
+
+# 出货集应有 72 枚（manifest.json 的 icons 长度）。数量不符通常意味着
+# 指错了目录或生成链没跑完 —— 与其静默量错对象，不如直接报错。
+EXPECTED_ICON_COUNT = 72
 
 NUM = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 CMD = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]")
@@ -213,15 +224,34 @@ def measure(svg: pathlib.Path):
 
 
 def main() -> int:
+    global ICON_DIR
+    if "--icon-dir" in sys.argv:
+        ICON_DIR = pathlib.Path(sys.argv[sys.argv.index("--icon-dir") + 1]).resolve()
     group = None
     if "--group" in sys.argv:
         group = sys.argv[sys.argv.index("--group") + 1]
     emit = "--emit-centering" in sys.argv
-    manifest = json.loads((ICON_DIR / "manifest.json").read_text(encoding="utf-8"))
+
+    # manifest 位置随代际不同：v2 与 svg 同目录，v3 在 svg 目录的上一层。
+    manifest_path = ICON_DIR / "manifest.json"
+    if not manifest_path.exists():
+        manifest_path = ICON_DIR.parent / "manifest.json"
+    if not manifest_path.exists():
+        print(f"❌ 找不到 manifest.json（已试 {ICON_DIR} 及其上一层）")
+        return 2
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     meta = {i["name"]: i for i in manifest["icons"]}
 
+    svgs = sorted(ICON_DIR.glob("*.svg"))
+    # 量错对象比量出问题更糟：先确认审的是完整出货集，再往下算。
+    if not group and len(svgs) != EXPECTED_ICON_COUNT:
+        print(f"❌ {ICON_DIR} 下有 {len(svgs)} 个 SVG，"
+              f"与出货集应有的 {EXPECTED_ICON_COUNT} 枚不符 —— 请确认审查对象。")
+        return 2
+
     rows = []
-    for f in sorted(ICON_DIR.glob("*.svg")):
+    for f in svgs:
         if group and meta.get(f.stem, {}).get("group") != group:
             continue
         m = measure(f)
