@@ -57,7 +57,7 @@
 
 要求：JDK 17+，Android SDK Platform 37。也可以直接从 GitHub Actions 下载每次构建的 APK。
 
-发布签名（可选）：在仓库根目录放 `keystore.properties`（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`）指向签名证书；**缺失时自动退回 debug 签名**，本地调试不受影响。正式版 APK 按约定固化到 [`dist/`](dist/)（如 `SimpleLedger-v1.2.2-release.apk`）并打同名 tag 发布。
+发布签名（可选）：在仓库根目录放 `keystore.properties`（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`）指向签名证书；**缺失时自动退回 debug 签名**，本地调试不受影响。发布版 APK 通过 GitHub Actions 构建并附在 [Releases](../../releases) 上，仓库内不再存放二进制包。
 
 ## 项目结构
 
@@ -90,4 +90,4 @@ app/src/main/java/com/simpleledger/app/
 
 ## License
 
-私有项目，暂未开源授权。
+本项目基于 [MIT License](LICENSE) 开源，Copyright (c) 2026 faettt。你可以自由使用、修改、分发，包括商业用途，只需保留原始版权声明。

@@ -19,3 +19,9 @@ keystore.properties
 # Python 走查工具缓存
 __pycache__/
 *.pyc
+
+# 内部质检 / 走查产物（抓图脚本、模拟器日志、A/B 对照图），不入开源仓库
+outputs/
+
+# 发布版 APK 走 GitHub Releases，不入仓库
+dist/
