@@ -210,18 +210,23 @@ class MiniWebDavClientTest {
         assertEquals(fullCipher.size.toLong(), progress.last())
     }
 
-    // ---------- HTTP → SyncError 映射（U-4 注：坚果云超额码待实测） ----------
+    // ---------- HTTP → SyncError 映射（U-4/T4 定稿：401 才是凭证码，403 独立成档） ----------
 
     @Test
     fun davErrorsMapToSyncErrorNames() {
         assertEquals("AUTH", DavErrors.httpToSyncError(401))
-        assertEquals("AUTH", DavErrors.httpToSyncError(403)) // 坚果云超额可能 403（U-4 待实测）
+        assertEquals("AUTH", DavErrors.httpToSyncError(407))
+        assertEquals(
+            "ACCESS_DENIED",
+            DavErrors.httpToSyncError(403), // U-4/T4 定稿：≥4 种语义，不可并进 AUTH / QUOTA
+        )
         assertEquals("CONFLICT_WRITE", DavErrors.httpToSyncError(412))
         assertEquals("QUOTA", DavErrors.httpToSyncError(413))
         assertEquals("QUOTA", DavErrors.httpToSyncError(507))
         assertEquals("QUOTA", DavErrors.httpToSyncError(509))
         assertEquals("NETWORK", DavErrors.httpToSyncError(423)) // DAV 锁占用 = 瞬态
-        assertEquals("NETWORK", DavErrors.httpToSyncError(503))
+        assertEquals("NETWORK", DavErrors.httpToSyncError(503)) // 坚果云频控实测走 503（调研 §3）
+        assertEquals("NETWORK", DavErrors.httpToSyncError(429)) // 限流（防御性分支）
         assertEquals("UNKNOWN", DavErrors.httpToSyncError(404))
 
         assertEquals("BAD_PASSWORD", DavErrors.toSyncErrorName(DavException.BadPassword()))

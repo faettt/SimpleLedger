@@ -34,9 +34,13 @@ sealed class DavException(message: String, cause: Throwable? = null) : Exception
  * | 情形 | 归类 | 说明 |
  * |---|---|---|
  * | KCV 校验失败 | BAD_PASSWORD | 「口令不一致」，用户换口令重试 |
- * | 401 / 403 / 407 | AUTH | 凭证错。⚠️ 403 在坚果云可能是**超额**语义——U-4 待实测定稿 |
+ * | 401 / 407 | AUTH | 凭证错——**401 才是凭证码**（U-4/T4 定稿）。失败另带 [DavErrors.detailOf] 定位 |
+ * | 403 | ACCESS_DENIED | 服务端拒绝访问。403 有≥4 种与密码无关的语义：额度用尽 / 目录不可写 /
+ *   二次验证 / 风控频控（证据与 URL 见 `outputs/sync-diagnosis-2026-09-29/坚果云403语义调研.md`）。
+ *   **不并进 AUTH**（用户会盲改密码），**也不并进 QUOTA**（目录、安全设置会被误诊成额度不足） |
+ * | 429 | NETWORK | 限流，瞬态可重试。防御性分支：坚果云实测频控走 503（调研 §3.5），其它 WebDAV 实现确有 429 |
  * | 412 | CONFLICT_WRITE | 条件写冲突（If-Match 失败 / If-None-Match:* 撞已存在） |
- * | 413 / 507 / 509 | QUOTA | 空间/流量不足（坚果云月上传 1GB 超额预期落此档，U-4） |
+ * | 413 / 507 / 509 | QUOTA | 空间/流量不足（对自建 sabre-dav / Nextcloud 是正确码，保持不变） |
  * | 423 | NETWORK | DAV 锁占用，属瞬态，按可重试处理 |
  * | 其余 5xx | NETWORK | 服务端瞬态错误，可重试 |
  * | 超时 / IOException | NETWORK | 网络不可用 |
@@ -47,6 +51,7 @@ object DavErrors {
 
     const val NETWORK = "NETWORK"
     const val AUTH = "AUTH"
+    const val ACCESS_DENIED = "ACCESS_DENIED"
     const val BAD_PASSWORD = "BAD_PASSWORD"
     const val QUOTA = "QUOTA"
     const val CORRUPTED = "CORRUPTED"
@@ -67,11 +72,28 @@ object DavErrors {
 
     /** 单独抽出便于单测钉死映射表 */
     fun httpToSyncError(code: Int): String = when (code) {
-        401, 403, 407 -> AUTH // 403 语义待坚果云实测（U-4）：当前按凭证错归类
+        401, 407 -> AUTH // 401 = 凭证码（407 = 代理要求认证，同档）
+        403 -> ACCESS_DENIED // U-4/T4 定稿：≥4 种与密码无关的语义，不可并进 AUTH / QUOTA
         412 -> CONFLICT_WRITE
         413, 507, 509 -> QUOTA
         423 -> NETWORK
+        429 -> NETWORK // 限流（防御性；坚果云频控实测 503，落下面的 5xx 分支）
         in 500..599 -> NETWORK
         else -> UNKNOWN
+    }
+
+    /**
+     * 失败定位摘要（v1.4.2 排障口的统一口径）：回答「哪一步、打到哪个地址、回来什么码」。
+     *
+     * 为什么拒绝档尤其需要：403（[ACCESS_DENIED]）与 401（[AUTH]）语义完全不同却都表现为
+     * 「进不去」，用户看到「凭证无效」只会去改密码；带上 `HTTP 403 PROPFIND /dav/` 才能分辨
+     * 「服务端压根不让进」与「请求本身有问题」，报障截图也才可定位。
+     *
+     * 与 [toSyncErrorName] 同样是**幂等纯函数**（禁读系统时间 / 网络，单测钉死输出），
+     * 且不含中文文案——文案归 `strings.xml`（§7-7），本函数只产出可供拼装的定位串。
+     */
+    fun detailOf(t: Throwable): String = when (t) {
+        is DavException.Http -> "HTTP ${t.code} ${t.method} ${t.path}"
+        else -> t.message ?: t.javaClass.name
     }
 }

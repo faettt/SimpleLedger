@@ -22,17 +22,25 @@ import com.simpleledger.app.sync.op.OpRecorder
 import com.simpleledger.app.sync.op.RowKind
 import com.simpleledger.app.sync.op.TxRunner
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** 连通性测试结果（R-01：区分 网络错 / 凭证错 / 表单非法） */
 sealed class TestResult {
     data object Ok : TestResult()
     data class InvalidCred(val issue: WebDavCredIssue) : TestResult()
-    data class Failed(val reason: SyncError) : TestResult()
+
+    /**
+     * 连通性失败。[detail] = 可定位摘要（`DavErrors.detailOf`：Http 档给
+     * 「HTTP 403 PROPFIND /dav/」，其余档给异常 message / 类名）——各档都带，
+     * 没 detail 用户只能盲试凭证（v1.4.2 排障口）。
+     */
+    data class Failed(val reason: SyncError, val detail: String? = null) : TestResult()
 }
 
 /**
@@ -110,13 +118,25 @@ class SyncManager(
     /** 自动触发去抖基准时刻（内存即可：进程重启后冷启动触发本来就该放行） */
     private val lastAutoRequestAt = AtomicLong(0L)
 
+    /** AFTER_WRITE 合并窗口是否已排程（true = 窗口内已有一轮在路上，后续写并入该轮） */
+    private val writeSyncArmed = AtomicBoolean(false)
+
     /**
-     * 异步触发一轮同步（COLD_START / FOREGROUND / PERIODIC）。
-     * 去抖 [DEBOUNCE_MILLIS] 60s（自动触发）+ 单飞（引擎内 Mutex tryLock）；
-     * 未配置同步（无凭证/无派生密钥）直接静默返回（S6）。
+     * 异步触发一轮同步。三档语义互不干扰：
+     * - [SyncTrigger.MANUAL]：不去抖，立即执行（屏上「立即同步」要求即时反馈）；
+     * - [SyncTrigger.AFTER_WRITE]（P0-1）：**独立合并窗口** [WRITE_DEBOUNCE_MILLIS]——
+     *   首个写请求排程一轮 3s 后的同步，窗口内其余写并入该轮（不重排、不多发）；
+     * - 其余自动三路（冷启动 / 回前台 / 30min 周期）：[DEBOUNCE_MILLIS] 60s 去抖。
+     *
+     * 未配置同步（无凭证/无派生密钥）一律静默返回（S6），引擎侧另有
+     * `skipReason = NOT_CONFIGURED` 的兜底表达。
      */
     fun requestSync(trigger: SyncTrigger) {
         if (!isConfigured()) return
+        if (trigger == SyncTrigger.AFTER_WRITE) {
+            scheduleAfterWrite()
+            return
+        }
         if (trigger != SyncTrigger.MANUAL) {
             val now = System.currentTimeMillis()
             val last = lastAutoRequestAt.get()
@@ -126,6 +146,33 @@ class SyncManager(
         scope.launch {
             runCatching { engine.syncOnce(trigger) } // 双保险：即便引擎意外抛错也不外溢（S6）
         }
+    }
+
+    /**
+     * 写后触发的合并窗口（P0-1）。
+     *
+     * 为什么是「排程 + 延迟执行」而不是像自动触发那样立即发起：
+     * `OpRecorder` 的写入口在**业务事务内**被调用（`LedgerRepository` 的
+     * `db.withTransaction`），立即同步会让引擎在别的事务连接上读 outbox——WAL 下读到的是
+     * 提交前快照，**刚记的这笔根本不在 outbox 里**，白跑一轮后要等下一个触发（最快也是
+     * 回前台，否则 30min 周期）才补传，正是 P0-1 要消灭的「记完账不上传」。窗口 3s 覆盖
+     * 事务提交 + 连续记账（一笔多行：行 + 操作 + 照片）合并，一次上传全带走。
+     *
+     * 合并口径：窗口内只保留一轮（[writeSyncArmed]）；窗口一到就**先解除再跑**——这轮在跑
+     * 期间到达的新写可以排下一轮，不会被吞掉（引擎单飞会把并发的重复触发挡成
+     * `skipReason = IN_FLIGHT`，不重复上传）。与 60s 自动窗口各用各的时间戳：写后触发不
+     * 消耗也不受自动窗口压制。
+     */
+    private fun scheduleAfterWrite() {
+        if (!writeSyncArmed.compareAndSet(false, true)) return
+        val job = scope.launch {
+            delay(WRITE_DEBOUNCE_MILLIS)
+            writeSyncArmed.set(false)
+            runCatching { engine.syncOnce(SyncTrigger.AFTER_WRITE) }
+        }
+        // 兜底：作用域被取消（进程收尾 / 测试提前结束）时也要把窗口标志归位，
+        // 否则写路径从此永久不再排程（取消发生在 delay 之前时 finally 不会执行）。
+        job.invokeOnCompletion { writeSyncArmed.set(false) }
     }
 
     /** 手动「立即同步」/ Worker 周期同步；挂起至完成返回结果（S6：永不抛异常） */
@@ -216,7 +263,7 @@ class SyncManager(
             davFactory(cred).propfindDepth1("")
             TestResult.Ok
         } catch (t: Throwable) {
-            TestResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)))
+            TestResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)), DavErrors.detailOf(t))
         }
     }
 
@@ -231,7 +278,10 @@ class SyncManager(
     ): SetupResult {
         cred.validate()?.let { return SetupResult.InvalidCred(it) }
         when (val probe = testConnection(cred)) {
-            is TestResult.Failed -> return SetupResult.Failed(probe.reason)
+            // 凭证/拒访两档尤其需要 detail（401/407 → AUTH；403 → ACCESS_DENIED，
+            // 后者成因有额度/目录/二次验证/频控多种）：
+            // 接入失败页「同步出错」透出定位串，用户不必盲试口令（T2）
+            is TestResult.Failed -> return SetupResult.Failed(probe.reason, probe.detail)
             is TestResult.InvalidCred -> return SetupResult.InvalidCred(probe.issue)
             TestResult.Ok -> Unit
         }
@@ -389,6 +439,14 @@ class SyncManager(
     companion object {
         /** 自动触发去抖窗口（V3 定案：60s） */
         const val DEBOUNCE_MILLIS = 60_000L
+
+        /**
+         * 写后触发（[SyncTrigger.AFTER_WRITE]）合并窗口（P0-1：3s）。
+         * 取值依据：① 必须跨过业务事务提交（否则引擎读不到刚记的操作）；
+         * ② 连续记账（一笔多行 + 照片引用）合并成一轮上传；③ 短到用户感知仍是「刚记完就同步」。
+         * 与 [DEBOUNCE_MILLIS] 各自独立计时，互不消耗。
+         */
+        const val WRITE_DEBOUNCE_MILLIS = 3_000L
 
         /** setupAccount 默认成员名（T-5 可让用户改） */
         const val DEFAULT_MEMBER_NAME = "我"

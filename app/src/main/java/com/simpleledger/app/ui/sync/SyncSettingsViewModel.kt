@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.simpleledger.app.LedgerApp
+import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.sync.SetupResult
 import com.simpleledger.app.sync.SyncError
 import com.simpleledger.app.sync.SyncManager
@@ -35,7 +36,13 @@ enum class SyncCarrier { JIANGUOYUN, WEBDAV }
 sealed interface SyncEvent {
     data object TestOk : SyncEvent
     data class TestInvalid(val issue: WebDavCredIssue) : SyncEvent
-    data class TestFailed(val error: SyncError) : SyncEvent
+
+    /**
+     * 测连失败；[detail] = 可定位摘要（`DavErrors.detailOf`，如「HTTP 403 PROPFIND /dav/」）。
+     * 与 [SetupFailed.detail] 同口径：401/407 归 AUTH、403 归 ACCESS_DENIED，
+     * 不给定位信息用户只能盲改密码。
+     */
+    data class TestFailed(val error: SyncError, val detail: String? = null) : SyncEvent
 
     /** 接入成功；[exportedOps] = 存量导出条数，[outcome] = 首轮双向同步结果 */
     data class SetupOk(val exportedOps: Int, val outcome: SyncOutcome) : SyncEvent
@@ -80,6 +87,11 @@ data class SyncSettingsUiState(
     val monthlyDownBytes: Long = 0L,
     /** 当前被隔离的损坏分片数（U-7：0 = 无；「立即同步」重试，重置清零） */
     val quarantinedChunks: Int = 0,
+    /**
+     * 待上传操作条数（P0-2：outbox 里本机产生且未上传的操作）。
+     * 数据源是 Room Flow，记一笔就 +1、上传成功就回落——不依赖同步轮次回写状态。
+     */
+    val pendingCount: Int = 0,
     val busy: Boolean = false,
 )
 
@@ -94,6 +106,7 @@ class SyncSettingsViewModel(
     private val account: AccountStore,
     private val prefs: SyncPrefs,
     private val photo: PhotoTransfer,
+    private val syncDao: SyncDao,
 ) : ViewModel() {
 
     /** 角标状态（U-4 四态） */
@@ -131,6 +144,13 @@ class SyncSettingsViewModel(
             )
         }
         refresh()
+        // P0-2：待传计数订 outbox Flow（Room 失效通知驱动）。挂到 viewModelScope：
+        // 页面销毁即取消，不留常驻观察者；计数口径与 PUSH 阶段数据源（outbox）同一条 SQL。
+        viewModelScope.launch {
+            syncDao.observeOutboxCount().collect { count ->
+                _state.update { it.copy(pendingCount = count) }
+            }
+        }
     }
 
     fun setCarrier(carrier: SyncCarrier) = _state.update {
@@ -170,7 +190,7 @@ class SyncSettingsViewModel(
         val event = when (val result = syncManager.testConnection(currentCred())) {
             TestResult.Ok -> SyncEvent.TestOk
             is TestResult.InvalidCred -> SyncEvent.TestInvalid(result.issue)
-            is TestResult.Failed -> SyncEvent.TestFailed(result.reason)
+            is TestResult.Failed -> SyncEvent.TestFailed(result.reason, result.detail)
         }
         // U-18：事件出通道（不再进 state），busy 归位与事件发射分离
         _state.update { it.copy(busy = false) }
@@ -290,6 +310,7 @@ class SyncSettingsViewModel(
                     account = app.container.syncAccount,
                     prefs = app.container.syncPrefs,
                     photo = app.container.photoTransfer,
+                    syncDao = app.container.database.syncDao(),
                 )
             }
         }

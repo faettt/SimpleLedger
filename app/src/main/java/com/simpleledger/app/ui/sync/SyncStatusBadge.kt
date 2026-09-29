@@ -31,14 +31,9 @@ import com.simpleledger.app.ui.theme.SlMotion
  * 失败态不弹任何窗（S6 静默），点角标进状态详情（同步设置页顶部）。
  */
 
-/** 同步状态一句话（角标读屏 / 状态详情共用一份文案口径） */
+/** 同步状态一句话（角标读屏 / 状态详情共用一份文案口径；映射见 [syncStateRes]） */
 @Composable
-fun syncStateLabel(state: SyncState): String = when (state) {
-    SyncState.Never -> stringResource(R.string.sync_status_never)
-    SyncState.Idle -> stringResource(R.string.sync_status_idle)
-    is SyncState.Syncing -> stringResource(R.string.sync_status_syncing)
-    is SyncState.Failed -> stringResource(R.string.sync_status_failed)
-}
+fun syncStateLabel(state: SyncState): String = stringResource(syncStateRes(state))
 
 /** 最近错误中文映射（U-5：枚举名 → 用户文案，数据层不写死文案） */
 @Composable
@@ -46,6 +41,7 @@ fun syncErrorLabel(error: SyncError): String = stringResource(
     when (error) {
         SyncError.NETWORK -> R.string.sync_error_network
         SyncError.AUTH -> R.string.sync_error_auth
+        SyncError.ACCESS_DENIED -> R.string.sync_error_access_denied
         SyncError.BAD_PASSWORD -> R.string.sync_error_bad_password
         SyncError.QUOTA -> R.string.sync_error_quota
         SyncError.CORRUPTED -> R.string.sync_error_corrupted

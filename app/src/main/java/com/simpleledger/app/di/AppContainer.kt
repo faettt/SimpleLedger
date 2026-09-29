@@ -10,6 +10,7 @@ import com.simpleledger.app.data.settings.AppSettings
 import com.simpleledger.app.sync.AndroidNetworkStatus
 import com.simpleledger.app.sync.SyncEngine
 import com.simpleledger.app.sync.SyncManager
+import com.simpleledger.app.sync.SyncTrigger
 import com.simpleledger.app.sync.account.SyncAccount
 import com.simpleledger.app.sync.account.SyncPrefs
 import com.simpleledger.app.sync.account.WebDavCred
@@ -46,6 +47,9 @@ import java.io.File
  * T-4 同步全家桶装配顺序有两处硬约束：
  * 1. [settings] 必须先于 [opApplier]——OpApplier 的 `settingSink` = `settings::applyRemote`；
  * 2. [opRecorder] 必须先于 settings 变更上报接线——`localChangeSink` 回调里要记 SETTING 操作。
+ *
+ * P0-1 追加一处软约束：[opRecorder] 的 `afterWrite` 引用 [syncManager]（声明顺序在后），
+ * 靠「回调体在调用时才求值」解耦，**不得**把该 lambda 存成构造期就执行的表达式。
  */
 class AppContainer(context: Context) {
 
@@ -65,7 +69,15 @@ class AppContainer(context: Context) {
     val settings: AppSettings = AppSettings(context)
 
     /** 本地写路径埋点（T-3）：与业务写同事务追加操作 */
-    val opRecorder: OpRecorder = OpRecorder(database.syncDao(), syncPrefs)
+    val opRecorder: OpRecorder = OpRecorder(
+        syncDao = database.syncDao(),
+        prefs = syncPrefs,
+        // P0-1 写后触发同步：OpRecorder → SyncManager 的装配方向天然成环（SyncManager 依赖
+        // recorder），用 () -> Unit 回调打破——lambda 体在**调用时**才求值 syncManager，
+        // 而写路径最早也发生在容器构造完成之后，故「声明顺序在前、引用在后」安全。
+        // 回调实现只做排程（requestSync(AFTER_WRITE) 走 3s 合并窗口），不碰 DB/网络。
+        afterWrite = { syncManager.requestSync(SyncTrigger.AFTER_WRITE) },
+    )
 
     /** 设置变更 → SETTING 操作的记账协程（SharedPreferences 无事务可言，串行 + 尽力同拍） */
     private val settingOpScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

@@ -61,7 +61,7 @@ interface SyncRunner {
  *
  * 与 §3.7 签名的差异（缺口补齐，T-2/3 先例）：
  * - `remote: WebDavRemote` 改为 `remoteProvider: () -> WebDavRemote?`——setupAccount /
- *   换凭证后重建远端；null = 未配置同步（返回 [SyncOutcome.SKIPPED]）；
+ *   换凭证后重建远端；null = 未配置同步（返回 `SyncOutcome.skip(NOT_CONFIGURED)`）；
  * - 移除未使用的 `db/ops` 依赖：写路径埋点在 `LedgerRepository`（T-3），引擎只消费 outbox；
  * - `photo` 的远端实例由本类传入 `PhotoTransfer.syncPendingPhotos(remote)`。
  *
@@ -82,9 +82,9 @@ class SyncEngine(
     override val state: StateFlow<SyncState> = _state.asStateFlow()
 
     override suspend fun syncOnce(trigger: SyncTrigger): SyncOutcome {
-        if (!gate.tryLock()) return SyncOutcome.SKIPPED // 单飞：已有同步在跑
+        if (!gate.tryLock()) return SyncOutcome.skip(SkipReason.IN_FLIGHT) // 单飞：已有同步在跑
         try {
-            val remote = remoteProvider() ?: return SyncOutcome.SKIPPED
+            val remote = remoteProvider() ?: return SyncOutcome.skip(SkipReason.NOT_CONFIGURED)
             var pushedOps = 0
             var pulledChunks = 0
             var appliedOps = 0

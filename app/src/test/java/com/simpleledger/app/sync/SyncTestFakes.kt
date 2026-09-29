@@ -128,6 +128,12 @@ internal class FakeSyncDao : SyncDao, Snapshottable {
     override suspend fun countOutbox(): Int =
         opLog.values.count { !it.uploaded && it.origin == OpOrigin.LOCAL }
 
+    // P0-2：可观察版同口径（sync-ui 加 DAO 方法时的接线；与 observeMembers 一样一次性快照即可，
+    // 用到它的 UI 侧测试不依赖 Room 失效通知重发）
+    override fun observeOutboxCount(): Flow<Int> = flowOf(
+        opLog.values.count { !it.uploaded && it.origin == OpOrigin.LOCAL },
+    )
+
     override suspend fun markUploaded(opIds: List<String>, chunkName: String) {
         opIds.forEach { id -> opLog[id]?.let { opLog[id] = it.copy(uploaded = true, chunkName = chunkName) } }
     }

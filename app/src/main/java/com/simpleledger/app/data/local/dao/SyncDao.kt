@@ -79,6 +79,17 @@ interface SyncDao {
     @Query("SELECT COUNT(*) FROM sync_ops WHERE uploaded = 0 AND origin = 'LOCAL'")
     suspend fun countOutbox(): Int
 
+    /**
+     * 待传计数（P0-2：同步设置页状态详情实时指示）：与 [countOutbox] 同一口径的
+     * **可观察**版本——`sync_ops` 任一行增删改都会让 Room 重发查询。
+     *
+     * 为什么单次查询不够：同步成功的瞬间 outbox 归零、角标置 Idle，此后用户再记 20 笔
+     * 也没有任何事件回写状态（`SyncState` 四态里没有「有待传」），角标会一直骗人。
+     * 挂在 Flow 上则记一笔 +1、传完 -1，UI 立刻从「已同步」改口为「待上传 N 条」。
+     */
+    @Query("SELECT COUNT(*) FROM sync_ops WHERE uploaded = 0 AND origin = 'LOCAL'")
+    fun observeOutboxCount(): Flow<Int>
+
     /** 打包上传成功后标记（chunkName = 云端分片假名，用于断点审计） */
     @Query("UPDATE sync_ops SET uploaded = 1, chunkName = :chunkName WHERE opId IN (:opIds)")
     suspend fun markUploaded(opIds: List<String>, chunkName: String)

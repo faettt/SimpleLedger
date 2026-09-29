@@ -17,15 +17,22 @@ import org.json.JSONObject
  *
  * 身份注入用 lambda 而非直接持有 [SyncPrefs]：JVM 单测可构造（测试无 Android Context），
  * 生产走次构造 `OpRecorder(syncDao, prefs)`，取 `deviceId` / `selfMemberId`。
+ *
+ * 写后触发同步（P0-1）同样用 lambda 注入：[afterWrite] 由 `AppContainer` 接
+ * `SyncManager.requestSync(AFTER_WRITE)`——两个对象同在容器装配，用回调解耦可避免
+ * 构造器循环依赖（SyncManager 又依赖本类）。缺省 no-op：JVM 单测、以及任何未接线的
+ * 装配路径都安全降级（照旧只记操作，只是不触发同步）。
  */
 class OpRecorder(
     private val syncDao: SyncDao,
     private val actorIdOf: () -> String,
     private val memberIdOf: () -> String?,
+    /** 写入口成功后的同步排程回调（生产 = requestSync(AFTER_WRITE)）；缺省 no-op */
+    private val afterWrite: () -> Unit = {},
 ) {
 
-    constructor(syncDao: SyncDao, prefs: SyncPrefs) :
-        this(syncDao, { prefs.deviceId }, { prefs.selfMemberId })
+    constructor(syncDao: SyncDao, prefs: SyncPrefs, afterWrite: () -> Unit = {}) :
+        this(syncDao, { prefs.deviceId }, { prefs.selfMemberId }, afterWrite)
 
     private val deriver = TrashDeriver(syncDao)
 
@@ -34,6 +41,21 @@ class OpRecorder(
 
     /** 本机设备身份（操作 actorId） */
     fun currentActorId(): String = actorIdOf()
+
+    /**
+     * 写入口成功收尾触发同步（P0-1）。
+     *
+     * 调用点在**业务事务内**（调用方契约见类注释），所以这里只做「排程」——真实实现
+     * `SyncManager.requestSync(AFTER_WRITE)` 的合并窗口在事务提交之后才读 outbox
+     * （否则引擎可能读到未提交的行、空跑一轮）。两条硬约束：
+     * - 回调异常**一律吞掉**（S6 口径）：它是尽力而为的旁路，绝不能把用户已经写好的账
+     *   连同事务一起带崩（回调实现若抛错，异常会穿回 `db.withTransaction` 触发整体回滚）；
+     * - 缺省 no-op：JVM 单测 / 未接线装配照旧工作。
+     */
+    private fun notifyAfterWrite() {
+        runCatching { afterWrite() }
+            .onFailure { println("[OpRecorder] afterWrite 触发失败（忽略，不影响本地写）: $it") }
+    }
 
     /**
      * 记一条 LOCAL UPSERT（新建/编辑/回插共用）。返回操作 opId。
@@ -63,6 +85,7 @@ class OpRecorder(
         syncDao.insertOp(op.toEntity(OpOrigin.LOCAL, applied = true, uploaded = false))
         // 并发编辑 LWW 落败留底在本地也可能触发（对方高 seq 操作已到、未轮到本行物化）
         deriver.derive(rowKind, rowSyncId)
+        notifyAfterWrite()
         return op.opId
     }
 
@@ -94,6 +117,7 @@ class OpRecorder(
         )
         syncDao.insertOp(op.toEntity(OpOrigin.LOCAL, applied = true, uploaded = false))
         deriver.derive(rowKind, rowSyncId)
+        notifyAfterWrite()
         return op.opId
     }
 
@@ -173,6 +197,7 @@ class OpRecorder(
             }
             syncDao.resolveTrash(deleteOpId, resolved)
         }
+        notifyAfterWrite()
         return actOp.opId
     }
 }

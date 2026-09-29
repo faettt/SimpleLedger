@@ -258,6 +258,14 @@ fun SyncSettingsScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // P1-2：口令是跨设备共享密钥，但框长得跟本机开锁密码一样——
+                    // 新设备用户会自己发明一个，然后撞 BAD_PASSWORD。这行必须贴着输入框。
+                    Text(
+                        text = stringResource(R.string.sync_password_shared_hint),
+                        style = SlType.bodySm,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
 
                 // ——— 同步选项 ———
@@ -374,12 +382,21 @@ private fun StatusCard(syncState: SyncState, state: SyncSettingsUiState) {
             SyncStatusBadge(state = syncState, onClick = { /* 本页即状态详情 */ })
             Spacer(modifier = Modifier.width(4.dp))
             Column {
-                Text(syncStateLabel(syncState), style = SlType.title)
+                // P0-2：待传 > 0 时标题由「已同步」改口为「待上传 N 条」（口径见 syncStateTitleRes）
+                Text(stringResource(syncStateTitleRes(syncState, state.pendingCount)), style = SlType.title)
                 Text(
                     text = syncTimeText(context, state.lastSyncAt),
                     style = SlType.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 第二行说清「不是失败、不用手工做什么」——只改标题容易被读成一种错误态
+                if (showsPendingIndicator(syncState, state.pendingCount)) {
+                    Text(
+                        text = stringResource(R.string.sync_status_pending_hint),
+                        style = SlType.meta,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 val error = state.lastError
                 if (error != null) {
                     Text(
@@ -480,20 +497,11 @@ private fun GroupCaption(text: String) {
 private fun eventText(context: Context, event: SyncEvent): String = when (event) {
     SyncEvent.TestOk -> context.getString(R.string.sync_test_ok)
     is SyncEvent.TestInvalid -> context.getString(credIssueRes(event.issue))
-    is SyncEvent.TestFailed -> context.getString(R.string.sync_event_failed, errorText(context, event.error))
+    is SyncEvent.TestFailed -> failedText(context, event.error, event.detail)
     is SyncEvent.SetupOk -> context.getString(R.string.sync_setup_ok, event.exportedOps)
     SyncEvent.SetupBadPassword -> context.getString(R.string.sync_setup_bad_password)
     is SyncEvent.SetupInvalid -> context.getString(credIssueRes(event.issue))
-    is SyncEvent.SetupFailed ->
-        if (event.detail != null) {
-            context.getString(
-                R.string.sync_event_failed_detail,
-                errorText(context, event.error),
-                event.detail,
-            )
-        } else {
-            context.getString(R.string.sync_event_failed, errorText(context, event.error))
-        }
+    is SyncEvent.SetupFailed -> failedText(context, event.error, event.detail)
     is SyncEvent.SyncDone -> outcomeText(context, event.outcome)
     SyncEvent.ResetDone -> context.getString(R.string.sync_reset_done)
     SyncEvent.ResetFailed -> context.getString(R.string.sync_reset_failed)
@@ -501,10 +509,21 @@ private fun eventText(context: Context, event: SyncEvent): String = when (event)
     SyncEvent.InsecureHttpConfirm -> ""
 }
 
+/**
+ * 失败纸签（v1.4.2 排障口）：有 [detail] 就附上可定位摘要——测连与接入两条路径同口径，
+ * AUTH / ACCESS_DENIED 与 UNKNOWN 一视同仁，不再只有兜底档带得起定位信息。
+ */
+private fun failedText(context: Context, error: SyncError, detail: String?): String =
+    if (detail != null) {
+        context.getString(R.string.sync_event_failed_detail, errorText(context, error), detail)
+    } else {
+        context.getString(R.string.sync_event_failed, errorText(context, error))
+    }
+
 private fun outcomeText(context: Context, outcome: SyncOutcome): String = when {
     !outcome.success ->
         context.getString(R.string.sync_event_failed, errorText(context, outcome.error ?: SyncError.UNKNOWN))
-    outcome.skipped -> context.getString(R.string.sync_last_skipped)
+    outcome.skipped -> context.getString(skipReasonRes(outcome.skipReason))
     else -> context.getString(R.string.sync_last_done, outcome.pushedOps, outcome.appliedOps)
 }
 
@@ -512,6 +531,7 @@ private fun errorText(context: Context, error: SyncError): String = context.getS
     when (error) {
         SyncError.NETWORK -> R.string.sync_error_network
         SyncError.AUTH -> R.string.sync_error_auth
+        SyncError.ACCESS_DENIED -> R.string.sync_error_access_denied
         SyncError.BAD_PASSWORD -> R.string.sync_error_bad_password
         SyncError.QUOTA -> R.string.sync_error_quota
         SyncError.CORRUPTED -> R.string.sync_error_corrupted
