@@ -129,6 +129,8 @@ fun MineScreen(
             MineMessage.EXPORT_FAILED -> context.getString(R.string.mine_export_failed)
             MineMessage.RESTORE_DONE -> context.getString(R.string.mine_restore_done)
             MineMessage.RESTORE_FAILED -> context.getString(R.string.mine_restore_failed)
+            MineMessage.RESTORE_NOT_BACKUP -> context.getString(R.string.mine_restore_not_backup)
+            MineMessage.RESTORE_NEWER_SCHEMA -> context.getString(R.string.mine_restore_newer_schema)
         }
         snackbarHostState.showSnackbar(text)
         viewModel.clearMessage()

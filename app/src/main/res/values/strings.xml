@@ -77,8 +77,10 @@
     <string name="mine_entry_total">共 %1$d 笔账目 · %2$d 个分区 · %3$d 个分类</string>
     <string name="mine_export_failed">导出失败，请重试</string>
     <string name="mine_restore_confirm">恢复会覆盖当前全部数据，且无法撤销。确定继续吗？</string>
-    <string name="mine_restore_done">恢复完成，请重新打开应用</string>
-    <string name="mine_restore_failed">恢复失败，已保留原有数据</string>
+    <string name="mine_restore_done">恢复完成，正在重启应用…</string>
+    <string name="mine_restore_failed">恢复失败，已自动回滚为原有数据</string>
+    <string name="mine_restore_not_backup">所选文件不是简账备份（未找到数据库）</string>
+    <string name="mine_restore_newer_schema">备份来自更新版本的应用，请先升级应用再恢复</string>
     <string name="mine_share">分享 / 保存到其它应用</string>
     <string name="mine_global_categories">全局分类</string>
     <string name="mine_global_categories_desc">一次定义，所有分区都能选到</string>

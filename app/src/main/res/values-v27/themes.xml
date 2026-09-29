@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 27+ 补充：刘海屏短边模式（属性自 API 27 起存在；API 26 无此需求） -->
+    <style name="Theme.SimpleLedger" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+</resources>

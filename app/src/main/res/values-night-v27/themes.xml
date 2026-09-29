@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- API 27+ 深色补充：刘海屏短边模式 -->
     <style name="Theme.SimpleLedger" parent="android:Theme.Material.NoActionBar">
-        <!-- 深色主题的窗口底 = 深炭纸（与 Theme.kt DarkPaper 同值）；
-             cutout 属性需 API 27，v27 补充定义见 values-night-v27 -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowBackground">@color/paper</item>
     </style>
 </resources>

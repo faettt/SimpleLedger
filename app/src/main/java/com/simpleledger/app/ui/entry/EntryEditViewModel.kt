@@ -217,12 +217,15 @@ class EntryEditViewModel(
     }
 
     fun setDate(date: LocalDate) = _state.update {
-        val time = LocalTime.ofInstant(Instant.ofEpochMilli(it.entryTime), ZoneId.systemDefault())
+        // P0 修复：LocalTime.ofInstant 需 API 31（LocalDate.ofInstant 需 API 34），minSdk 26 上
+        // Android 8~13 会 NoSuchMethodError 闪退。atZone().toLocalTime() 自 API 26 可用，
+        // 与下方 setDateFromUtcMillis 同一安全写法。
+        val time = Instant.ofEpochMilli(it.entryTime).atZone(ZoneId.systemDefault()).toLocalTime()
         it.copy(entryTime = date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
     }
 
     fun setTime(time: LocalTime) = _state.update {
-        val date = LocalDate.ofInstant(Instant.ofEpochMilli(it.entryTime), ZoneId.systemDefault())
+        val date = Instant.ofEpochMilli(it.entryTime).atZone(ZoneId.systemDefault()).toLocalDate()
         it.copy(entryTime = date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
     }
 

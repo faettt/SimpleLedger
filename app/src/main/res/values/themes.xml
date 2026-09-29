@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SimpleLedger" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <!-- 暖纸底色：API 31+ 的系统启动屏默认取 windowBackground，
-             所以这一项同时决定了「启动屏不闪白」。深色主题见 values-night。 -->
+             所以这一项同时决定了「启动屏不闪白」。深色主题见 values-night。
+             cutout 属性需 API 27，v27 补充定义见 values-v27。 -->
         <item name="android:windowBackground">@color/paper</item>
     </style>
 </resources>

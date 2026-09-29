@@ -3,8 +3,10 @@ package com.simpleledger.app.data.export
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.work.WorkManager
 import com.simpleledger.app.data.local.AppDatabase
 import com.simpleledger.app.data.repo.LedgerRepository
+import com.simpleledger.app.sync.SyncWorker
 import com.simpleledger.app.util.DateTimes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +17,14 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+
+/** 恢复结果：失败细分成三档，让 UI 能给出「为什么失败」的诚实文案而不是一律「恢复失败」。 */
+sealed class RestoreResult {
+    data object Success : RestoreResult()
+    data object NotABackup : RestoreResult()
+    data class NewerSchema(val backupVersion: Int, val appVersion: Int) : RestoreResult()
+    data object Failed : RestoreResult()
+}
 
 /**
  * 数据导出与备份。
@@ -112,19 +122,62 @@ class DataExporter(
     }
 
     /**
-     * 从备份 zip 恢复：先备份当前数据到 .bak，再解压覆盖。
-     * 恢复后需要重启应用（Room 持有旧连接），由调用方负责。
+     * 从备份 zip 恢复（P0 重做：先暂存校验、再原子替换、失败自动回滚）。
+     *
+     * 顺序（对应 2026-09 全面审查 P0-2/P0-3/P1-2）：
+     * 1. **取消后台同步**——换库窗口内绝不能有第二个写者（旧 WAL 连接的 checkpoint
+     *    会把旧页写回新库，损坏刚恢复的数据）；
+     * 2. 暂存解压 + 校验（是 SQLite？schema 版本 ≤ 当前？）——**任何不通过都在触碰
+     *    本地数据之前失败**，本地库一个字节都不动；
+     * 3. 备 .bak → 清旧日志 → 换库 → 贴图；中途任何失败**用 .bak 回滚**，
+     *    「已保留原有数据」这句话从此为真；
+     * 4. 成功后由调用方（MineViewModel）**立即重启进程**——Room 旧连接持有旧 WAL fd，
+     *    只有进程消失才能彻底杜绝写回。
+     *
+     * 失败（非 Success）时本地库已回滚为原样，且此处会重新注册周期同步
+     * （第 1 步取消过，进程还活着，不能让定时任务就此消失）。
      */
-    suspend fun restoreBackup(uri: Uri): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val dbDir = context.getDatabasePath("simple_ledger.db").parentFile
-                ?: error("找不到数据库目录")
-            val imageDir = File(context.filesDir, "images").apply { mkdirs() }
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                restoreZipInto(ZipInputStream(input.buffered()), dbDir, imageDir)
-            } ?: error("无法读取所选备份文件")
-            true
-        }.onFailure { Log.e(TAG, "恢复备份失败", it) }.getOrElse { false }
+    suspend fun restoreBackup(uri: Uri): RestoreResult = withContext(Dispatchers.IO) {
+        // 1) 停掉后台同步写手。cancelUniqueWork 对「正在运行」的 Worker 不强杀，
+        //    但同步引擎单飞 Mutex 保证至多一轮；本轮结束后不再有新写者。
+        runCatching { WorkManager.getInstance(context).cancelUniqueWork(SyncWorker.WORK_NAME) }
+        // 当前 schema 版本（读取活库的 user_version，单一事实源，避免与 @Database 注解漂移）
+        val currentVersion = db?.openHelper?.readableDatabase?.use { it.version } ?: 0
+
+        val dbDir = context.getDatabasePath(DB_NAME).parentFile
+        val imageDir = File(context.filesDir, "images")
+        val stage = File(context.cacheDir, "restore-staging-${UUID.randomUUID()}")
+
+        val outcome = runCatching {
+            if (dbDir == null) error("找不到数据库目录")
+            imageDir.mkdirs()
+            stage.mkdirs()
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    restoreZipInto(
+                        ZipInputStream(input.buffered()),
+                        dbDir, imageDir, currentVersion, stage,
+                    )
+                } ?: error("无法读取所选备份文件")
+            } finally {
+                stage.deleteRecursively()
+            }
+        }
+
+        when {
+            outcome.isSuccess && outcome.getOrNull() == RestoreVerdict.Ok -> RestoreResult.Success
+            outcome.getOrNull() == RestoreVerdict.NotABackup -> RestoreResult.NotABackup
+            outcome.getOrNull() is RestoreVerdict.NewerSchema -> {
+                val v = outcome.getOrNull() as RestoreVerdict.NewerSchema
+                RestoreResult.NewerSchema(v.backupVersion, currentVersion)
+            }
+            else -> {
+                // 失败路径：本地库已被内核回滚为原样；恢复被取消的周期同步
+                runCatching { SyncWorker.enqueue(context) }
+                    .onFailure { Log.e(TAG, "恢复失败后重注册周期同步失败", it) }
+                RestoreResult.Failed
+            }
+        }
     }
 
     /** 清理旧的导出文件，避免缓存堆积 */
@@ -160,66 +213,136 @@ class DataExporter(
 
     private companion object {
         const val TAG = "SimpleLedger.Export"
+        const val DB_NAME = "simple_ledger.db"
     }
 }
 
-/**
- * 解压恢复的**纯 JVM 内核**（AU-1/AU-2 拆出，供单测直测；不依赖 Android 类）：
- *
- * 1. 当前数据先留一份 .bak（含旧 wal/shm——回退需要完整三件套），恢复失败可回退；
- * 2. AU-1（Zip Slip 防护）：恶意备份包的条目名可含 `../`（如
- *    `database/../shared_prefs/simple_ledger_settings.xml`），逐条目落盘前必须经
- *    [safeEntryFile] 校验归一化路径仍落在目标目录内，逃逸条目跳过不入盘——
- *    否则用户在 SAF 选择器里选中的任意 zip 都能拿到沙箱内任意文件写原语
- *    （覆盖应用锁 prefs、改写同步指向的服务器）；
- * 3. AU-2：旧库残留的 -wal/-shm 在**写入第一个 database/ 条目之前**清掉（此前的实现
- *    是解压完再无条件删除——把刚从备份包解压出来的 wal/shm 也一并误删，备份时还躺在
- *    WAL 里未 checkpoint 的事务随「恢复成功」静默丢失，与打包侧「wal/shm 必须一并
- *    打包才能完整还原」的契约自相矛盾）。清理只由 database/ 条目触发：zip 里没有
- *    数据库条目（误选了别的 zip）时不动本地库。zip 自带的 wal/shm 原样落位，
- *    重启后由 SQLite recovery 回放。
- */
-internal fun restoreZipInto(zip: ZipInputStream, dbDir: File, imageDir: File) {
-    // 1) 当前数据先留一份 .bak
-    listOf("", "-wal", "-shm").forEach { suffix ->
-        val current = File(dbDir, "simple_ledger.db$suffix")
-        if (current.exists()) {
-            current.copyTo(File(dbDir, "simple_ledger.db$suffix.bak"), overwrite = true)
-        }
-    }
+/** 暂存校验结论（内核 [restoreZipInto] 的失败细分，供 [RestoreResult] 映射）。 */
+internal sealed class RestoreVerdict {
+    data object Ok : RestoreVerdict()
+    data object NotABackup : RestoreVerdict()
+    data class NewerSchema(val backupVersion: Int) : RestoreVerdict()
+}
 
-    // 2) 逐条目解压覆盖
-    var staleLogsCleared = false
+/**
+ * 解压恢复的**纯 JVM 内核**（AU-1/AU-2 拆出供单测直测；不依赖 Android 类）。
+ *
+ * P0 重做后的三段式（2026-09 全面审查）：
+ *
+ * **第一段·暂存**：所有条目先解压到 [stageDir]（database/ 与 images/ 两个子目录），
+ * 本地数据一个字节不碰。这样坏 zip / 磁盘满等任何解压失败都发生在破坏之前。
+ * AU-1（Zip Slip 防护）在暂存阶段生效：条目名归一化后必须仍在暂存目录内，
+ * 逃逸条目（如 `database/../shared_prefs/…` 覆盖应用锁 prefs）跳过不入盘。
+ *
+ * **第二段·校验**：暂存库里必须存在 `simple_ledger.db`、文件头是合法 SQLite
+ * （magic `SQLite format 3\0`）、且 `user_version`（偏移 60，大端 u32）不高于
+ * [currentDbVersion]——高版本备份恢复进旧 App 会在 Room 打开时抛异常且**启动永久崩溃**，
+ * 必须在触碰本地数据之前拒绝。任一不满足即返回 [RestoreVerdict.NotABackup] /
+ * [RestoreVerdict.NewerSchema]，本地保持原样。
+ *
+ * **第三段·替换 + 回滚**：.bak 三件套（含旧 wal/shm，回退需要完整三件套）→
+ * 清旧库残留 -wal/-shm（AU-2：必须在主库落位之前，且只在确有新库时清）→
+ * 换库 → 贴图（内容寻址命名，按名覆盖/新增，additive）。**任何失败用 .bak 整套回滚**，
+ * 保证「恢复失败已保留原有数据」为真；成功则清掉 .bak（旧实现永不清理）。
+ *
+ * AU-2 细则：zip 自带的 wal/shm 原样落位（备份时未 checkpoint 的事务随 WAL 恢复，
+ * 重启后由 SQLite recovery 回放）；zip 里没有数据库条目（误选了别的 zip）时
+ * 不触碰本地库，直接 NotABackup。
+ */
+internal fun restoreZipInto(
+    zip: ZipInputStream,
+    dbDir: File,
+    imageDir: File,
+    currentDbVersion: Int,
+    stageDir: File,
+): RestoreVerdict {
+    val stageDb = File(stageDir, "database").apply { mkdirs() }
+    val stageImg = File(stageDir, "images").apply { mkdirs() }
+
+    // ---------- 第一段：全部条目暂存（本地零触碰） ----------
     zip.use { stream ->
         var entry: ZipEntry? = stream.nextEntry
         while (entry != null) {
-            val name = entry.name
             when {
-                name.startsWith("database/") -> {
-                    if (!staleLogsCleared) {
-                        // AU-2：清掉**旧库**残留日志——只清一次、只在确有新库要落位时清，
-                        // 且必须在主库文件落位之前（新主库 + 旧日志 = 撕裂库）
-                        listOf("-wal", "-shm").forEach { suffix ->
-                            File(dbDir, "simple_ledger.db$suffix").delete()
-                        }
-                        staleLogsCleared = true
-                    }
-                    safeEntryFile(dbDir, name.removePrefix("database/"))?.let { target ->
-                        target.outputStream().use { stream.copyTo(it) }
-                    }
-                }
-
-                name.startsWith("images/") -> {
-                    safeEntryFile(imageDir, name.removePrefix("images/"))?.let { target ->
-                        target.outputStream().use { stream.copyTo(it) }
-                    }
-                }
-            }
+                entry.name.startsWith("database/") ->
+                    safeEntryFile(stageDb, entry.name.removePrefix("database/"))
+                entry.name.startsWith("images/") ->
+                    safeEntryFile(stageImg, entry.name.removePrefix("images/"))
+                else -> null // backup-info.txt 等非数据条目：忽略
+            }?.let { target -> target.outputStream().use { stream.copyTo(it) } }
             stream.closeEntry()
             entry = stream.nextEntry
         }
     }
+
+    // ---------- 第二段：校验（不通过 = 本地零改动） ----------
+    val stagedMain = File(stageDb, DB_MAIN)
+    if (!stagedMain.exists()) return RestoreVerdict.NotABackup
+    val backupVersion = readSqliteUserVersion(stagedMain)
+        ?: return RestoreVerdict.NotABackup // 不是合法 SQLite 文件
+    if (backupVersion > currentDbVersion) return RestoreVerdict.NewerSchema(backupVersion)
+
+    // ---------- 第三段：替换（失败自动回滚） ----------
+    runCatching {
+        // 1) 当前三件套留 .bak
+        DB_SUFFIXES.forEach { suffix ->
+            val current = File(dbDir, "$DB_MAIN$suffix")
+            if (current.exists()) current.copyTo(File(dbDir, "$DB_MAIN$suffix.bak"), overwrite = true)
+        }
+        // 2) 清旧库残留日志——必须在主库落位之前（新主库 + 旧日志 = 撕裂库）
+        DB_SUFFIXES.filter { it.isNotEmpty() }.forEach { suffix ->
+            File(dbDir, "$DB_MAIN$suffix").delete()
+        }
+        // 3) 换库：暂存的 db 三件套里存在谁就落谁
+        DB_SUFFIXES.forEach { suffix ->
+            val staged = File(stageDb, "$DB_MAIN$suffix")
+            if (staged.exists()) staged.copyTo(File(dbDir, "$DB_MAIN$suffix"), overwrite = true)
+        }
+        // 4) 贴图（additive：内容寻址命名，同名即同内容，旧图保留供旧库引用）
+        stageImg.listFiles()?.forEach { img ->
+            img.copyTo(File(imageDir, img.name), overwrite = true)
+        }
+        // 5) 成功：清 .bak
+        DB_SUFFIXES.forEach { suffix -> File(dbDir, "$DB_MAIN$suffix.bak").delete() }
+    }.onFailure { t ->
+        // 回滚：删掉半写的三件套，.bak 里有谁就恢复谁；回滚后 .bak 一并清理
+        DB_SUFFIXES.forEach { suffix ->
+            File(dbDir, "$DB_MAIN$suffix").delete()
+            val bak = File(dbDir, "$DB_MAIN$suffix.bak")
+            if (bak.exists()) {
+                bak.copyTo(File(dbDir, "$DB_MAIN$suffix"), overwrite = true)
+                bak.delete()
+            }
+        }
+        throw t
+    }
+    return RestoreVerdict.Ok
 }
+
+/** SQLite 文件头解析：合法则返回 user_version（偏移 60，大端 u32），非法返回 null。 */
+private fun readSqliteUserVersion(dbFile: File): Int? = runCatching {
+    val head = ByteArray(100)
+    var read = 0
+    dbFile.inputStream().use { input ->
+        while (read < head.size) {
+            val n = input.read(head, read, head.size - read)
+            if (n < 0) break
+            read += n
+        }
+    }
+    // magic："SQLite format 3\0" 共 16 字节；文件太短读不满头部也不合法
+    check(read >= 64) { "文件过短" }
+    val magic = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+    check(head.copyOfRange(0, magic.size).contentEquals(magic)) { "非 SQLite 文件" }
+    ((head[60].toInt() and 0xFF) shl 24) or
+        ((head[61].toInt() and 0xFF) shl 16) or
+        ((head[62].toInt() and 0xFF) shl 8) or
+        (head[63].toInt() and 0xFF)
+}.getOrNull()
+
+/** 内核与 DataExporter 共用的库文件名（保持与 [com.simpleledger.app.data.local.AppDatabase] 的 DB_NAME 一致） */
+private const val DB_MAIN = "simple_ledger.db"
+private val DB_SUFFIXES = listOf("", "-wal", "-shm")
 
 /**
  * AU-1：把 zip 条目名解析到 [destDir] 内的安全落点。
