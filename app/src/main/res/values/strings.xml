@@ -203,6 +203,11 @@
 
     <!-- 分区详情：汇总（月模式收入标签；支出按模式用 expense_all / expense_plain） -->
     <string name="section_detail_income">收入 %1$s</string>
+    <!-- P1 双口径头部：月模式主行带月名；锚点行 = 另一口径（月模式的锚点是累计，全部模式的锚点是本月） -->
+    <string name="section_month_expense">%1$s月支出 %2$s</string>
+    <string name="section_month_income">%1$s月收入 %2$s</string>
+    <string name="section_this_month_expense">本月支出 %1$s</string>
+    <string name="section_this_month_income">本月收入 %1$s</string>
 
     <!-- 分区管理：分区信息卡（复用 budget_none） -->
     <string name="section_manage_budget">月度预算 %1$s</string>

@@ -37,6 +37,12 @@ data class SectionDetailUiState(
     val groups: List<DayGroup> = emptyList(),
     val expenseCents: Long = 0,
     val incomeCents: Long = 0,
+    /** P1 双口径头部：全部时间累计（与首屏「本月」卡片对差可见） */
+    val allTimeExpenseCents: Long = 0,
+    val allTimeIncomeCents: Long = 0,
+    /** 当前自然月（卡片口径）：未筛月时与窗口口径的差额即历史账目 */
+    val thisMonthExpenseCents: Long = 0,
+    val thisMonthIncomeCents: Long = 0,
     /** 当前时间窗内无账目 */
     val isEmpty: Boolean = false,
     /** 时间窗筛选：null = 全部时间（默认，任务书裁定原文）；非 null = 只看该自然月 */
@@ -145,6 +151,36 @@ class SectionDetailViewModel(
         .flowOn(Dispatchers.Default)
 
     /**
+     * P1 双口径头部锚点：**全部时间**聚合，与 [monthFilter] 无关——
+     * 详情头部并列展示「当期 / 累计」两个锚点，跨月差额一眼可见
+     * （此前头部只随筛选走，卡片上的「本月」数与详情头部的「累计」数
+     * 差额没有任何界面提示，用户无从判断差异来自历史账目）。
+     */
+    private val allTimeAggFlow: Flow<SectionDetailAgg> = repo.observeEntries(
+        start = Long.MIN_VALUE,
+        end = Long.MAX_VALUE,
+        sectionId = sectionId,
+    ).map { entries -> toSectionAgg(entries) }
+        .flowOn(Dispatchers.Default)
+
+    /**
+     * 当前自然月聚合 = 首屏卡片的口径（`observeSectionOverview` 同月界）。
+     * 由全量分组的派生计算，不再单独查库。
+     */
+    private val thisMonthAggFlow: Flow<SectionDetailAgg> = allTimeAggFlow.map { agg ->
+        val now = YearMonth.now()
+        val monthGroups = agg.groups.filter { YearMonth.from(it.date) == now }
+        SectionDetailAgg(
+            groups = monthGroups,
+            expenseCents = monthGroups.sumOf { it.expenseCents },
+            incomeCents = monthGroups.sumOf { it.incomeCents },
+        )
+    }
+
+    private val anchorAggFlow: Flow<Pair<SectionDetailAgg, SectionDetailAgg>> =
+        combine(allTimeAggFlow, thisMonthAggFlow) { all, month -> all to month }
+
+    /**
      * 「分区是否存过任何账目」。工单前置项（`observeAnyBySection` EXISTS 一行）裁定前
      * 先走**域内兜底**：同仓库全量窗口查询取非空——全部模式下与主查询重复物化一份，
      * 接线点不变；所有者批准后把本 flow 换成 EXISTS 转发即可（返工面 = 这一行）。
@@ -156,20 +192,31 @@ class SectionDetailViewModel(
     ).map { it.isNotEmpty() }
 
     val state: StateFlow<SectionDetailUiState> = combine(
-        sectionFlow,
-        entriesAggFlow,
-        hasAnyEntryFlow,
-        monthFilter,
-    ) { section, agg, hasAny, filter ->
-        SectionDetailUiState(
-            section = section,
-            groups = agg.groups,
-            expenseCents = agg.expenseCents,
-            incomeCents = agg.incomeCents,
-            // 窗口空 ⟺ 分组为空（toSectionAgg 对空输入返回空组）
-            isEmpty = agg.groups.isEmpty(),
-            monthFilter = filter,
-            hasAnyEntry = hasAny,
+        combine(
+            sectionFlow,
+            entriesAggFlow,
+            hasAnyEntryFlow,
+            monthFilter,
+        ) { section, agg, hasAny, filter ->
+            SectionDetailUiState(
+                section = section,
+                groups = agg.groups,
+                expenseCents = agg.expenseCents,
+                incomeCents = agg.incomeCents,
+                // 窗口空 ⟺ 分组为空（toSectionAgg 对空输入返回空组）
+                isEmpty = agg.groups.isEmpty(),
+                monthFilter = filter,
+                hasAnyEntry = hasAny,
+            )
+        },
+        anchorAggFlow,
+    ) { base, anchor ->
+        val (allTime, thisMonth) = anchor
+        base.copy(
+            allTimeExpenseCents = allTime.expenseCents,
+            allTimeIncomeCents = allTime.incomeCents,
+            thisMonthExpenseCents = thisMonth.expenseCents,
+            thisMonthIncomeCents = thisMonth.incomeCents,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SectionDetailUiState())
 

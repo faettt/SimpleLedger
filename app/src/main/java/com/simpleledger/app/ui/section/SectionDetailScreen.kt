@@ -233,7 +233,15 @@ fun SectionDetailScreen(
                     }
                 }
 
-                SectionSummary(state.expenseCents, state.incomeCents, state.monthFilter)
+                SectionSummary(
+                    expenseCents = state.expenseCents,
+                    incomeCents = state.incomeCents,
+                    monthFilter = state.monthFilter,
+                    allTimeExpenseCents = state.allTimeExpenseCents,
+                    allTimeIncomeCents = state.allTimeIncomeCents,
+                    thisMonthExpenseCents = state.thisMonthExpenseCents,
+                    thisMonthIncomeCents = state.thisMonthIncomeCents,
+                )
 
                 // 时间窗筛选条（纸感 chip 行，规范 §2.4 口径）
                 MonthFilterBar(
@@ -422,33 +430,62 @@ private fun SectionMonthHeader(month: YearMonth) {
 }
 
 @Composable
-private fun SectionSummary(expenseCents: Long, incomeCents: Long, monthFilter: YearMonth?) {
+private fun SectionSummary(
+    expenseCents: Long,
+    incomeCents: Long,
+    monthFilter: YearMonth?,
+    allTimeExpenseCents: Long,
+    allTimeIncomeCents: Long,
+    thisMonthExpenseCents: Long,
+    thisMonthIncomeCents: Long,
+) {
     val hidden = LocalHideAmounts.current
-    // 口径区分：全部时间 =「累计」（与首屏「本月」卡片相区分）；月模式 = 平词
-    val expenseLabel = if (monthFilter == null) R.string.expense_all else R.string.expense_plain
-    val incomeLabel = if (monthFilter == null) R.string.income_all else R.string.section_detail_income
-    Row(
+    val masked = { cents: Long -> if (hidden) "••••" else Money.formatWithSymbol(cents) }
+    // P1 双口径头部：当期（随筛选）与另一锚点并列——
+    // 月模式：当期 =「9 月」 · 锚点 =「累计」；全部模式：当期 =「累计」 · 锚点 =「本月」。
+    // 首屏卡片是「本月」口径，头部只给一个口径时跨月差额无从判断（全面审查 P1 后补）。
+    val primary = if (monthFilter == null) {
+        listOf(
+            stringResource(R.string.expense_all, masked(allTimeExpenseCents)),
+            stringResource(R.string.income_all, masked(allTimeIncomeCents)),
+        )
+    } else {
+        listOf(
+            stringResource(R.string.section_month_expense, monthFilter.monthValue, masked(expenseCents)),
+            stringResource(R.string.section_month_income, monthFilter.monthValue, masked(incomeCents)),
+        )
+    }
+    val anchor = if (monthFilter == null) {
+        listOf(
+            stringResource(R.string.section_this_month_expense, masked(thisMonthExpenseCents)),
+            stringResource(R.string.section_this_month_income, masked(thisMonthIncomeCents)),
+        )
+    } else {
+        listOf(
+            stringResource(R.string.expense_all, masked(allTimeExpenseCents)),
+            stringResource(R.string.income_all, masked(allTimeIncomeCents)),
+        )
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(
-            text = stringResource(
-                expenseLabel,
-                if (hidden) "••••" else Money.formatWithSymbol(expenseCents),
-            ),
-            style = SlType.bodySm,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = stringResource(
-                incomeLabel,
-                if (hidden) "••••" else Money.formatWithSymbol(incomeCents),
-            ),
-            style = SlType.bodySm,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(primary[0], style = SlType.bodySm, color = MaterialTheme.colorScheme.onSurface)
+            Text(primary[1], style = SlType.bodySm, color = MaterialTheme.colorScheme.onSurface)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(anchor[0], style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(anchor[1], style = SlType.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
