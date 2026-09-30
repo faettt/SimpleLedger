@@ -109,6 +109,12 @@ data class SyncOutcome(
     val photo: PhotoSyncReport = PhotoSyncReport.EMPTY,
     /** 本轮收尾时仍处隔离状态的损坏分片数（U-7：不挡其余同步，状态详情透出） */
     val quarantinedChunks: Int = 0,
+    /**
+     * 本轮收尾时仍处隔离状态的坏照片数（与 [quarantinedChunks] 同构：U-7 照片侧对称）。
+     * 单张坏照片（哈希不符 / 解密失败）曾让每轮同步永久 Failed 并阻塞全部后续照片，
+     * 现计数隔离跳过；「立即同步」重试，重置同步清除。
+     */
+    val quarantinedPhotos: Int = 0,
 ) {
     companion object {
         /**
@@ -195,6 +201,31 @@ interface SyncStore {
 
     /** 解除某分片隔离（手动同步重试前调用；仍损坏则按计数当场重新隔离） */
     fun clearQuarantinedChunk(chunkName: String)
+
+    // —— 照片侧隔离（U-7 对称）：坏照片不再拖死整轮 ——
+
+    /**
+     * 记一次照片下载/解密/哈希校验失败，返回该照片**连续**失败次数。
+     * 口径与 [recordChunkFailure] 相同：计数而非首败即隔离——下载截断等偶发损坏
+     * 达 [com.simpleledger.app.sync.photo.PhotoTransfer.PHOTO_QUARANTINE_THRESHOLD]
+     * 才隔离。键 = 照片云端假名（`WebDavRemote.photoRemoteName`，与分片键同名口径）。
+     */
+    fun recordPhotoFailure(photoName: String): Int
+
+    /** 照片成功落地（哈希校验通过）：清零失败计数（隔离名单由引擎按手动重试口径另行维护） */
+    fun clearPhotoFailure(photoName: String)
+
+    /** 某照片当前连续失败次数 */
+    fun photoFailureCount(photoName: String): Int
+
+    /** 当前被隔离的照片假名（自动轮跳过下载；手动「立即同步」重试） */
+    fun quarantinedPhotos(): Set<String>
+
+    /** 把照片加入隔离名单 */
+    fun quarantinePhoto(photoName: String)
+
+    /** 解除某照片隔离（手动同步重试前调用；仍损坏则按计数当场重新隔离） */
+    fun clearQuarantinedPhoto(photoName: String)
 
     /** 重置同步（R-05）：清空全部同步侧状态（本地账本零触碰） */
     fun clearAll()

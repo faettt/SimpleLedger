@@ -354,7 +354,8 @@ class SyncManager(
 
     /**
      * 成员认领（U-2）：全书唯一名——同名复用既有成员（resetSync 后 re-setup 也走此路），
-     * 首次认领生成 32hex UUID 并记 MEMBER UPSERT（其余设备经操作日志认识该成员）。
+     * 首次认领生成 32hex UUID 并记 MEMBER UPSERT（其余设备经操作日志认识该成员）；
+     * 复用路径同样补记 MEMBER UPSERT（操作账可能已被 resetSync 清空，见方法内注释）。
      * 返回成员 syncId；名为空返回 null。
      */
     suspend fun claimMember(name: String): String? {
@@ -362,7 +363,21 @@ class SyncManager(
         if (trimmed.isEmpty()) return null
         val syncId = tx.runInTransaction {
             val existing = syncDao.findMemberByName(trimmed)
-            if (existing != null) return@runInTransaction existing.syncId
+            if (existing != null) {
+                // resetSync 保留 members 却清空操作账：re-setup 走到这里的复用路径若不补记，
+                // 该成员定义从此进不了操作日志，其他设备（新装/重装）永远认识不了它——
+                // entries.memberId 悬空，成员标签/按人统计（R-18/R-20）静默失效。
+                // 与 first-claim 同事务口径补记「本机认识这个成员」（与存量导出的 MEMBER
+                // 补记互为双保险）；补记与既有 op 同 seq 同内容，LWW 任选其一收敛状态一致。
+                recorder.onUpsert(
+                    rowKind = RowKind.MEMBER,
+                    rowSyncId = existing.syncId,
+                    seq = existing.versionSeq,
+                    baseSeq = null,
+                    snapshot = OpCodec.memberSnapshot(existing.name, existing.hidden, existing.createdAt),
+                )
+                return@runInTransaction existing.syncId
+            }
             val now = System.currentTimeMillis()
             val member = MemberEntity(
                 syncId = newSyncId32(),
@@ -423,6 +438,13 @@ class SyncManager(
      * 「立即同步」会重试被隔离分片，重置同步清空记录。
      */
     fun quarantinedChunkCount(): Int = store.quarantinedChunks().size
+
+    /**
+     * U-7 照片侧对称的状态详情取数：当前被隔离的坏照片数（0 = 无）。
+     * 隔离不挡其余照片同步（角标仍是成功口径），缺失在状态详情明说——
+     * 「立即同步」会重试被隔离照片，重置同步清空记录。
+     */
+    fun quarantinedPhotoCount(): Int = store.quarantinedPhotos().size
 
     /**
      * U-1：Argon2id 派生并记录耗时（验收要求留档）。

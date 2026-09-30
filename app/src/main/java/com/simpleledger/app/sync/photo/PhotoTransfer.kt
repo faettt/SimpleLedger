@@ -9,6 +9,7 @@ import com.simpleledger.app.sync.dav.DavException
 import com.simpleledger.app.sync.dav.WebDavRemote
 import java.io.File
 import java.security.MessageDigest
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * 照片文件存取端口（生产 = `FilePhotoStore` 包 `ImageStorage.pathForHash`；JVM 测试 = 内存 Map）。
@@ -98,10 +99,17 @@ class PhotoTransfer(
     /**
      * 一轮照片同步：上行差集（HEAD 去重）→ 下行差集（Range 续传 + 哈希校验）。
      *
-     * 异常口径：网络 / DAV / 损坏异常**照抛**（由 `SyncEngine` 统一映射 `SyncError`，
-     * S6 静默在引擎层收口）；门控与续传未收满不算失败，走报告 `paused/skipped`。
+     * 异常口径：网络 / DAV 异常**照抛**（由 `SyncEngine` 统一映射 `SyncError`，
+     * S6 静默在引擎层收口）；单张照片的**确定性损坏**（下载/解密/哈希校验失败）按
+     * U-7 照片侧对称口径只计这一张——连续失败达 [PHOTO_QUARANTINE_THRESHOLD] 隔离，
+     * 其余照片照常同步、整轮不再被拖成永久 Failed。[retryQuarantined] = true
+     * （手动「立即同步」）是被隔离照片的逃生口：先解除隔离重试，仍损坏按计数当场重新隔离。
+     * 门控与续传未收满不算失败，走报告 `paused/skipped`。
      */
-    suspend fun syncPendingPhotos(remote: WebDavRemote): PhotoSyncReport {
+    suspend fun syncPendingPhotos(
+        remote: WebDavRemote,
+        retryQuarantined: Boolean = false,
+    ): PhotoSyncReport {
         if (!network.isOnline()) return PhotoSyncReport.EMPTY.copy(paused = true)
         var up = 0
         var down = 0
@@ -110,7 +118,13 @@ class PhotoTransfer(
         var bytesDown = 0L
         var paused = false
 
+        // U-7 照片侧对称（口径照抄 SyncEngine 分片隔离）：自动轮跳过被隔离照片；
+        // MANUAL「立即同步」不跳——先解除隔离重试一次（逃生口）
+        val quarantined = store.quarantinedPhotos()
+        val skipSet = if (retryQuarantined) emptySet() else quarantined
+
         for (hash in refs.contentHashes().filter { it.isNotEmpty() }.distinct()) {
+            val name = remote.photoRemoteName(hash)
             var local = photos.readBytes(hash)
             if (local != null && sha256Hex(local) != hash) {
                 // U-16：本地字节与内容寻址哈希不符 = 进程中途死亡留下的截断坏文件
@@ -122,7 +136,6 @@ class PhotoTransfer(
             }
             if (local != null) {
                 // ---- 上行：本地有文件 → 确保云端有 ----
-                val name = remote.photoRemoteName(hash)
                 if (syncDao.getRemoteFile(name) != null) {
                     // 台账去重命中：已确认在云端，零流量（S3）；计入 skipped（PhotoSyncReport 口径）
                     skipped++
@@ -152,26 +165,46 @@ class PhotoTransfer(
                     skipped++
                     continue
                 }
+                if (name in skipSet) {
+                    skipped++ // U-7：隔离照片本轮跳过（缺失经状态详情透出，非静默）
+                    continue
+                }
+                if (name in quarantined) store.clearQuarantinedPhoto(name) // 手动重试：先解除再试
                 if (!remote.photoHas(hash)) {
                     skipped++ // 云端还没有（对端未传完），不算失败
                     continue
                 }
-                val resumeFrom = remote.photoPartialLength(hash)
-                var received = resumeFrom
-                val bytes = remote.downloadPhoto(hash, resumeFrom) { received = it }
+                var received = remote.photoPartialLength(hash)
+                val resumeFrom = received
+                val bytes = try {
+                    val downloaded = remote.downloadPhoto(hash, resumeFrom) { received = it }
+                    if (downloaded != null) {
+                        val actual = PhotoTransfer.sha256Hex(downloaded)
+                        if (actual != hash) {
+                            // 哈希不符是**确定性坏**（非瞬态）：同样计数 → 隔离，而非无限重试
+                            throw DavException.Corrupted("照片内容哈希不符：期望 $hash 实际 $actual")
+                        }
+                    }
+                    downloaded
+                } catch (e: CancellationException) {
+                    throw e // 协程取消不是照片坏：吞掉会把整轮取消误记成所有照片连续失败
+                } catch (t: Throwable) {
+                    // U-7 照片侧对称：只丢这一张（清 .part 残留 + 计数 → 达阈值隔离），
+                    // 其余照片照常同步；瞬态网络错同路径计数，下轮重试成功即清零
+                    remote.deletePhotoPartial(hash)
+                    onPhotoFailure(name, t)
+                    continue
+                }
                 if (bytes == null) {
                     // 未收满：半成品保留，下轮从断点续（R-23）
                     paused = true
                     skipped++
                     continue
                 }
-                val actual = sha256Hex(bytes)
-                if (actual != hash) {
-                    throw DavException.Corrupted("照片内容哈希不符：期望 $hash 实际 $actual")
-                }
+                store.clearPhotoFailure(name) // U-7：成功即清零（截断下载等偶发损坏不积累）
                 photos.writeBytes(hash, bytes)
                 val delta = (received - resumeFrom).coerceAtLeast(0L)
-                recordPhotoRemote(remote.photoRemoteName(hash), received)
+                recordPhotoRemote(name, received)
                 store.addPhotoTraffic(0, delta)
                 down++
                 bytesDown += delta
@@ -189,6 +222,18 @@ class PhotoTransfer(
     private fun downloadAllowed(): Boolean =
         (!store.wifiOnlyPhotos || network.isWifi()) &&
             store.monthlyPhotoUsage().second < QUOTA_DOWNLOAD_BYTES
+
+    /**
+     * U-7 照片侧对称：失败计数 +1，达 [PHOTO_QUARANTINE_THRESHOLD] 进隔离名单。
+     * 坏照片只是暂缺的贴图——隔离的代价是该图暂不显示且状态详情可见（非静默），
+     * 收益是其余照片照常同步、整轮不再被同一张坏照片拖成永久 Failed
+     * （坏一张曾使角标永久 Failed、后续照片全阻塞，且每轮都重试同一张）。
+     */
+    private fun onPhotoFailure(name: String, t: Throwable) {
+        val failures = store.recordPhotoFailure(name)
+        println("[PhotoTransfer] photo $name failed (consecutive=$failures): ${t.message ?: t.javaClass.name}")
+        if (failures >= PHOTO_QUARANTINE_THRESHOLD) store.quarantinePhoto(name)
+    }
 
     /** 照片确认在云端后记台账（后续轮次免 HEAD/免重传的关键） */
     private suspend fun recordPhotoRemote(remoteName: String, size: Long) {
@@ -211,6 +256,13 @@ class PhotoTransfer(
 
         /** 坚果云免费档月下行额度（3GB） */
         const val QUOTA_DOWNLOAD_BYTES = 3L shl 30
+
+        /**
+         * 照片隔离阈值：连续失败次数达此值才隔离（与
+         * `SyncEngine.CHUNK_QUARANTINE_THRESHOLD` 同值同因——下载截断等偶发损坏与
+         * 真损坏同形，给重试留余地；哈希不符虽是确定性坏，也走同一计数通道）。
+         */
+        const val PHOTO_QUARANTINE_THRESHOLD = 3
 
         /** SHA-256 小写 hex（内容寻址口径与 `ImageStorage.promoteToStorage` 一致） */
         fun sha256Hex(bytes: ByteArray): String =

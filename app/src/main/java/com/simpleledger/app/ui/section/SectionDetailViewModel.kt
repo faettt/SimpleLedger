@@ -219,7 +219,9 @@ class SectionDetailViewModel(
         runCatching { repo.deleteEntry(entryId) }
     }
 
-    suspend fun restoreDeleted(snapshot: DeletedEntrySnapshot) = repo.restoreEntry(snapshot)
+    /** P1 修复：返回是否真的恢复成功——失败时 UI 要如实提示（可去回收站找回） */
+    suspend fun restoreDeleted(snapshot: DeletedEntrySnapshot): Boolean =
+        repo.restoreEntry(snapshot) != null
 
     suspend fun discardParkedImages() = repo.discardParkedImages()
 

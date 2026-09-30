@@ -3,7 +3,6 @@ package com.simpleledger.app.sync
 import com.simpleledger.app.sync.crypto.KdfParams
 import com.simpleledger.app.sync.crypto.SyncCrypto
 import com.simpleledger.app.sync.crypto.SyncKeys
-import com.simpleledger.app.sync.dav.DavException
 import com.simpleledger.app.sync.dav.MiniWebDavClient
 import com.simpleledger.app.sync.dav.WebDavRemote
 import com.simpleledger.app.sync.photo.FilePhotoStore
@@ -17,7 +16,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.kxml2.io.KXmlParser
@@ -30,7 +28,7 @@ import java.util.Random
  * 口径映射：
  * - Wi-Fi 门控矩阵（wifiOnlyPhotos × Wi-Fi/蜂窝/离线 六格）：R-17/Q-5；
  * - 二次同步零请求（台账去重）：S3「照片二次传输流量≈0」+ R-16；
- * - 对端下行 + sha256 校验、坏内容抛 Corrupted：R-12 数据完整性；
+ * - 对端下行 + sha256 校验、坏内容计数隔离不抛（U-7 照片侧，详测 PhotoQuarantineTest）：R-12 数据完整性；
  * - 配额顶格仅照片挂起：R-19/Q-5（坚果云 1GiB 上 / 3GiB 下）；
  * - photoPartialLength + 半成品续传收满：R-23（不产生重复云端文件——内容寻址单名）。
  *
@@ -228,21 +226,52 @@ class PhotoTransferTest {
         assertEquals(2, dir.listFiles()!!.size)
     }
 
+    /**
+     * U-16 回归（口径已演进为 U-7 照片侧隔离）：云端「名实不符」内容下载后哈希校验
+     * 不符——**确定性坏只计这一张**：首败计数、整轮照常成功、坏字节不落盘；
+     * 达阈值隔离与跳过行为见 PhotoQuarantineTest（原实现直接抛 Corrupted 拖死整轮）。
+     */
     @Test
-    fun corruptPhotoContentThrowsCorrupted() = runBlocking {
+    fun corruptPhotoContentIsCountedNotThrown() = runBlocking {
         val expect = "应被保护的内容".toByteArray()
         val hash = PhotoTransfer.sha256Hex(expect)
         // 云端被塞入「名实不符」内容：假名按 expect 的 hash，密体是别的字节
         val evil = remote(File(workRoot, "evil"))
         evil.uploadPhoto(hash, "狸猫换太子".toByteArray()) {}
 
+        val store = FakeSyncStore()
+        val photos = FakePhotoStore()
+        val transfer = PhotoTransfer(FakeSyncDao(), photos, FakePhotoRefs(listOf(hash)), FakeNetworkStatus(), store)
+        val name = remote(File(workRoot, "victim")).photoRemoteName(hash)
+
+        val report = transfer.syncPendingPhotos(remote(File(workRoot, "victim")))
+
+        assertEquals("确定性坏不抛、整轮照常成功", 0, report.down)
+        assertTrue("坏内容不落盘", photos.files.isEmpty())
+        assertEquals("首败计数", 1, store.photoFailureCount(name))
+        assertEquals("未达阈值不隔离", emptySet<String>(), store.quarantinedPhotos())
+    }
+
+    /**
+     * U-7 照片侧 `.part` 兜底：下载/解密/哈希任一失败后，残留半成品必须清掉——
+     * 坏照片不能永久占着一个错误断点偏移（此处哈希不符触发；下载PhotoTransfer 兜底
+     * `deletePhotoPartial`）。
+     */
+    @Test
+    fun failedHashCheckRemovesPartResidue() = runBlocking {
+        val expect = "半成品残留清理".toByteArray()
+        val hash = PhotoTransfer.sha256Hex(expect)
+        val evil = remote(File(workRoot, "evil-part"))
+        evil.uploadPhoto(hash, "名实不符".toByteArray()) {}
+        val victim = remote(File(workRoot, "victim-part"))
+        val part = File(workRoot, "victim-part/${victim.photoRemoteName(hash)}.part")
+        part.parentFile?.mkdirs()
+        part.writeText("陈年半成品残骸")
         val transfer = PhotoTransfer(FakeSyncDao(), FakePhotoStore(), FakePhotoRefs(listOf(hash)), FakeNetworkStatus(), FakeSyncStore())
-        try {
-            transfer.syncPendingPhotos(remote(File(workRoot, "victim")))
-            fail("sha256 不符应抛 DavException.Corrupted")
-        } catch (e: DavException.Corrupted) {
-            // 预期：坏内容不落盘
-        }
+
+        transfer.syncPendingPhotos(victim)
+
+        assertFalse("失败后 .part 不得残留", part.exists())
     }
 
     // ------------------------------------------------------------ R-19 / Q-5：配额顶格只挂起照片
@@ -305,6 +334,41 @@ class PhotoTransferTest {
         assertEquals("收满清理半成品", 0L, remoteB.photoPartialLength(hash))
         // 内容寻址单名：断点续传不产生重复云端文件
         assertEquals(1, server.files.keys.count { it.startsWith("${WebDavRemote.DIR}/") && !it.endsWith(".op") })
+    }
+
+    /**
+     * 416 自愈回归：进程在「.part 写满与删除之间」被杀 → 全长半成品残留 → 下轮
+     * `Range: bytes=全长-` 被服务端 416 拒绝（MiniDavServer 对 `start >= size` 如实回
+     * 416，与真实 WebDAV 一致）。旧实现裸抛 Http(416) 且 `.part` 永不清理；现删半成品
+     * **不带 Range 全量重试一次**，解密返回明文（请求日志两步可查）。
+     */
+    @Test
+    fun fullLengthPartRange416HealsByFullRetryWithoutRange() = runBlocking {
+        val bytes = ByteArray(72 * 1024).also { Random(13).nextBytes(it) }
+        val hash = PhotoTransfer.sha256Hex(bytes)
+        val work = File(workRoot, "heal-416")
+        val remote = remote(work)
+        remote.uploadPhoto(hash, bytes) {}
+        val cipher = server.files["${WebDavRemote.DIR}/${remote.photoRemoteName(hash)}"]!!
+
+        // 模拟「写满未删即被杀」的全长半成品残留
+        val part = File(work, "${remote.photoRemoteName(hash)}.part")
+        part.parentFile?.mkdirs()
+        part.writeBytes(cipher)
+        assertEquals(cipher.size.toLong(), remote.photoPartialLength(hash))
+
+        val gets = "GET /dav/${WebDavRemote.DIR}/${remote.photoRemoteName(hash)}"
+        val logBefore = server.requestLog.size
+
+        val plain = remote.downloadPhoto(hash, remote.photoPartialLength(hash)) {}
+
+        assertArrayEquals("416 后全量重试应拿到完整明文", bytes, plain)
+        assertFalse("自愈后半成品清理", part.exists())
+        assertEquals("全长半成品不再原样重试", 0L, remote.photoPartialLength(hash))
+        val mine = server.requestLog.drop(logBefore).filter { it.startsWith(gets) }
+        assertEquals("两步：带 Range 的 416 + 不带 Range 的全量 200", 2, mine.size)
+        assertTrue(mine[0].contains("bytes=${cipher.size}-") && mine[0].endsWith("-> 416"))
+        assertTrue("重试不得带 Range", !mine[1].contains("bytes=") && mine[1].endsWith("-> 200"))
     }
 
     // ------------------------------------------------------------ 夹具

@@ -573,6 +573,32 @@ internal class FakeSyncStore : SyncStore {
         quarantined.remove(chunkName)
     }
 
+    // —— U-7 照片侧隔离（内存实现，口径与分片侧同构）——
+    private val photoFailures = LinkedHashMap<String, Int>()
+    private val quarantinedPhotos = LinkedHashSet<String>()
+
+    override fun recordPhotoFailure(photoName: String): Int {
+        val next = (photoFailures[photoName] ?: 0) + 1
+        photoFailures[photoName] = next
+        return next
+    }
+
+    override fun clearPhotoFailure(photoName: String) {
+        photoFailures.remove(photoName)
+    }
+
+    override fun photoFailureCount(photoName: String): Int = photoFailures[photoName] ?: 0
+
+    override fun quarantinedPhotos(): Set<String> = quarantinedPhotos.toSet()
+
+    override fun quarantinePhoto(photoName: String) {
+        quarantinedPhotos.add(photoName)
+    }
+
+    override fun clearQuarantinedPhoto(photoName: String) {
+        quarantinedPhotos.remove(photoName)
+    }
+
     override fun clearAll() {
         selfMemberId = null
         wifiOnlyPhotos = true
@@ -584,6 +610,8 @@ internal class FakeSyncStore : SyncStore {
         photoDown = 0L
         chunkFailures.clear()
         quarantined.clear()
+        photoFailures.clear()
+        quarantinedPhotos.clear()
     }
 }
 
@@ -636,11 +664,13 @@ internal class FakeNetworkStatus(
 
 /** InitialExportSource 内存清单（RoomInitialExporter 的确定性导出测试用） */
 internal class FakeExportSource(
+    var members: List<MemberEntity> = emptyList(),
     var sections: List<SectionEntity> = emptyList(),
     var categories: List<CategoryEntity> = emptyList(),
     var entries: List<EntryEntity> = emptyList(),
     var images: List<EntryImageEntity> = emptyList(),
 ) : InitialExportSource {
+    override suspend fun members(): List<MemberEntity> = members
     override suspend fun sections(): List<SectionEntity> = sections
     override suspend fun categories(): List<CategoryEntity> = categories
     override suspend fun entries(): List<EntryEntity> = entries

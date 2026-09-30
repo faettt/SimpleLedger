@@ -5,6 +5,7 @@ import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.data.local.entity.CategoryEntity
 import com.simpleledger.app.data.local.entity.EntryEntity
 import com.simpleledger.app.data.local.entity.EntryImageEntity
+import com.simpleledger.app.data.local.entity.MemberEntity
 import com.simpleledger.app.data.local.entity.OpOrigin
 import com.simpleledger.app.data.local.entity.RemoteFileEntity
 import com.simpleledger.app.data.local.entity.RemoteFileKind
@@ -176,7 +177,12 @@ class SyncEngine(
 
             // ------------------------------------------------------------ PHOTOS
             _state.value = SyncState.Syncing(SyncPhase.PHOTOS)
-            val photoReport: PhotoSyncReport = photo.syncPendingPhotos(remote)
+            // U-7 照片侧对称：坏照片（下载/解密/哈希不符）在 PhotoTransfer 内计数隔离，
+            // 不再让单张坏照片把整轮拖成永久 Failed；MANUAL「立即同步」是逃生口
+            val photoReport: PhotoSyncReport = photo.syncPendingPhotos(
+                remote,
+                retryQuarantined = trigger == SyncTrigger.MANUAL,
+            )
 
             store.markSyncSuccess(System.currentTimeMillis())
             _state.value = SyncState.Idle
@@ -188,6 +194,7 @@ class SyncEngine(
                 deferredOps = deferredOps,
                 photo = photoReport,
                 quarantinedChunks = store.quarantinedChunks().size,
+                quarantinedPhotos = store.quarantinedPhotos().size,
             )
         } catch (t: Throwable) {
             // S6 静默收口：任何失败都不外抛，只落角标 + lastError；
@@ -294,6 +301,7 @@ interface InitialExporter {
 
 /** 存量行读取端口（生产 = [RoomInitialExportSource]；JVM 测试 = 内存清单） */
 interface InitialExportSource {
+    suspend fun members(): List<MemberEntity>
     suspend fun sections(): List<SectionEntity>
     suspend fun categories(): List<CategoryEntity>
     suspend fun entries(): List<EntryEntity>
@@ -302,6 +310,7 @@ interface InitialExportSource {
 
 /** [InitialExportSource] 的 Room 实现 */
 class RoomInitialExportSource(private val db: AppDatabase) : InitialExportSource {
+    override suspend fun members(): List<MemberEntity> = db.syncDao().listMembers()
     override suspend fun sections(): List<SectionEntity> = db.sectionDao().getAll()
     override suspend fun categories(): List<CategoryEntity> = db.categoryDao().getAll()
     override suspend fun entries(): List<EntryEntity> = db.entryDao().allEntries()
@@ -333,6 +342,7 @@ class RoomInitialExporter(
 ) : InitialExporter {
 
     override suspend fun export(): Int = tx.runInTransaction {
+        val members = source.members()
         val sections = source.sections()
         val categories = source.categories()
         val entries = source.entries()
@@ -345,6 +355,24 @@ class RoomInitialExporter(
         entries.forEach { entrySyncIds[it.id] = it.syncId }
 
         var created = 0
+
+        // MEMBER 定义置顶导出（不在 §3.5-5 分层序内，无引用依赖）：resetSync 保留 members
+        // 却清空操作账，re-setup 后唯有这里的补记（与 claimMember 复用路径的补记互为双保险）
+        // 能把成员定义带回操作日志——缺了它，其他设备（新装/重装）永远拉不到成员，
+        // entries.memberId 悬空，成员标签/按人统计（R-18/R-20）静默失效。
+        for (row in members) {
+            created += emit(
+                rowKind = RowKind.MEMBER,
+                rowSyncId = row.syncId,
+                seq = row.versionSeq,
+                updatedAt = row.updatedAt,
+                snapshot = OpCodec.memberSnapshot(
+                    name = row.name,
+                    hidden = row.hidden,
+                    createdAt = row.createdAt,
+                ),
+            )
+        }
 
         // 分层序导出（§3.5-5：SECTION→CATEGORY→ENTRY→IMAGE，尊重引用序）
         for (row in sections) {

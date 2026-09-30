@@ -68,6 +68,7 @@ import androidx.compose.material3.Icon
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
+import com.simpleledger.app.sync.SyncState
 import com.simpleledger.app.ui.sync.SyncStatusBadge
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
@@ -166,6 +167,7 @@ fun MineScreen(
                             state.sectionCount,
                             state.categoryCount,
                         ),
+                        syncConfigured = syncState !is SyncState.Never,
                     )
 
                     GroupTitle(stringResource(R.string.mine_group_appearance))
@@ -424,7 +426,7 @@ private fun QuickAmountsDialog(
 
 /** 隐私承诺卡：本地优先产品的信任基石，放在第一屏 */
 @Composable
-private fun PrivacyCard(countsText: String) {
+private fun PrivacyCard(countsText: String, syncConfigured: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -455,14 +457,28 @@ private fun PrivacyCard(countsText: String) {
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = stringResource(R.string.mine_privacy_title),
+                    // P1 修复：开启同步后这里宣称「数据只在这台手机上」与事实不符，
+                    // 且下方「不联网」与 INTERNET 权限冲突——按同步状态如实切换口径
+                    text = stringResource(
+                        if (!syncConfigured) {
+                            R.string.mine_privacy_title
+                        } else {
+                            R.string.mine_privacy_title_sync
+                        },
+                    ),
                     style = SlType.title,
                     color = Color.White,
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = stringResource(R.string.mine_privacy_desc),
+                text = stringResource(
+                    if (!syncConfigured) {
+                        R.string.mine_privacy_desc
+                    } else {
+                        R.string.mine_privacy_desc_sync
+                    },
+                ),
                 style = SlType.bodySm,
                 color = Color.White.copy(alpha = 0.88f),
             )

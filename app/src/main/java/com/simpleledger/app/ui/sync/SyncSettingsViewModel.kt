@@ -87,6 +87,8 @@ data class SyncSettingsUiState(
     val monthlyDownBytes: Long = 0L,
     /** 当前被隔离的损坏分片数（U-7：0 = 无；「立即同步」重试，重置清零） */
     val quarantinedChunks: Int = 0,
+    /** 当前被隔离的坏照片数（U-7 照片侧对称：0 = 无；「立即同步」重试，重置清零） */
+    val quarantinedPhotos: Int = 0,
     /**
      * 待上传操作条数（P0-2：outbox 里本机产生且未上传的操作）。
      * 数据源是 Room Flow，记一笔就 +1、上传成功就回落——不依赖同步轮次回写状态。
@@ -289,6 +291,7 @@ class SyncSettingsViewModel(
                 monthlyUpBytes = usage.first,
                 monthlyDownBytes = usage.second,
                 quarantinedChunks = syncManager.quarantinedChunkCount(),
+                quarantinedPhotos = syncManager.quarantinedPhotoCount(),
             )
         }
     }

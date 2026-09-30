@@ -287,9 +287,9 @@ class LedgerViewModel(
         return snapshot
     }
 
-    suspend fun restoreDeleted(snapshot: DeletedEntrySnapshot) {
-        repo.restoreEntry(snapshot)
-    }
+    /** P1 修复：返回是否真的恢复成功——失败时 UI 要如实提示（可去回收站找回），不得谎报 */
+    suspend fun restoreDeleted(snapshot: DeletedEntrySnapshot): Boolean =
+        repo.restoreEntry(snapshot) != null
 
     /**
      * 长按菜单：切换**核对**维度（规范 §3.5 入口）。

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P1 修复（明文 http 死代码）：targetSdk 28+ 默认禁止明文，导致「其他 WebDAV →
+     http:// 自建 NAS」这条既有支持路径在真机上整体不可用——InsecureHttpGate 的
+     知情确认门确认之后，请求仍会被平台 IOException 拒绝。
+     本应用唯一的网络用途是用户自行配置的 WebDAV 同步（明文场景已有 U-8 知情确认门、
+     且账目内容始终端到端加密），故 base 放行明文；除此之外应用不发起任何连接。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

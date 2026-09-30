@@ -162,6 +162,48 @@ class SyncPrefs(context: Context) : SyncStore {
         return runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
     }
 
+    // —— 照片侧隔离状态（U-7 对称，存储口径与分片侧同构）——
+    // 失败计数存单键 JSON 对象 {照片假名: 连续失败次数}（假名是 HMAC 假名，键无泄露面）；
+    // 隔离名单用 StringSet。两者都随 clearAll() 一并清空（resetSync 逃生口径）。
+
+    override fun recordPhotoFailure(photoName: String): Int {
+        val map = photoFailureMap()
+        val next = map.optInt(photoName, 0) + 1
+        map.put(photoName, next)
+        prefs.edit().putString(KEY_PHOTO_FAILURES, map.toString()).apply()
+        return next
+    }
+
+    override fun clearPhotoFailure(photoName: String) {
+        val map = photoFailureMap()
+        if (!map.has(photoName)) return
+        map.remove(photoName)
+        prefs.edit().putString(KEY_PHOTO_FAILURES, map.toString()).apply()
+    }
+
+    override fun photoFailureCount(photoName: String): Int = photoFailureMap().optInt(photoName, 0)
+
+    override fun quarantinedPhotos(): Set<String> =
+        prefs.getStringSet(KEY_QUARANTINED_PHOTOS, emptySet()) ?: emptySet()
+
+    override fun quarantinePhoto(photoName: String) {
+        prefs.edit()
+            .putStringSet(KEY_QUARANTINED_PHOTOS, quarantinedPhotos() + photoName)
+            .apply()
+    }
+
+    override fun clearQuarantinedPhoto(photoName: String) {
+        prefs.edit()
+            .putStringSet(KEY_QUARANTINED_PHOTOS, quarantinedPhotos() - photoName)
+            .apply()
+    }
+
+    /** 失败计数读取（口径同 [chunkFailureMap]） */
+    private fun photoFailureMap(): JSONObject {
+        val raw = prefs.getString(KEY_PHOTO_FAILURES, null) ?: return JSONObject()
+        return runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
+    }
+
     /**
      * KDF 参数（三件套 + 盐，Base64 编码持久化）与口令校验值 KCV（架构 §1.6 密钥派生链）。
      * T-2 的 `crypto/SyncCrypto.kt` 把它们组装为 `KdfParams(mKiB = kdfMemoryKib, t = kdfIterations,
@@ -291,6 +333,8 @@ class SyncPrefs(context: Context) : SyncStore {
         private const val KEY_NAME_KEY = "name_key"
         private const val KEY_CHUNK_FAILURES = "chunk_failures"
         private const val KEY_QUARANTINED_CHUNKS = "quarantined_chunks"
+        private const val KEY_PHOTO_FAILURES = "photo_failures"
+        private const val KEY_QUARANTINED_PHOTOS = "quarantined_photos"
 
         /** Argon2id 定案参数（架构 V1）：m = 64 MiB、t = 2、p = 1；参数随密文头存储、可调不破兼容 */
         const val KDF_DEFAULT_MEMORY_KIB = 65_536

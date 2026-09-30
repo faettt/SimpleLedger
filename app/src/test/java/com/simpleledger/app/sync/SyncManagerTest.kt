@@ -17,6 +17,7 @@ import com.simpleledger.app.sync.op.OpRecorder
 import com.simpleledger.app.sync.op.OpType
 import com.simpleledger.app.sync.op.RowKind
 import com.simpleledger.app.sync.op.SyncOp
+import com.simpleledger.app.sync.op.toModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -181,6 +182,59 @@ class SyncManagerTest {
         assertNotEquals("异内容异 opId（LWW 双留不丢）", daoA.opLog.keys, daoC.opLog.keys)
     }
 
+    /**
+     * 存量导出必须包含成员定义：resetSync 保留 members 而清空操作账，若导出不含 MEMBER，
+     * re-setup 后新装/重装设备永远拉不到成员，entries.memberId 悬空、标签/按人统计失效。
+     * 并经 OpApplier 回放证明导出的 MEMBER op 确实能在其他设备物化成员行。
+     */
+    @Test
+    fun initialExportIncludesMemberDefinitions() = runBlocking {
+        val source = FakeExportSource(
+            members = listOf(
+                MemberEntity(
+                    syncId = "m-1",
+                    name = "妈",
+                    hidden = false,
+                    createdAt = 1_000L,
+                    updatedAt = 2_000L,
+                    versionSeq = 3L,
+                ),
+            ),
+            sections = listOf(exportSection("sec-1", "生活")),
+        )
+        val dao = FakeSyncDao()
+        val exporter = RoomInitialExporter(source, dao, FakeTx(listOf(dao)), { "A" }, { null })
+
+        assertEquals("SECTION + MEMBER 各记一条", 2, exporter.export())
+
+        val op = dao.opLog.values.single { it.rowKind == RowKind.MEMBER.value }
+        assertEquals("m-1", op.rowSyncId)
+        assertEquals(OpType.UPSERT.value, op.opType)
+        assertEquals("seq = 行 versionSeq", 3L, op.seq)
+        assertNull("存在声明不观察历史", op.baseSeq)
+        assertTrue("确定性 opId", op.opId.startsWith("export-m-1-"))
+        val snapshot = JSONObject(op.payload)
+        assertEquals("妈", snapshot.getString("name"))
+        assertFalse(snapshot.getBoolean("hidden"))
+        assertEquals(1_000L, snapshot.getLong("createdAt"))
+        assertEquals("重复导出零副作用（countOpsOfRow 幂等）", 0, exporter.export())
+
+        // 回放验证：其他设备拉到这条导出 op 后经 OpApplier 物化成员定义（标签/按人统计的前提）。
+        // JVM 假件口径：行投影落 FakeRowStore.rows（生产由 RoomRowStore 直写 members 表）
+        val store = FakeRowStore(dao)
+        val applier = OpApplier(dao, store, FakeTx(listOf(dao, store)))
+        val applied = applier.applyRemote(listOf(op.toModel().copy(opId = "remote-m-1", actorId = "B")))
+        // ApplyResult.applied 按「该行操作全集」计数：导出的 LOCAL op + 回放的 REMOTE op 各 1；
+        // 「直接应用而非挂起」由 deferred == 0 表达
+        assertEquals("MEMBER 行操作全集应用、零挂起", 0, applied.deferred)
+        assertEquals("导出 + 回放两条均已应用", 2, applied.applied)
+        assertEquals(
+            "成员定义已在其他设备的行投影中恢复",
+            "妈",
+            store.rows[RowKind.MEMBER to "m-1"]?.payload?.optString("name"),
+        )
+    }
+
     // ------------------------------------------------------------ R-05：resetSync
 
     @Test
@@ -253,12 +307,42 @@ class SyncManagerTest {
         assertNotNull(id1)
         assertEquals("同名复用既有成员", id1, id2)
         assertEquals(1, fx.dao.memberTable.size)
-        assertEquals(1, fx.dao.opLog.values.count { it.rowKind == RowKind.MEMBER.value })
+        assertEquals(
+            "首记 + 复用补记各一条（复用路径也进操作账，防 resetSync 后成员定义失传）",
+            2,
+            fx.dao.opLog.values.count { it.rowKind == RowKind.MEMBER.value },
+        )
         assertNull("空白名不认领", fx.manager.claimMember("   "))
 
         val id3 = fx.manager.claimMember("爸")
         assertNotEquals(id1, id3)
         assertEquals(2, fx.dao.memberTable.size)
+    }
+
+    /**
+     * 修复回归：resetSync 保留 members 却清空操作账，re-setup 走 claimMember 复用路径——
+     * 该路径原先不记任何操作，成员定义从此进不了操作日志，其他设备（新装/重装）拉不到它，
+     * entries.memberId 悬空、成员标签/按人统计（R-18/R-20）静默失效。
+     */
+    @Test
+    fun claimMember_reuseAfterResetRecordsMemberUpsert() = runBlocking {
+        val fx = fixture()
+        val first = fx.manager.claimMember("妈")!!
+        assertTrue(fx.manager.resetSync().isSuccess)
+        assertTrue("resetSync 已清操作账（R-05 前提）", fx.dao.opLog.isEmpty())
+        assertNotNull("members 保留", fx.dao.findMemberByName("妈"))
+
+        val reused = fx.manager.claimMember("妈")!!
+
+        assertEquals("同名复用不重建成员", first, reused)
+        assertEquals(1, fx.dao.memberTable.size)
+        val ops = fx.dao.opLog.values.filter { it.rowKind == RowKind.MEMBER.value && it.rowSyncId == first }
+        assertEquals("复用路径补记 MEMBER UPSERT", 1, ops.size)
+        assertEquals("seq 取行 versionSeq", 1L, ops.single().seq)
+        assertNull("存在声明口径", ops.single().baseSeq)
+        val snapshot = JSONObject(ops.single().payload)
+        assertEquals("妈", snapshot.getString("name"))
+        assertFalse(snapshot.getBoolean("hidden"))
     }
 
     // ------------------------------------------------------------ U-12：裁剪后再同步仍收敛

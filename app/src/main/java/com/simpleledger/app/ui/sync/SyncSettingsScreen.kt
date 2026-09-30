@@ -440,6 +440,16 @@ private fun StatusCard(syncState: SyncState, state: SyncSettingsUiState) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        // U-7 照片侧对称：坏照片隔离透出（样式与文案结构照抄分片条——
+        // 隔离不挡其余照片同步，「立即同步」重试 / 重置清除）
+        if (state.quarantinedPhotos > 0) {
+            Text(
+                text = stringResource(R.string.sync_quarantined_photos, state.quarantinedPhotos),
+                style = SlType.bodySm.merge(SlStatus.warningSm),
+                color = warnColor(),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
     }
 }
 

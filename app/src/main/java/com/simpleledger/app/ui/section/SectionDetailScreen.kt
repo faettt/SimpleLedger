@@ -154,8 +154,14 @@ fun SectionDetailScreen(
             duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) {
-            viewModel.restoreDeleted(snapshot)
-            snackbarHostState.showSnackbar(context.getString(R.string.restored), duration = SnackbarDuration.Short)
+            // P1 修复：恢复失败不得谎报「已恢复」——如实提示并指向回收站
+            val restored = viewModel.restoreDeleted(snapshot)
+            snackbarHostState.showSnackbar(
+                context.getString(
+                    if (restored) R.string.restored else R.string.undo_restore_failed,
+                ),
+                duration = SnackbarDuration.Short,
+            )
         } else {
             viewModel.discardParkedImages()
         }

@@ -156,6 +156,15 @@ class WebDavRemote(
     }
 
     /**
+     * 删除本地半成品密文（`.part` 残留清理）：照片下载/解密/哈希校验失败后由
+     * PhotoTransfer 调用兜底——收满的正常路径已在 [downloadPhoto] 内清理，
+     * 异常路径不能再让坏照片永久占着一个错误的断点偏移。
+     */
+    fun deletePhotoPartial(contentHashHex: String) {
+        File(workDir, "${photoRemoteName(contentHashHex)}.part").delete()
+    }
+
+    /**
      * 上传照片（`If-None-Match: *`）。撞已存在（412）视为成功——内容寻址去重，
      * 同 hash 云端只留一份（R-16）。[onProgress] 报告已写出字节数。
      */
@@ -176,6 +185,11 @@ class WebDavRemote(
      * 半成品密文落 `workDir/<假名>.part`：[resumeFrom] 与半成品长度一致时从该偏移续传；
      * 服务端不支持 Range（返回 200）则自动重头整传，不产生重复云端文件（内容寻址）。
      * 收满即解密返回明文字节并清理半成品；**未收满返回 null**（半成品保留，下轮从断点续）。
+     *
+     * 416 自愈：进程在「.part 写满与删除之间」被杀会留下全长半成品，下轮
+     * `Range: bytes=全长-` 被服务端 416 拒绝（此前裸抛 → 整轮失败且 `.part` 永不清理）。
+     * 416 说明半成品状态与本地认知不一致——删半成品**不带 Range 全量重试一次**即自愈；
+     * 仍失败照常上抛，交照片侧计数隔离。
      */
     suspend fun downloadPhoto(
         contentHashHex: String,
@@ -185,12 +199,21 @@ class WebDavRemote(
         val name = FilenameNym.photoName(keys.nameKey, contentHashHex)
         val part = File(workDir, "$name.part")
         workDir.mkdirs()
-        val skip = if (part.exists() && part.length() == resumeFrom) resumeFrom else 0L
+        var skip = if (part.exists() && part.length() == resumeFrom) resumeFrom else 0L
         if (skip == 0L && part.exists()) part.delete()
         val response = try {
             dav.get("$DIR/$name", rangeStart = skip.takeIf { it > 0 })
         } catch (e: DavException.Http) {
-            if (e.code == 404) return@withContext null else throw e
+            when {
+                e.code == 404 -> return@withContext null
+                e.code == 416 -> {
+                    // 半成品与本地认知不一致（典型：全长残留）。整传重来即可自愈
+                    part.delete()
+                    skip = 0L
+                    dav.get("$DIR/$name")
+                }
+                else -> throw e
+            }
         }
         response.use { r ->
             // 206 = 允许续传追加；200 = 服务端整传（半成品作废重来）
