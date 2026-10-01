@@ -34,6 +34,11 @@ internal class MiniDavServer {
     @Volatile
     var failGets: Boolean = false
 
+    /** true = Range 请求只回一半（Content-Range 如实报实发区间与全长）——
+     *  模拟服务端收紧 Range：客户端干净读完 206 但未收满，走断点暂停路径 */
+    @Volatile
+    var truncateGets: Boolean = false
+
     val baseUrl: String
         get() = "http://127.0.0.1:${(server.address as InetSocketAddress).port}/dav/"
 
@@ -171,9 +176,15 @@ internal class MiniDavServer {
                 respond(exchange, 416, -1)
                 return
             }
-            val slice = body.copyOfRange(start.toInt(), (end + 1).toInt())
+            var serveEnd = end
+            if (truncateGets) {
+                // 只回一半，但 Content-Range 如实报实发区间与全长——干净的 206，
+                // 客户端读到「合法但未收满」的响应（现实中服务端收紧 Range 的形态）
+                serveEnd = ((start + body.size) / 2 - 1).coerceAtLeast(start)
+            }
+            val slice = body.copyOfRange(start.toInt(), (serveEnd + 1).toInt())
             exchange.responseHeaders.add("ETag", etags[rel] ?: "")
-            exchange.responseHeaders.add("Content-Range", "bytes $start-$end/${body.size}")
+            exchange.responseHeaders.add("Content-Range", "bytes $start-$serveEnd/${body.size}")
             respond(exchange, 206, slice.size, slice)
             return
         }

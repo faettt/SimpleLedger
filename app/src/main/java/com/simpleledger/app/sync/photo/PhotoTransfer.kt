@@ -177,16 +177,17 @@ class PhotoTransfer(
                 }
                 var received = remote.photoPartialLength(hash)
                 val resumeFrom = received
-                val bytes = try {
-                    val downloaded = remote.downloadPhoto(hash, resumeFrom) { received = it }
-                    if (downloaded != null) {
-                        val actual = PhotoTransfer.sha256Hex(downloaded.plain)
+                val downloaded = try {
+                    val dl = remote.downloadPhoto(hash, resumeFrom) { received = it }
+                    val plain = dl?.plain
+                    if (plain != null) {
+                        val actual = PhotoTransfer.sha256Hex(plain)
                         if (actual != hash) {
                             // 哈希不符是**确定性坏**（非瞬态）：同样计数 → 隔离，而非无限重试
                             throw DavException.Corrupted("照片内容哈希不符：期望 $hash 实际 $actual")
                         }
                     }
-                    downloaded
+                    dl
                 } catch (e: CancellationException) {
                     throw e // 协程取消不是照片坏：吞掉会把整轮取消误记成所有照片连续失败
                 } catch (t: Throwable) {
@@ -204,21 +205,23 @@ class PhotoTransfer(
                     }
                     continue
                 }
-                if (bytes == null) {
-                    // 未收满：半成品保留，下轮从断点续（R-23）
+                // 任何轮次都按「本次实收」记账（2026-10-01 审查补漏：多段续传的中间段
+                // 此前只在完成轮计尾段，中间段流量全部漏计）
+                if (downloaded != null && downloaded.wireBytes > 0) {
+                    store.addPhotoTraffic(0, downloaded.wireBytes)
+                    bytesDown += downloaded.wireBytes
+                }
+                val plain = downloaded?.plain
+                if (plain == null) {
+                    // 未收满：半成品保留，下轮从断点续（R-23）；本轮流量已按实收记账
                     paused = true
                     skipped++
                     continue
                 }
                 store.clearPhotoFailure(name) // U-7：成功即清零（截断下载等偶发损坏不积累）
-                photos.writeBytes(hash, bytes.plain)
-                // 流量记账用「本次实收密文字节」（2026-10-01 拍板修精确）：断点续传 =
-                // 末位 − 断点；416 整传自愈 = 全长——旧口径按绝对位差算，自愈轮会漏记整张
-                val delta = bytes.wireBytes
+                photos.writeBytes(hash, plain)
                 recordPhotoRemote(name, received)
-                store.addPhotoTraffic(0, delta)
                 down++
-                bytesDown += delta
             }
         }
         return PhotoSyncReport(up, down, skipped, bytesUp, bytesDown, paused)

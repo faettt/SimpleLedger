@@ -242,7 +242,11 @@ class WebDavRemote(
                 }
             }
             val complete = totalFromHeader == null || received >= totalFromHeader
-            if (!complete) return@withContext null // 断点：保留 .part，下轮续传
+            if (!complete) {
+                // 断点：保留 .part，下轮续传（R-23）。实收字节照样带出——多段续传的
+                // 中间段流量也要记账（2026-10-01 审查补漏）
+                return@withContext PhotoDownload(plain = null, wireBytes = wire)
+            }
             val blob = part.readBytes()
             part.delete()
             return@withContext PhotoDownload(open(blob), wire)
@@ -372,8 +376,8 @@ data class MetaBody(val bookId: String, val createdAt: Long) {
 
 /**
  * [WebDavRemote.downloadPhoto] 的下载结果。
- * @param plain 解密后的明文
+ * @param plain 解密后的明文；**null = 未收满**（断点暂停，.part 保留待续传）
  * @param wireBytes 本次调用从服务器实收的密文字节数（R-19 流量记账口径；
- *   416 整传自愈时 = 全长，断点续传时 = 末位 − 断点）
+ *   416 整传自愈时 = 全长，断点续传时 = 本轮实收——含未收满的中间段）
  */
-class PhotoDownload(val plain: ByteArray, val wireBytes: Long)
+class PhotoDownload(val plain: ByteArray?, val wireBytes: Long)

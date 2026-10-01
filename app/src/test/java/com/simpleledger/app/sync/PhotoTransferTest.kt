@@ -15,6 +15,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -377,6 +378,38 @@ class PhotoTransferTest {
     }
 
     // ------------------------------------------------------------ 夹具
+
+    /**
+     * 2026-10-01 审查补漏：多段续传的中间段流量也要记账——
+     * 服务端收紧 Range（干净 206 但未收满）的一轮，实收字节必须带出（plain = null）。
+     */
+    @Test
+    fun incompleteRoundReportsWireBytesForTrafficAccounting() = runBlocking {
+        val bytes = ByteArray(80 * 1024).also { Random(31).nextBytes(it) }
+        val hash = PhotoTransfer.sha256Hex(bytes)
+        val work = File(workRoot, "wire-incomplete")
+        val remote = remote(work)
+        remote.uploadPhoto(hash, bytes) {}
+        val cipher = server.files["${WebDavRemote.DIR}/${remote.photoRemoteName(hash)}"]!!
+
+        // 预置半截 .part（写满前 40KB），强制走 Range 续传
+        val part = File(work, "${remote.photoRemoteName(hash)}.part")
+        part.parentFile?.mkdirs()
+        part.writeBytes(cipher.copyOfRange(0, 40_000))
+
+        server.truncateGets = true
+        val result = remote.downloadPhoto(hash, 40_000L) {}
+        server.truncateGets = false
+
+        assertNull("未收满应返回空明文（断点暂停）", result?.plain)
+        val remaining = cipher.size - 40_000L
+        assertTrue(
+            "未收满轮的实收流量必须带出（0 < wire < 剩余 $remaining）",
+            result!!.wireBytes in 1 until remaining,
+        )
+        assertTrue("半成品保留待续传", part.exists())
+    }
+
 
     private fun transferOf(photos: PhotoStore, hashes: List<String>, store: FakeSyncStore = FakeSyncStore()): PhotoTransfer =
         PhotoTransfer(FakeSyncDao(), photos, FakePhotoRefs(hashes), FakeNetworkStatus(), store)
