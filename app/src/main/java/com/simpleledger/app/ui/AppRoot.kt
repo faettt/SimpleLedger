@@ -313,13 +313,10 @@ private fun AppNavHost(
                     pageMotion.enter(slRelationOf(initialState.destination.route, targetState.destination.route))
                 },
                 exitTransition = {
-                    // Form 关系的 exit 段在此恒作用「被表单覆盖的下层页」——记一笔是
-                    // 叶子路由，自身不会在前向导航中离场（其抽走走 popExit(Form)）。
-                    // SlPageMotion.exit(Form) 是「表单抽走」语义（fade+下坠），套在下层页
-                    // 会让它在表单铺入时坠下去，违反 §6.2「下层只淡化不位移」/§6.3 一纸一动
-                    // ——故对齐 Container 的纯淡化配方（背景纸只淡化，不给位移）。
-                    val relation = slRelationOf(initialState.destination.route, targetState.destination.route)
-                    pageMotion.exit(if (relation == SlRelation.Form) SlRelation.Container else relation)
+                    // 语义律见 SlPageMotion KDoc：exit = 你被盖上（被动离场）· popExit =
+                    // 你主动离场。exit(Form) 已正位为「下层页纯淡化」（与 Container 同配方），
+                    // 四关系直传即可。
+                    pageMotion.exit(slRelationOf(initialState.destination.route, targetState.destination.route))
                 },
                 popEnterTransition = {
                     pageMotion.popEnter(slRelationOf(initialState.destination.route, targetState.destination.route))
