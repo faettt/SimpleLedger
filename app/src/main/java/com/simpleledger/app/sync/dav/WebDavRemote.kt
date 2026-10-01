@@ -195,7 +195,7 @@ class WebDavRemote(
         contentHashHex: String,
         resumeFrom: Long,
         onProgress: (Long) -> Unit,
-    ): ByteArray? = withContext(Dispatchers.IO) {
+    ): PhotoDownload? = withContext(Dispatchers.IO) {
         val name = FilenameNym.photoName(keys.nameKey, contentHashHex)
         val part = File(workDir, "$name.part")
         workDir.mkdirs()
@@ -225,6 +225,9 @@ class WebDavRemote(
                 r.header("Content-Length")?.toLongOrNull()?.let { skip + it }
             }
             var received = skip
+            // 本次调用从服务器**实收**的密文字节（流量记账口径）：断点续传 = 末位 − 断点；
+            // 416 整传自愈 = 全长。onProgress 的 received 是绝对位（台账 / 进度用），两者语义不同。
+            var wire = 0L
             val sink = FileOutputStream(part, append) // append=true 续传追加，false 重写
             sink.use { out ->
                 val input = r.body.byteStream()
@@ -234,6 +237,7 @@ class WebDavRemote(
                     if (n < 0) break
                     out.write(buffer, 0, n)
                     received += n
+                    wire += n
                     onProgress(received)
                 }
             }
@@ -241,7 +245,7 @@ class WebDavRemote(
             if (!complete) return@withContext null // 断点：保留 .part，下轮续传
             val blob = part.readBytes()
             part.delete()
-            return@withContext open(blob)
+            return@withContext PhotoDownload(open(blob), wire)
         }
     }
 
@@ -365,3 +369,11 @@ data class MetaBody(val bookId: String, val createdAt: Long) {
         }
     }
 }
+
+/**
+ * [WebDavRemote.downloadPhoto] 的下载结果。
+ * @param plain 解密后的明文
+ * @param wireBytes 本次调用从服务器实收的密文字节数（R-19 流量记账口径；
+ *   416 整传自愈时 = 全长，断点续传时 = 末位 − 断点）
+ */
+class PhotoDownload(val plain: ByteArray, val wireBytes: Long)

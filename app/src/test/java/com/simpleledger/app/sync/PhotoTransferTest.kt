@@ -360,9 +360,14 @@ class PhotoTransferTest {
         val gets = "GET /dav/${WebDavRemote.DIR}/${remote.photoRemoteName(hash)}"
         val logBefore = server.requestLog.size
 
-        val plain = remote.downloadPhoto(hash, remote.photoPartialLength(hash)) {}
+        val healed = remote.downloadPhoto(hash, remote.photoPartialLength(hash)) {}
 
-        assertArrayEquals("416 后全量重试应拿到完整明文", bytes, plain)
+        assertArrayEquals("416 后全量重试应拿到完整明文", bytes, healed?.plain)
+        assertEquals(
+            "自愈轮流量按实发全长记账（2026-10-01 拍板修精确）",
+            cipher.size.toLong(),
+            healed?.wireBytes,
+        )
         assertFalse("自愈后半成品清理", part.exists())
         assertEquals("全长半成品不再原样重试", 0L, remote.photoPartialLength(hash))
         val mine = server.requestLog.drop(logBefore).filter { it.startsWith(gets) }

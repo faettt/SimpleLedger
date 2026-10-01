@@ -180,7 +180,7 @@ class PhotoTransfer(
                 val bytes = try {
                     val downloaded = remote.downloadPhoto(hash, resumeFrom) { received = it }
                     if (downloaded != null) {
-                        val actual = PhotoTransfer.sha256Hex(downloaded)
+                        val actual = PhotoTransfer.sha256Hex(downloaded.plain)
                         if (actual != hash) {
                             // 哈希不符是**确定性坏**（非瞬态）：同样计数 → 隔离，而非无限重试
                             throw DavException.Corrupted("照片内容哈希不符：期望 $hash 实际 $actual")
@@ -190,10 +190,18 @@ class PhotoTransfer(
                 } catch (e: CancellationException) {
                     throw e // 协程取消不是照片坏：吞掉会把整轮取消误记成所有照片连续失败
                 } catch (t: Throwable) {
-                    // U-7 照片侧对称：只丢这一张（清 .part 残留 + 计数 → 达阈值隔离），
-                    // 其余照片照常同步；瞬态网络错同路径计数，下轮重试成功即清零
+                    // U-7 照片侧对称，计数口径对齐分片侧（2026-10-01 拍板）：只把**确定性
+                    // 损坏**计入隔离名单；瞬态网络错/HTTP 错本轮跳过、下轮重试，不让坏运气
+                    // 把好照片关进名单。其余照片照常同步。
                     remote.deletePhotoPartial(hash)
-                    onPhotoFailure(name, t)
+                    if (t.isPhotoCorruption()) {
+                        onPhotoFailure(name, t)
+                    } else {
+                        SlLog.d(
+                            "PhotoTransfer",
+                            "photo $name 瞬态失败本轮跳过（不计数）: ${t.message ?: t.javaClass.name}",
+                        )
+                    }
                     continue
                 }
                 if (bytes == null) {
@@ -203,8 +211,10 @@ class PhotoTransfer(
                     continue
                 }
                 store.clearPhotoFailure(name) // U-7：成功即清零（截断下载等偶发损坏不积累）
-                photos.writeBytes(hash, bytes)
-                val delta = (received - resumeFrom).coerceAtLeast(0L)
+                photos.writeBytes(hash, bytes.plain)
+                // 流量记账用「本次实收密文字节」（2026-10-01 拍板修精确）：断点续传 =
+                // 末位 − 断点；416 整传自愈 = 全长——旧口径按绝对位差算，自愈轮会漏记整张
+                val delta = bytes.wireBytes
                 recordPhotoRemote(name, received)
                 store.addPhotoTraffic(0, delta)
                 down++
@@ -223,6 +233,13 @@ class PhotoTransfer(
     private fun downloadAllowed(): Boolean =
         (!store.wifiOnlyPhotos || network.isWifi()) &&
             store.monthlyPhotoUsage().second < QUOTA_DOWNLOAD_BYTES
+
+    /**
+     * 口径对齐分片侧 U-7（2026-10-01 拍板）：只有确定性损坏计入隔离。
+     * 照片路径的确定性坏统一是 [DavException.Corrupted]——哈希不符在本地抛、
+     * 解密失败在 WebDavRemote.open 抛时已包装为同类；网络/HTTP 错一律视为瞬态。
+     */
+    private fun Throwable.isPhotoCorruption(): Boolean = this is DavException.Corrupted
 
     /**
      * U-7 照片侧对称：失败计数 +1，达 [PHOTO_QUARANTINE_THRESHOLD] 进隔离名单。

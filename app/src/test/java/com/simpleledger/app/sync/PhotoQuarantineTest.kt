@@ -69,6 +69,35 @@ class PhotoQuarantineTest {
 
     // ------------------------------------------------------------ 用例
 
+    /**
+     * 2026-10-01 拍板：隔离计数口径对齐分片侧——只有**确定性损坏**（哈希不符/解密
+     * 失败）计数；瞬态网络错（GET 500 注入：HEAD 正常、下载必败）连续达阈值也
+     * 不计数、不隔离，恢复后照常下载。旧口径下本用例第 3 轮即会误隔离。
+     */
+    @Test
+    fun transientFailureDoesNotCountTowardQuarantine() = runBlocking {
+        val d = device("A")
+        plantPhoto(GOOD_HASH, goodBytes)
+        d.refs.hashes = listOf(GOOD_HASH)
+        val goodName = d.remote.photoRemoteName(GOOD_HASH)
+
+        server.failGets = true
+        repeat(PhotoTransfer.PHOTO_QUARANTINE_THRESHOLD) {
+            val outcome = d.engine.syncOnce(SyncTrigger.FOREGROUND)
+            assertTrue("瞬态失败不拖死整轮", outcome.success)
+        }
+        assertEquals("瞬态失败不计入隔离计数", 0, d.syncStore.photoFailureCount(goodName))
+        assertTrue("瞬态失败不隔离", d.syncStore.quarantinedPhotos().isEmpty())
+
+        // 恢复后照常下载，计数保持为 0
+        server.failGets = false
+        val ok = d.engine.syncOnce(SyncTrigger.FOREGROUND)
+        assertTrue(ok.success)
+        assertArrayEquals(goodBytes, d.photos.files[GOOD_HASH])
+        assertEquals(0, d.syncStore.photoFailureCount(goodName))
+    }
+
+
     @Test
     fun corruptPhotoDoesNotStallRound_othersStillDownloaded() = runBlocking {
         val d = device("A")

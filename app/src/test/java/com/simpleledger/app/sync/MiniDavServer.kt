@@ -30,6 +30,10 @@ internal class MiniDavServer {
     @Volatile
     var requireAuth: String? = null
 
+    /** true = GET 一律 500（瞬态网络错注入：HEAD 正常、下载必败，正好命中照片下载计数路径） */
+    @Volatile
+    var failGets: Boolean = false
+
     val baseUrl: String
         get() = "http://127.0.0.1:${(server.address as InetSocketAddress).port}/dav/"
 
@@ -65,7 +69,7 @@ internal class MiniDavServer {
                 "PROPFIND" -> propfind(exchange, rel)
                 "PUT" -> put(exchange, rel)
                 "HEAD" -> head(exchange, rel)
-                "GET" -> get(exchange, rel)
+                "GET" -> if (failGets) respond(exchange, 500, -1) else get(exchange, rel)
                 "DELETE" -> delete(exchange, rel)
                 else -> respond(exchange, 405, -1)
             }

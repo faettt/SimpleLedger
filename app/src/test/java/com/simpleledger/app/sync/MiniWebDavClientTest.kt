@@ -205,7 +205,12 @@ class MiniWebDavClientTest {
 
         val progress = mutableListOf<Long>()
         val result = remote.downloadPhoto(hash, resumeFrom = 40_000L) { progress.add(it) }
-        assertArrayEquals(photo, result)
+        assertArrayEquals(photo, result?.plain)
+        assertEquals(
+            "续传流量按实收计（全长 − 断点）",
+            fullCipher.size - 40_000L,
+            result?.wireBytes,
+        )
         assertFalse("收满后半成品应清理", part.exists())
         assertEquals(fullCipher.size.toLong(), progress.last())
     }
