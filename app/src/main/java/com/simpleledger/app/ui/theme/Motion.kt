@@ -262,6 +262,12 @@ enum class SlRelation {
  * predictive back 拖拽 = 倒放压栈；时间允许不对称：点按回退 250 求快，
  * 拖拽只消费空间路径）。减少动效一律降级为纯淡化（时长层自动瞬时）。
  *
+ * **方向语义律（四关系一致）**：`enter`/`popEnter` = 你进场（主动）；
+ * `exit` = **你被盖上**（被动——给下层页/让位页用）；
+ * `popExit` = **你主动离场**。典型分歧在 Form：forward 铺页时下层页走
+ * `exit(Form)` ＝ 纯淡化（与 Container 同配方）；表单自身被弹出走
+ * `popExit(Form)` ＝ fade + 下坠 24dp（独立持有，不委托 exit）。
+ *
  * 经 [rememberSlPageMotion] 构造；dp 位移已在构造时换算成 px。
  */
 @Immutable
@@ -305,7 +311,7 @@ class SlPageMotion internal constructor(
             fadeIn(slScene(SlTempo.Fast, SlEasing.Standard))
     }
 
-    /** 离场（被 push 覆盖 / 换章让位 / 表单抽走 / 容器对）。NavHost exitTransition 用 */
+    /** 离场（你被盖上：被 push 覆盖 / 换章让位 / 铺页时的下层页 / 容器对）。NavHost exitTransition 用 */
     fun exit(relation: SlRelation): ExitTransition = when (relation) {
         SlRelation.Chapter ->
             if (reduceMotion) {
@@ -325,13 +331,10 @@ class SlPageMotion internal constructor(
             }
 
         SlRelation.Form ->
-            if (reduceMotion) {
-                fadeOut(slScene(SlTempo.Base, SlEasing.Enter))
-            } else {
-                // 表单向下轻抽 + 淡出（150ms Exit）
-                fadeOut(slScene(SlTempo.Fast, SlEasing.Exit)) +
-                    slideOutVertically(slScene(SlTempo.Fast, SlEasing.Exit)) { shiftUnderPx }
-            }
+            // 语义律（见类 KDoc）：exit = 你被盖上。铺页 forward 离场的是**下层页**，
+            // 只淡化不位移（表单不是推栈，是铺纸）——与 Container 同配方；
+            // 「表单自身抽走」的运动归 popExit(Form)（fade + 下坠），不在此处
+            fadeOut(slScene(SlTempo.Fast, SlEasing.Standard))
 
         SlRelation.Container -> fadeOut(slScene(SlTempo.Fast, SlEasing.Standard))
     }
@@ -370,7 +373,15 @@ class SlPageMotion internal constructor(
                     fadeOut(slScene(SlTempo.Base, SlEasing.Exit))
             }
 
-        SlRelation.Form -> exit(SlRelation.Form)
+        SlRelation.Form ->
+            // 语义律：popExit = 你主动离场。表单自身被弹出：向下轻抽 + 淡出
+            // （150ms Exit；减少动效降级纯淡化）。独立持有，不委托 exit(Form)
+            if (reduceMotion) {
+                fadeOut(slScene(SlTempo.Base, SlEasing.Enter))
+            } else {
+                fadeOut(slScene(SlTempo.Fast, SlEasing.Exit)) +
+                    slideOutVertically(slScene(SlTempo.Fast, SlEasing.Exit)) { shiftUnderPx }
+            }
 
         SlRelation.Container -> exit(SlRelation.Container)
     }

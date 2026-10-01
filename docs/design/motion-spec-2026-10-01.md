@@ -234,7 +234,13 @@ pop 镜像：顶页向右 32dp 抽走（250ms Exit）；底页归位回升
 从 0.5 起步会隔面纱盖住正被抽走的顶页；v1 裁定原样保留）。
 
 **Form 铺页**——全屏表单（记一笔）盖上来：新纸从下方 24dp 轻铺（320ms Enter）；
-离场向下轻抽 + 淡出（150ms Exit）。下层只淡化不位移（表单不是推栈，是铺纸）。
+表单**主动离场**（pop）向下轻抽 + 淡出（150ms Exit）。下层只淡化不位移
+（表单不是推栈，是铺纸）。
+**方向语义律**：`exit` = 你被盖上（被动，下层页配方）· `popExit` = 你主动离场——
+故 `exit(Form)` ＝ 下层页纯淡化（与 Container 同配方），`popExit(Form)` 独占
+「下坠抽走」。修订记录（v2.1，2026-10-01 task-6 收尾）：此前 `exit(Form)` 误持
+「表单抽走」体，靠调用点绕行防误用；现语义由 API 本身防（SlPageMotion 类 KDoc
+同步载律），装配处「Form 换 Container」的绕行可删、恢复 `exit(relation)` 直传。
 
 **Container 容器变换对**——分区卡 ↔ 分区详情：**一纸一动**（下节）。
 
@@ -375,6 +381,9 @@ SlRelation + SlPageMotion + rememberSlPageMotion()  页面转场装配（新）
    `val pageMotion = rememberSlPageMotion()` + 一张「路由对 → SlRelation」映射表；
    NavHost 四个转场参数改指 `pageMotion.enter/exit/popEnter/popExit(relation)`；
    IndexTab 五连 animate*AsState → `slState`（色/图标/高/边距全部状态轨弹簧）。
+   ※ 后补（v2.1 语义正位）：§6.2 语义律落地后，装配处「Form 关系 exit 换
+   Container」的绕行行可删，恢复 `exit(relation)` 直传（exit(Form) 原生即下层
+   纯淡化；「表单抽走」已归位 popExit(Form)）。
 2. **SlipCard.kt**：自实现 hover 拈起（L97–106）合并进 `slHoverLift` 语义
    （拈起量换 `SlFeel.HoverLiftDp`；垫纸 alpha 保留在其文件内，规格 150 Enter）。
 3. **SlSharedTransition.kt**：`slTween(FastMs, Standard)` → `slScene(Fast, Standard)`、
