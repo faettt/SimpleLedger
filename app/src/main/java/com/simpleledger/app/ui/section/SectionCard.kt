@@ -92,7 +92,7 @@ fun SectionCard(
     }
 
     // 读屏串：buildString 的 lambda 非 Composable，先把文案解析到局部变量
-    val speechMonthExpense = stringResource(R.string.a11y_section_month_expense)
+    val speechTotalExpense = stringResource(R.string.a11y_section_total_expense)
     val speechAmountHidden = stringResource(R.string.amount_hidden)
     val speechBudgetHidden = stringResource(R.string.a11y_budget_hidden)
     val speechOverspent = stringResource(
@@ -103,8 +103,8 @@ fun SectionCard(
     val speechNoBudget = stringResource(R.string.budget_none)
     val speech = buildString {
         append(total.name)
-        append("，$speechMonthExpense")
-        append(if (hidden) speechAmountHidden else Money.toChineseSpeech(total.expense))
+        append("，$speechTotalExpense")
+        append(if (hidden) speechAmountHidden else Money.toChineseSpeech(total.totalExpense))
         when {
             hidden && hasBudget -> append("，$speechBudgetHidden")
             overspent -> append("，$speechOverspent")
@@ -155,7 +155,9 @@ fun SectionCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (hidden) "••••" else Money.formatWithSymbol(total.expense),
+                        // 2026-10-01 拍板：卡片主金额 = 分区累计总支出（月初不清零）；
+                        // 月度数字由下方预算行「本月已用」单独表达
+                        text = if (hidden) "••••" else Money.formatWithSymbol(total.totalExpense),
                         style = SlType.bodySm,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

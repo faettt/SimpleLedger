@@ -117,10 +117,15 @@ interface EntryDao {
                s.note AS note, s.budgetCents AS budgetCents,
                COALESCE(SUM(CASE WHEN e.type = 0 THEN e.amountCents ELSE 0 END), 0) AS expense,
                COALESCE(SUM(CASE WHEN e.type = 1 THEN e.amountCents ELSE 0 END), 0) AS income,
-               COUNT(e.id) AS count
+               COUNT(e.id) AS count,
+               COALESCE(t.totalExpense, 0) AS totalExpense
         FROM sections s
         LEFT JOIN entries e
           ON e.sectionId = s.id AND e.entryTime >= :start AND e.entryTime < :end
+        LEFT JOIN (
+            SELECT sectionId, SUM(amountCents) AS totalExpense
+            FROM entries WHERE type = 0 GROUP BY sectionId
+        ) t ON t.sectionId = s.id
         GROUP BY s.id
         ORDER BY s.sortOrder, s.id
         """

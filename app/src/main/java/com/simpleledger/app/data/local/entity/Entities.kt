@@ -252,7 +252,11 @@ data class SectionTotal(
     val colorIndex: Int,
     val note: String,
     val budgetCents: Long = 0,
+    /** 窗口内支出（:start–:end）。统计页按选中月取数；首屏卡片传当月，供月度预算行用 */
     val expense: Long,
     val income: Long,
     val count: Int,
+    /** **全部时间**累计支出（不受窗口限制）——首屏卡片的主金额口径（2026-10-01 拍板：
+     *  卡片直接展示分区总额，月初不清零；月度数字由预算行「本月已用」单独表达） */
+    val totalExpense: Long = 0,
 )

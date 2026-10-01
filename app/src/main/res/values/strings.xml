@@ -196,8 +196,8 @@
     <string name="amount_hidden">金额已隐藏</string>
 
     <!-- 分区首屏卡片：预算进度（复用 budget_none=未设预算） -->
-    <string name="section_card_used">已用 %1$s / %2$s</string>
-    <string name="section_card_used_hidden">已用 •••• / ••••</string>
+    <string name="section_card_used">本月已用 %1$s / %2$s</string>
+    <string name="section_card_used_hidden">本月已用 •••• / ••••</string>
     <string name="section_card_remaining">剩余 %1$s</string>
     <string name="section_card_overspent">⚠ 已超支 %1$s</string>
 
@@ -250,9 +250,9 @@
     <string name="status_reimburse_cleared">已报销</string>
     <string name="a11y_move_up_section">上移分区</string>
     <string name="a11y_move_down_section">下移分区</string>
-    <string name="a11y_section_month_expense">本月花销</string>
+    <string name="a11y_section_total_expense">累计支出</string>
     <string name="a11y_budget_hidden">预算金额已隐藏</string>
-    <string name="a11y_budget_used">预算已用 %1$d%%</string>
+    <string name="a11y_budget_used">本月预算已用 %1$d%%</string>
     <string name="a11y_overspent">已超支 %1$s</string>
 
     <!-- 贴图「保存到相册」（文案随导出 API 先行交付，批次 B 的贴图 UI 只引用；

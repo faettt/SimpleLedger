@@ -164,7 +164,7 @@ class SectionDetailViewModel(
         .flowOn(Dispatchers.Default)
 
     /**
-     * 当前自然月聚合 = 首屏卡片的口径（`observeSectionOverview` 同月界）。
+     * 当前自然月聚合 = 首屏卡片预算行的口径（主金额自 2026-10-01 起为累计，月度数字在「本月已用」行）。
      * 由全量分组的派生计算，不再单独查库。
      */
     private val thisMonthAggFlow: Flow<SectionDetailAgg> = allTimeAggFlow.map { agg ->
