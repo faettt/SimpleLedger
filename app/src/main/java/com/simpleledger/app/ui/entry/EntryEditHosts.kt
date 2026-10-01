@@ -51,9 +51,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simpleledger.app.LedgerApp
 import com.simpleledger.app.R
 import com.simpleledger.app.data.repo.GalleryExportOutcome
-import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.SlEasing
+import com.simpleledger.app.ui.theme.SlShift
+import com.simpleledger.app.ui.theme.SlTempo
 import com.simpleledger.app.ui.theme.SlipShape
-import com.simpleledger.app.ui.theme.slTween
+import com.simpleledger.app.ui.theme.slScene
 import kotlinx.coroutines.launch
 
 /** 记一笔 / 编辑账目在列表页内的两种承载形态 */
@@ -73,15 +75,15 @@ internal data class SafExportRequest(
 )
 
 /**
- * 编辑宿主的**进出闸门**（Motion.kt「纸的物理」）。
+ * 编辑宿主的**进出闸门**（Motion.kt v2「有重量的纸」，场景轨）。
  *
  * 直接 `if (visible) EntryEditHost(...)` 是瞬时装卸——浮层"啪"地出现/消失，
  * 与全项目的纸感节奏脱节。这里换成纸片进出：
  *
  * · **Centered（居中浮层）**：像一张纸轻放上桌——24dp 微升 + 淡入 250ms
- *   （PaperOut）；退场快抽——150ms 淡出（PaperIn）。
+ *   （Enter）；退场快抽——150ms 淡出 + 下沉 8dp（Exit）。
  * · **Panel（右侧板）**：像一张纸从右侧插进来——右移 24dp + 淡入 250ms；
- *   退场向右抽走 150ms。
+ *   退场向右抽走 150ms（Exit）。
  *
  * 退场动画期间内容保持**最后一次非空参数**继续组合（[lastEntryId]），
  * 否则 visible 翻 false 的瞬间表单已拿到空 id，退场动画画的是一张空白纸。
@@ -106,25 +108,27 @@ fun EntryEditHostGate(
     }
 
     // 位移像素：transition lambda 非组合上下文，在此一次性换算供闭包捕获
-    val slidePx = with(LocalDensity.current) { SlMotion.ShiftStandard.roundToPx() }
+    val slidePx = with(LocalDensity.current) { SlShift.Standard.roundToPx() }
 
     val enter: EnterTransition
     val exit: ExitTransition
     when (style) {
         // 居中浮层：轻放上桌（微升 24dp + 淡入），快抽离场（150ms 淡出 + 下沉 8dp）
+        // ——出场的 8dp = 标准位移的 1/3，浮层是「就地沉下」不是「抽走」；
+        // 与 Panel 的 24dp 不对称是裁定保留（motion-spec 走查基线）。
         EntryEditHostStyle.Centered -> {
-            enter = fadeIn(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) +
-                slideInVertically(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) { slidePx }
-            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { slidePx / 3 }
+            enter = fadeIn(slScene(SlTempo.Base, SlEasing.Enter)) +
+                slideInVertically(slScene(SlTempo.Base, SlEasing.Enter)) { slidePx }
+            exit = fadeOut(slScene(SlTempo.Fast, SlEasing.Exit)) +
+                slideOutVertically(slScene(SlTempo.Fast, SlEasing.Exit)) { slidePx / 3 }
         }
 
-        // 右侧板：像一张纸从右侧插进来 / 向右抽走
+        // 右侧板：像一张纸从右侧插进来 / 向右抽走（全程标准位移 24dp）
         EntryEditHostStyle.Panel -> {
-            enter = fadeIn(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) +
-                slideInHorizontally(slTween(SlMotion.StandardMs, SlMotion.PaperOut)) { slidePx }
-            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                slideOutHorizontally(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { slidePx }
+            enter = fadeIn(slScene(SlTempo.Base, SlEasing.Enter)) +
+                slideInHorizontally(slScene(SlTempo.Base, SlEasing.Enter)) { slidePx }
+            exit = fadeOut(slScene(SlTempo.Fast, SlEasing.Exit)) +
+                slideOutHorizontally(slScene(SlTempo.Fast, SlEasing.Exit)) { slidePx }
         }
     }
 

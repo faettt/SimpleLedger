@@ -53,12 +53,13 @@ import com.simpleledger.app.logic.SectionMoveRules
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
 import androidx.compose.ui.text.TextStyle
+import com.simpleledger.app.ui.theme.SlTempo
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
-import com.simpleledger.app.ui.theme.slFast
 import com.simpleledger.app.ui.theme.slHoverLift
+import com.simpleledger.app.ui.theme.slState
 import com.simpleledger.app.util.DateTimes
 import com.simpleledger.app.util.Money
 import androidx.compose.material3.Icon
@@ -228,10 +229,11 @@ internal fun EntryRow(
     // 选中底色淡入：与 StatsScreen 图例底垫同款（2026-09-26 拍板 B′）——to-Transparent 的
     // animateColorAsState 在 ARGB 插值中 RGB 从 0 起算，会闪一帧比底色更暗的中间态；
     // 只过渡 alpha、颜色恒为 primaryContainer，即「同一块纸由淡变实」。
+    // 状态轨弹簧 slState(SlTempo.Fast)：150ms 档整定、可中断——快速扫选多行时被新目标吸走。
     // 无位移无形变，不需要挂 LocalReduceMotion（时长层降级自动生效）。
     val rowBgAlpha by animateFloatAsState(
         targetValue = if (selected) 1f else 0f,
-        animationSpec = slFast(),
+        animationSpec = slState(SlTempo.Fast),
         label = "entryRowBgAlpha",
     )
 

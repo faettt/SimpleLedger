@@ -36,7 +36,7 @@ object SyncIcons {
     /**
      * 同步中：旋转墨点 —— 实心墨点 + 露出四分之三的轨道。
      * 纯圆点原地旋转看不出运动，轨道缺口给了转向参照；整体由
-     * `SyncStatusBadge` 用 SlMotion 档位驱动旋转。
+     * `SyncStatusBadge` 用 SlTempo.Spin 循环档驱动旋转。
      */
     val Syncing: ImageVector by lazy {
         buildIcon(

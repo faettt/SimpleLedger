@@ -18,16 +18,17 @@ import com.simpleledger.app.util.Money
 /**
  * 是否「跟随系统减少动效」。
  *
- * 自研动效体系见 `ui/theme/Motion.kt`（「纸的物理」），减少动效是**两层降级**：
+ * 自研动效体系见 `ui/theme/Motion.kt`（v2「有重量的纸」），减少动效是**两层降级**：
  *
  * · **时长层（自动）**：所有自研动画都走 Compose 动画原语（`animate*AsState` /
- *   `Animatable` / `tween` / `spring`），`ui` 模块内部的 `MotionDurationScaleImpl` 会监听
- *   `Settings.Global.ANIMATOR_DURATION_SCALE` 并把 `MotionDurationScale` 缩放因子设为 0，
- *   动画随之瞬时完成。**不允许在调用点换算时长**——那样会与 Compose 内部机制重复，
- *   且在 0.5x 等慢速档下行为错误。
+ *   `Animatable` / `tween` / `spring`），Compose UI 内部的 `MotionDurationScale`
+ *   自动监听 `Settings.Global.ANIMATOR_DURATION_SCALE` 并把缩放因子设为 0，
+ *   动画随之瞬时完成（弹簧同样被缩放）。**不允许在调用点换算时长**——那样会与
+ *   Compose 内部机制重复，且在 0.5x 等慢速档下行为错误。
  * · **形变层（显式）**：缩放、位移这类**装饰性形变**时长缩放管不到（0ms 的缩放仍是缩放），
  *   由本 [LocalReduceMotion] 显式分流：`slPress` 的按压缩放归零（保留涟漪）、
- *   `slHoverLift` 整体关闭。Material3 内置动画（`ModalBottomSheet` / `DropdownMenu` /
+ *   `slHoverLift` 整体关闭、转场位移/缩放降级为纯淡化（降级判断内建在新 API 里）。
+ *   Material3 内置动画（`ModalBottomSheet` / `DropdownMenu` /
  *   `AlertDialog` / `DatePicker` / 涟漪）同样走时长层，不重包。
  *
  * 系统侧开关即 `Settings.Global.ANIMATOR_DURATION_SCALE`：为 0 即关闭动画。

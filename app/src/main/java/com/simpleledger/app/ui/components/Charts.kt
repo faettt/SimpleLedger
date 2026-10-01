@@ -34,11 +34,11 @@ import androidx.compose.ui.unit.sp
 import com.simpleledger.app.R
 import com.simpleledger.app.logic.SectionShare
 import com.simpleledger.app.logic.StatsCalculator
-import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.SlTempo
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.chartGrow
 import com.simpleledger.app.ui.theme.rememberSlChartTimeline
-import com.simpleledger.app.ui.theme.slFast
+import com.simpleledger.app.ui.theme.slState
 import com.simpleledger.app.ui.theme.sweepClipPath
 import com.simpleledger.app.util.Money
 import kotlin.math.atan2
@@ -185,7 +185,8 @@ fun DonutChart(
     // 直接写 textSize = 24f 在 420dpi 屏上只有 9dp，小到读不出来。
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
-    // 入场「画出来」时间线（Motion④）：环带与标注按扇形扫出，起止角保持精确
+    // 入场「画出来」时间线（motion-spec §8）：环带与标注按扇形扫出，起止角保持精确；
+    // 一次生长已内建 —— 进度跨导航留存，返回时以完整形态出现
     val timeline = rememberSlChartTimeline()
     // 配色已在调用方算好（[DonutSlice.color]）。这里只取与主题相关、与数据无关的颜色。
     //
@@ -221,14 +222,15 @@ fun DonutChart(
     // 选中扇区加粗环带的过渡（形变，见组件说明②）。
     // 每片独立 animateFloatAsState：**选中态在扇区之间移动时，旧片收（extra→0）、
     // 新片张（extra→12）同时进行**，而不是「旧片瞬间复原 + 新片瞬间加粗」的二值突变。
-    // 时长 150ms slFast(SlMotion.Standard)：两端软、中段快的形变曲线，与全站小状态切换同档。
+    // 状态轨弹簧 slState(SlTempo.Fast)：150ms 档整定、可中断续速 —— 连续点选扇区时
+    // 加粗被新目标「吸走」而不是从零重启（motion-spec §4.2 / §11④）。
     // 口径：2026-09-26 用户真机 A/B 拍板结果（B′）；目标值语义与旧实现完全一致 ——
     // 仍是 g.stroke + extra，extra ∈ [0, 12]。列表用 mapIndexed（inline）在组合作用域内
     // 逐片发起动画，Canvas（DrawScope 非组合上下文）里只读取结果。
     val bandExtras = slices.mapIndexed { index, _ ->
         animateFloatAsState(
             targetValue = if (index == selectedIndex) DONUT_SELECTED_BAND_EXTRA else 0f,
-            animationSpec = slFast(SlMotion.Standard),
+            animationSpec = slState(SlTempo.Fast),
             label = "donutBandExtra$index",
         )
     }
@@ -509,7 +511,7 @@ fun CategoryBarChart(
     val labelPx = with(LocalDensity.current) { 12.sp.toPx() }
     val amountPx = with(LocalDensity.current) { 11.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
-    // 入场生长（Motion④）：条从左端起跑线长出，逐条错峰
+    // 入场生长（motion-spec §8）：条从左端起跑线长出，逐条错峰；一次生长（返回不重演）
     val timeline = rememberSlChartTimeline()
 
     val rowPitch = 30.dp
@@ -658,7 +660,8 @@ fun DailyBarChart(
     val axisLabelPx = with(LocalDensity.current) { 10.sp.toPx() }
     val peakLabelPx = with(LocalDensity.current) { 10.5.sp.toPx() }
     val kaiTypeface = rememberKaiTypeface()
-    // 入场生长（Motion④）：柱从基线长起、按日错峰 —— 柱底严格贴基线不参与生长
+    // 入场生长（motion-spec §8）：柱从基线长起、按日错峰 —— 柱底严格贴基线不参与生长；
+    // 一次生长（返回不重演）
     val timeline = rememberSlChartTimeline()
     val speech = barChartSpeech(daily, daysInMonth, hidden)
 

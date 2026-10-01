@@ -1,19 +1,8 @@
 package com.simpleledger.app.ui
 
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -98,12 +86,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.clickable
-import androidx.navigation.NavBackStackEntry
-import com.simpleledger.app.ui.theme.SlMotion
-import com.simpleledger.app.ui.theme.slFast
+import com.simpleledger.app.ui.theme.SlRelation
+import com.simpleledger.app.ui.theme.SlTempo
+import com.simpleledger.app.ui.theme.rememberSlPageMotion
 import com.simpleledger.app.ui.theme.slPress
-import com.simpleledger.app.ui.theme.slStandard
-import com.simpleledger.app.ui.theme.slTween
+import com.simpleledger.app.ui.theme.slState
 
 /*
  * 应用外壳：窗口形态判定 + 4 槽一级导航 + 路由挂载。
@@ -257,6 +244,36 @@ private fun NavHostController.navigateTopLevel(route: String) {
     }
 }
 
+/**
+ * 「路由对 → [SlRelation]」映射表（Motion v2 规格 §6.1：方向判定的唯一入口）。
+ *
+ * AnimatedContent 的约定保证：initialState 恒为**正在消失**的页、targetState 恒为
+ * **正在出现**的页——push/pop 四个转场 lambda 里 (initial → target) 恰好都是
+ * (from → to)，一张表通吃四个方向。v1 散在各 composable 声明里的方向判定
+ * （tabExit/tabPopEnter 的 when 链 + 每签手工拼四段转场参数）由此封死，
+ * 新增路由默认落 Push，无需逐处装配。
+ *
+ * 规则按优先级排列：
+ *  1. 路由对含记一笔（[Routes.ENTRY_EDIT]）= [SlRelation.Form] 铺页——全屏表单
+ *     盖上来/抽走，下层只淡化不位移（表单不是推栈，是铺纸）；
+ *  2. 分区卡 ↔ 分区详情 = [SlRelation.Container] 容器变换对——页面层纯淡化，
+ *     空间运动归共享纸头（SlSharedTransition.kt），一纸一动（§6.3 红线）；
+ *  3. 两端都是一级 4 签 = [SlRelation.Chapter] 换章——同层切换无方向语义，不做横移；
+ *  4. 其余（签 ↔ 层级页、层级页之间）= [SlRelation.Push] 层级压栈/回栈——纸页对偶四段。
+ */
+private fun slRelationOf(fromRoute: String?, toRoute: String?): SlRelation {
+    if (fromRoute == Routes.ENTRY_EDIT || toRoute == Routes.ENTRY_EDIT) return SlRelation.Form
+    // route 理论上非空（防御 nullable 签名）；非空后才可安全做集合成员判定
+    if (fromRoute != null && toRoute != null) {
+        if (fromRoute in containerPairRoutes && toRoute in containerPairRoutes) return SlRelation.Container
+        if (fromRoute in Routes.topLevel && toRoute in Routes.topLevel) return SlRelation.Chapter
+    }
+    return SlRelation.Push
+}
+
+/** 容器变换对的两端路由（无序对：分区首屏 ↔ 分区详情模式路由） */
+private val containerPairRoutes = setOf(Routes.SECTIONS, Routes.SECTION_DETAIL)
+
 @Composable
 private fun AppNavHost(
     navController: NavHostController,
@@ -269,162 +286,50 @@ private fun AppNavHost(
     onStopEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // ——— 导航动效规格（Motion.kt「纸页对偶」装配层；dp 位移在此换算成 px 供转场闭包使用）———
-    // 减少动效在组合体捕获（与下方 dp 换算同层）：转场 lambda 的签名是
-    // AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?/ExitTransition?，
-    // 非 @Composable，不得在 lambda 里内读 LocalReduceMotion.current（API 契约）。
+    // ——— 页面转场（Motion v2 规格 §6：路由关系表 → SlPageMotion 独家装配）———
+    // SlPageMotion 必须在组合体构造（内部读 LocalDensity 做 dp→px、读
+    // LocalReduceMotion 内建「减少动效 → 纯淡化」降级，调用点无须自带 if）：
+    // 转场 lambda 的签名是 AnimatedContentTransitionScope<NavBackStackEntry>.() -> …，
+    // 非 @Composable，不得在 lambda 里读 CompositionLocal（API 契约）。
     // 设置变更经重组在此捕获新值；进行中的转场保持旧值，下一次转场生效。
-    val reduceMotion = LocalReduceMotion.current
-    val navShiftIn = with(LocalDensity.current) { SlMotion.NavShiftIn.roundToPx() }
-    val navShiftUnder = with(LocalDensity.current) { SlMotion.NavShiftUnder.roundToPx() }
-    // 换章 8dp 微升的换算（本文件仅剩 chapterEnter 一处消费）
-    val microShift = with(LocalDensity.current) { SlMotion.ShiftMicro.roundToPx() }
-
-    // 换章（底部 4 签互切）：交叉淡化 + 8dp 微升 —— 同层切换没有方向语义，不做横移。
-    // 减少动效下微升属装饰性位移，降级为纯淡化
-    val chapterEnter: () -> EnterTransition = {
-        if (reduceMotion) {
-            fadeIn(slStandard())
-        } else {
-            fadeIn(slStandard(SlMotion.PaperOut)) +
-                slideInVertically(slStandard(SlMotion.PaperOut)) { microShift }
-        }
-    }
-    // 换章离场本就是纯淡化、无位移可降；减少动效下统一走标准档淡化
-    val chapterExit: () -> ExitTransition = {
-        if (reduceMotion) {
-            fadeOut(slStandard())
-        } else {
-            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn))
-        }
-    }
-
-    // 页面转场四段编排（纸页对偶，规格全在 Motion.kt 装配层；减少动效一律降级为纯淡化）：
-    //  · push 顶页进场：x +NavShiftIn(32dp)→0 · scale NavScaleSink(0.94)→1 · α 0→1，
-    //    tween(NavEnterMs=320, PaperOut)
-    //  · push 底页让位：x 0→−NavShiftUnder(24dp) · scale 1→0.94 · α 1→0.5，
-    //    tween(NavExitMs=250, PaperOut)——250ms 早于顶页 320ms 先收 70ms
-    //  · pop  顶页离场：x 0→+NavShiftIn · scale 1→0.94 · α 1→0，tween(NavExitMs=250, PaperIn)
-    //  · pop  底页归位：x −NavShiftUnder→0 · scale 0.94→1 · α NavAlphaReturnStart(0)→1，
-    //    tween(NavExitMs=250, PaperOut)——归位起点从全透明亮起，与让位终点 0.5 解耦
-    //    （AnimatedContent 恒把进场底页画在离场顶页上层，从 0.5 起步会隔层面纱
-    //    盖住抽走的顶页；裁定与依据见 Motion.kt 装配块注释）
-    val navPushEnter: () -> EnterTransition = {
-        if (reduceMotion) {
-            fadeIn(slStandard())
-        } else {
-            fadeIn(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut)) +
-                slideInHorizontally(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut)) { navShiftIn } +
-                scaleIn(slTween(SlMotion.NavEnterMs, SlMotion.PaperOut), initialScale = SlMotion.NavScaleSink)
-        }
-    }
-    val navPushExit: () -> ExitTransition = {
-        if (reduceMotion) {
-            fadeOut(slStandard())
-        } else {
-            slideOutHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperOut)) { -navShiftUnder } +
-                scaleOut(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), targetScale = SlMotion.NavScaleSink) +
-                fadeOut(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), targetAlpha = SlMotion.NavAlphaUnder)
-        }
-    }
-    val navPopExit: () -> ExitTransition = {
-        if (reduceMotion) {
-            fadeOut(slStandard())
-        } else {
-            slideOutHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperIn)) { navShiftIn } +
-                scaleOut(slTween(SlMotion.NavExitMs, SlMotion.PaperIn), targetScale = SlMotion.NavScaleSink) +
-                fadeOut(slTween(SlMotion.NavExitMs, SlMotion.PaperIn))
-        }
-    }
-    val navPopEnter: () -> EnterTransition = {
-        if (reduceMotion) {
-            fadeIn(slStandard())
-        } else {
-            slideInHorizontally(slTween(SlMotion.NavExitMs, SlMotion.PaperOut)) { -navShiftUnder } +
-                scaleIn(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), initialScale = SlMotion.NavScaleSink) +
-                // 归位起点用 NavAlphaReturnStart(0) 而非让位终点 NavAlphaUnder(0.5)：
-                // pop 时本页画在离场顶页上层，从 0.5 起步会盖住抽走的顶页（见 Motion.kt 装配块）
-                fadeIn(slTween(SlMotion.NavExitMs, SlMotion.PaperOut), initialAlpha = SlMotion.NavAlphaReturnStart)
-        }
-    }
-
-    // 容器变换对（分区卡 ↔ 分区详情，2026-10-01 修）：页面层**不做位移/缩放**，只做短淡化
-    // ——运动由共享纸头（SlSharedTransition.kt）独家承担。此前该对走通用「纸页对偶」，
-    // 于是「页横移 + 缩放」与「纸头形变」两套运动同时跑：观感上互相打架，
-    // 渲染上要同时合成两层全屏缩放+透明图层（模拟器实测该对 95 分位 800ms/帧）。
-    // M3 容器变换规范：进场页不做空间位移，只在原地淡化，让容器自己长大。
-    val containerEnter: () -> EnterTransition = { fadeIn(slTween(SlMotion.FastMs, SlMotion.Standard)) }
-    val containerExit: () -> ExitTransition = { fadeOut(slTween(SlMotion.FastMs, SlMotion.Standard)) }
-
-    // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来；减少动效下降级为纯淡化
-    val formEnter: () -> EnterTransition = {
-        if (reduceMotion) {
-            fadeIn(slStandard())
-        } else {
-            fadeIn(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) +
-                slideInVertically(slTween(SlMotion.SlowMs, SlMotion.PaperOut)) { navShiftUnder }
-        }
-    }
-    val formExit: () -> ExitTransition = {
-        if (reduceMotion) {
-            fadeOut(slStandard())
-        } else {
-            fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                slideOutVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)) { navShiftUnder }
-        }
-    }
-
-    // 一级 4 签路由的进出按「对端」定语义（三模式互斥）：
-    //  · 同层互切（对端也是 4 签）= 换章；
-    //  · 与层级页（详情/管理/设置等）压栈、回栈 = 纸页对偶：压栈本页让位（24dp 退让 +
-    //    缩沉 0.94 + 变暗 0.5）、回栈本页归位（24dp 归位 + 回升 + 亮起）——底线是
-    //    「tab 页与二级页压栈/回栈必须位移+淡变，绝不退化为换章只淡化」；
-    //  · 与全屏表单（记一笔）= 铺页（下层只淡化，不位移）。
-    // 2026-09-26 实机问题 ②：此前四签把 popEnter 也绑成换章，返回上一页时
-    // 上一页只有淡入 + 8dp 微升、不横移，违背「pop 回入必须位移+淡变」的底线——
-    // 这就是「返回上一页的过渡动画没改」的根因；压栈方向同病（下层该退让却只淡出）。
-    // 2026-09-28 数值升级为纸页对偶编排（Motion.kt 装配层），对端归位语义判定不变。
-    val tabExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-        when {
-            targetState.destination.route in Routes.topLevel -> chapterExit()
-            targetState.destination.route == Routes.ENTRY_EDIT -> chapterExit()
-            // 容器变换对：下层纸页不做退让（否则与纸头形变抢戏）——只淡化
-            targetState.destination.route == Routes.SECTION_DETAIL -> containerExit()
-            else -> navPushExit()
-        }
-    }
-    val tabPopEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-        when {
-            initialState.destination.route in Routes.topLevel -> chapterEnter()
-            initialState.destination.route == Routes.ENTRY_EDIT -> chapterEnter()
-            // 容器变换对：本页原地淡入，纸头飞回卡片原位（位移由共享块承担）
-            initialState.destination.route == Routes.SECTION_DETAIL -> containerEnter()
-            else -> navPopEnter()
-        }
-    }
+    val pageMotion = rememberSlPageMotion()
 
     SharedTransitionLayout {
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
             NavHost(
-            navController = navController,
-            startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
-            modifier = modifier,
-            // ——— 导航动效（Motion.kt「纸页对偶」装配层）———
-            // 默认 = 纸页对偶（层级页压栈/回栈）：push 顶页从右 32dp 轻推进场
-            // （缩沉 0.94→1、淡入，320ms PaperOut），底页 24dp 退让 + 缩沉 0.94 + 变暗 0.5
-            // （250ms PaperOut，早 70ms 先收）；pop 反向：顶页向右 32dp 抽走
-            // （缩沉 0.94、淡出，250ms PaperIn 加速离场），底页 24dp 归位 + 回升 + 亮起。
-            enterTransition = { navPushEnter() },
-            exitTransition = { navPushExit() },
-            popEnterTransition = { navPopEnter() },
-            popExitTransition = { navPopExit() },
-        ) {
-            // 分区首屏（默认落点）
-            composable(
-                Routes.SECTIONS,
-                enterTransition = { chapterEnter() }, exitTransition = tabExit,
-                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+                navController = navController,
+                startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
+                modifier = modifier,
+                // ——— 页面转场（[slRelationOf] 判关系 → SlPageMotion 四方向独家装配）———
+                //
+                // ⚠️ 可 seek 契约（predictive back；targetSdk 37 强制开启，manifest 已启
+                // enableOnBackInvokedCallback）：SlPageMotion 四段全部经 slScene——时长
+                // 确定的 tween + 单调缓动，空间路径 push/pop 严格互逆。手势返回时
+                // navigation 经 SeekableTransitionState 把手势进度逐帧灌入 pop 转场
+                // （拖到哪走到哪，松手走完或回卷，规格 §6.4）；共享纸头挂在同一
+                // transition 上随 seek 同步飞回（见 SlSharedTransition.kt）。
+                // 装配层不得改用弹簧规格（不可逆 seek，契约即破）。
+                enterTransition = {
+                    pageMotion.enter(slRelationOf(initialState.destination.route, targetState.destination.route))
+                },
+                exitTransition = {
+                    // Form 关系的 exit 段在此恒作用「被表单覆盖的下层页」——记一笔是
+                    // 叶子路由，自身不会在前向导航中离场（其抽走走 popExit(Form)）。
+                    // SlPageMotion.exit(Form) 是「表单抽走」语义（fade+下坠），套在下层页
+                    // 会让它在表单铺入时坠下去，违反 §6.2「下层只淡化不位移」/§6.3 一纸一动
+                    // ——故对齐 Container 的纯淡化配方（背景纸只淡化，不给位移）。
+                    val relation = slRelationOf(initialState.destination.route, targetState.destination.route)
+                    pageMotion.exit(if (relation == SlRelation.Form) SlRelation.Container else relation)
+                },
+                popEnterTransition = {
+                    pageMotion.popEnter(slRelationOf(initialState.destination.route, targetState.destination.route))
+                },
+                popExitTransition = {
+                    pageMotion.popExit(slRelationOf(initialState.destination.route, targetState.destination.route))
+                },
             ) {
+            // 分区首屏（默认落点）；转场由 NavHost 关系表统一装配（下同，不再逐页声明）
+            composable(Routes.SECTIONS) {
                 CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                     SectionHomeScreen(
                         onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
@@ -434,13 +339,10 @@ private fun AppNavHost(
             }
 
             // 分区详情：按天分组账目 + 底部「记一笔」+ 右上「管理」
-            composable(
-                Routes.SECTION_DETAIL,
-                // 与分区卡之间的容器变换对：只在原地淡化（见 containerEnter/Exit 注释）；
-                // 详情 → 管理页 / 记一笔 等其它方向仍走 NavHost 默认纸页对偶
-                enterTransition = { containerEnter() },
-                popExitTransition = { containerExit() },
-            ) { entry ->
+            // 与分区卡的容器变换对（slRelationOf → SlRelation.Container）已由关系表统一
+            // 装配：页面层只在原地淡化，空间运动归共享纸头（SlSharedTransition.kt）；
+            // 详情 → 管理页/记一笔等其它方向由关系表分别落 Push/Form。
+            composable(Routes.SECTION_DETAIL) { entry ->
                 val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
                 CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                     SectionDetailScreen(
@@ -495,11 +397,7 @@ private fun AppNavHost(
             }
 
             // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
-            composable(
-                Routes.LEDGER,
-                enterTransition = { chapterEnter() }, exitTransition = tabExit,
-                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-            ) { entry ->
+            composable(Routes.LEDGER) { entry ->
                 LedgerScreen(
                     resultHandle = entry.savedStateHandle,
                     onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
@@ -520,16 +418,8 @@ private fun AppNavHost(
             // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
             // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这几页，
             // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
-            composable(
-                Routes.STATS,
-                enterTransition = { chapterEnter() }, exitTransition = tabExit,
-                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-            ) { StatsScreen(layout = layout) }
-            composable(
-                Routes.MINE,
-                enterTransition = { chapterEnter() }, exitTransition = tabExit,
-                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-            ) {
+            composable(Routes.STATS) { StatsScreen(layout = layout) }
+            composable(Routes.MINE) {
                 MineScreen(
                     layout = layout,
                     onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
@@ -540,12 +430,10 @@ private fun AppNavHost(
             }
 
             // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）。
-            // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
-            composable(
-                Routes.ENTRY_EDIT,
-                enterTransition = { formEnter() }, exitTransition = { chapterExit() },
-                popEnterTransition = { chapterEnter() }, popExitTransition = { formExit() },
-            ) { entry ->
+            // 进出 = 铺页（slRelationOf → SlRelation.Form，关系表统一装配）：新纸从下方
+            // 24dp 轻铺上来（320ms Enter），抽走时向下轻收（150ms Exit）；下层只淡化不位移
+            // ——含此前漏装配的「分区详情 → 记一笔」（v1 误走纸页对偶退让，见表驱动修正①）。
+            composable(Routes.ENTRY_EDIT) { entry ->
                 val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
                     ?: Routes.NEW_ENTRY_ID
                 val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull()
@@ -693,32 +581,34 @@ private fun IndexTab(
     // 按压轻压与点击共用同一个 interactionSource（slPress 从它收集按压状态）
     val interactionSource = remember { MutableInteractionSource() }
     val accent = MaterialTheme.colorScheme.primary
-    // ——— 索引贴形变（Motion「切换/形变」档）：凸出高度 250ms、
-    //     填充/内容色与图标尺寸 150ms —— 形变是这套导航的招牌信号，值得有一段
-    //     可感知的过渡；曲线 Standard（两端软中段快），减少动效时瞬时完成 ———
+    // ——— 索引贴形变（状态轨弹簧，规格 §11.1）：凸出高度/边距 Base（250ms）整定、
+    //     填充/内容色与图标尺寸 Fast（150ms）整定 —— 形变是这套导航的招牌信号，
+    //     值得一段可感知的过渡；走 slState 弹簧：快速连点时动画被新目标「吸走」
+    //     续速而非从零重启。弹簧同样被时长层（MotionDurationScale）缩放：
+    //     系统关动画时瞬时完成，减少动效契约自动成立———
     val slipColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        animationSpec = slFast(),
+        animationSpec = slState(SlTempo.Fast),
         label = "tabSlip",
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = slFast(),
+        animationSpec = slState(SlTempo.Fast),
         label = "tabContent",
     )
     val heightAnim by animateDpAsState(
         targetValue = if (selected) selectedHeight else unselectedHeight,
-        animationSpec = slTween(SlMotion.StandardMs, SlMotion.Standard),
+        animationSpec = slState(SlTempo.Base),
         label = "tabHeight",
     )
     val topPadAnim by animateDpAsState(
         targetValue = if (selected) selectedHeight - unselectedHeight else 0.dp,
-        animationSpec = slTween(SlMotion.StandardMs, SlMotion.Standard),
+        animationSpec = slState(SlTempo.Base),
         label = "tabPad",
     )
     val iconAnim by animateDpAsState(
         targetValue = if (selected) 22.dp else 20.dp,
-        animationSpec = slFast(),
+        animationSpec = slState(SlTempo.Fast),
         label = "tabIcon",
     )
     val borderColor = MaterialTheme.colorScheme.outlineVariant

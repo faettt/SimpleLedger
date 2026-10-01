@@ -4,7 +4,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -21,7 +20,9 @@ import com.simpleledger.app.R
 import com.simpleledger.app.sync.SyncError
 import com.simpleledger.app.sync.SyncState
 import com.simpleledger.app.ui.icon.SyncIcons
-import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.SlEasing
+import com.simpleledger.app.ui.theme.SlTempo
+import com.simpleledger.app.ui.theme.slScene
 
 /*
  * 同步状态角标（U-4）。
@@ -53,8 +54,10 @@ fun syncErrorLabel(error: SyncError): String = stringResource(
 /**
  * 同步四态角标：从未同步（空心圆）/ 已同步（✓）/ 同步中（旋转墨点）/ 失败（「!」）。
  *
- * 同步中的墨点走 SlMotion 档位旋转：周期 = [SlMotion.SlowMs] × 6（≈1.9s/圈），
- * 不散写时长；曲线取 Linear —— 无限循环的首尾必须相接，缓动会在每圈接缝处顿一下。
+ * 同步中的墨点走循环专用档旋转：周期 = [SlTempo.Spin]（1920ms ≈ 1.9s/圈，
+ * 循环类专用档，勿从 UI 场景档派生——v1 曾用「慢档 ×6」拼出此值，v2 已常量化封死），
+ * 规格经 slScene 生成；曲线取 SlEasing.Linear —— 无限循环的首尾必须相接，
+ * 缓动会在每圈接缝处顿一下。
  * 系统「移除动画」时 MotionDurationScale 自动把周期压到 0，墨点瞬时转完不挡信息。
  *
  * @param onClick 点角标进状态详情（失败不弹窗，S6）
@@ -78,7 +81,7 @@ fun SyncStatusBadge(
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = SlMotion.SlowMs * 6, easing = SlMotion.Linear),
+                animation = slScene(SlTempo.Spin, SlEasing.Linear),
                 repeatMode = RepeatMode.Restart,
             ),
             label = "syncSpinAngle",

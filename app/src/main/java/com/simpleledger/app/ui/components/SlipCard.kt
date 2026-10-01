@@ -28,16 +28,17 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.simpleledger.app.ui.LocalReduceMotion
-import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.SlEasing
+import com.simpleledger.app.ui.theme.SlTempo
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.SlipStackOffset
-import com.simpleledger.app.ui.theme.slFast
+import com.simpleledger.app.ui.theme.slHoverLift
 import com.simpleledger.app.ui.theme.slPress
+import com.simpleledger.app.ui.theme.slScene
 
 /**
  * 纸片：手账里承载内容的「一张纸」。
@@ -50,12 +51,14 @@ import com.simpleledger.app.ui.theme.slPress
  * · 圆角 3dp（近直角）。大圆角会退回「便当盒贴纸」的观感。
  * · 内边距默认 20dp（规范 `spacing.slipPadding`）。
  *
- * ## 动效（Motion.kt「纸的物理」）
+ * ## 动效（Motion.kt v2「有重量的纸」）
  *
- * · **按压轻压**：整张纸（含垫纸）压下 2.5%，70ms 压下 / 轻回弹抬起；
- * · **悬停拈起**（仅指针设备）：纸片上浮 1dp、垫纸浮现 —— 纸被拈起时
- *   下面那层才露出来。触屏无 hover 事件，移动端零影响；
- * · 减少动效下两者都关闭（缩放/位移是装饰，不是信息）。
+ * · **按压轻压**：整张纸（含垫纸）压下 4%（`SlFeel.PressScale`），70ms 压下 /
+ *   轻回弹抬起（状态轨弹簧，可中断续速）；
+ * · **悬停拈起**（仅指针设备）：纸片脸面上浮 2dp（`slHoverLift`）、垫纸浮现 ——
+ *   纸被拈起时下面那层才露出来。触屏无 hover 事件，移动端零影响；
+ * · 减少动效下两者都关闭（缩放/位移是装饰，不是信息；降级判断内建在
+ *   `slPress` / `slHoverLift` 里）。
  *
  * @param stacked 是否在背后垫一层错位纸。用于需要"这张纸被特别放在上面"的强调位
  *               （如分区首屏的选中卡、空态引导卡）。注意它会向右下溢出 3dp，
@@ -85,30 +88,28 @@ fun SlipCard(
 ) {
     // 按压/悬停共用外层节点：垫纸与纸片一起被压下、一起被拈起。
     // 悬停经 hoverable 收集（Compose 标准悬停入口，没有 onHover 修饰符）：
-    // 只有指针设备产生 hover 交互，触屏零影响
+    // 只有指针设备产生 hover 交互，触屏零影响。这个源只喂垫纸 alpha；
+    // 拈起位移由 slHoverLift 内建（自己的 hover 源，motion-spec §11② 合并）。
     val interactionSource = remember { MutableInteractionSource() }
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val hovered by hoverInteractionSource.collectIsHoveredAsState()
     val reduceMotion = LocalReduceMotion.current
-    val density = LocalDensity.current.density
     // 触觉入口（= View.performHapticFeedback 的 Compose 封装）。仅在 onLongClick 里使用一次。
     val haptics = LocalHapticFeedback.current
 
-    val hoverLift by animateFloatAsState(
-        targetValue = if (hovered && !reduceMotion) SlMotion.HoverLiftDp else 0f,
-        animationSpec = slFast(SlMotion.Standard),
-        label = "slipHoverLift",
-    )
+    // 垫纸浮现：拈起才见垫纸。规格 150ms Enter（motion-spec §11②）——进场快起慢收，
+    // 与 v1 完全同档；stacked 恒显、hover 浮现都收在同一目标值里。
+    // 减少动效下 hover 浮现一并关闭（与拈起同进退：位移关了，浮现也没了）。
     val underlayAlpha by animateFloatAsState(
         targetValue = if (stacked || (hovered && !reduceMotion)) 1f else 0f,
-        animationSpec = slFast(SlMotion.PaperOut),
+        animationSpec = slScene(SlTempo.Fast, SlEasing.Enter),
         label = "slipUnderlay",
     )
 
     // 按需挂按压反馈：slPress 必须与 clickable(interactionSource = 同一个) 配对才有意义。
     // 不可点的信息卡（回收站/同步设置/成员卡等）永远收不到 PressInteraction，
     // 无条件挂载只会多出一个恒等 graphicsLayer 节点和一个永不触发的收集协程。
-    // hoverLift 不受此处影响（悬停去留是独立的观感项，另行拍板）。
+    // 拈起（slHoverLift）与垫纸 alpha 是独立的观感项，不受 interactive 影响。
     val interactive = onClick != null || onLongClick != null
 
     Box(
@@ -129,8 +130,10 @@ fun SlipCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // 拈起：只有纸片脸面上浮，垫纸留在原位 —— 缝隙就是「厚度」
-                .graphicsLayer { translationY = hoverLift * density }
+                // 拈起（motion-spec §11②，S6 合并）：只有纸片脸面上浮 2dp、垫纸留在
+                // 原位 —— 缝隙就是「厚度」。slHoverLift 自带 hover 源、状态轨弹簧
+                // （可中断续速）与减少动效降级，调用点无须再管。
+                .slHoverLift()
                 .clip(SlipShape)
                 .background(MaterialTheme.colorScheme.surface, SlipShape)
                 .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, SlipShape)

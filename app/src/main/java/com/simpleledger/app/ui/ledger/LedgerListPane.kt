@@ -56,9 +56,10 @@ import com.simpleledger.app.ui.icon.slCategoryIcon
 import com.simpleledger.app.ui.theme.SlButtonShape
 import com.simpleledger.app.ui.theme.SlChipShape
 import com.simpleledger.app.ui.theme.SlType
-import com.simpleledger.app.ui.theme.SlMotion
+import com.simpleledger.app.ui.theme.SlEasing
+import com.simpleledger.app.ui.theme.SlTempo
 import com.simpleledger.app.ui.theme.slAnimateItem
-import com.simpleledger.app.ui.theme.slTween
+import com.simpleledger.app.ui.theme.slScene
 import androidx.compose.foundation.text.TextAutoSize
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
@@ -212,15 +213,15 @@ internal fun LedgerListPane(
             }
         }
 
-        // 筛选摘要条淡入 + 纵向展开 / 淡出 + 纵向收拢：小状态走 150ms 快档（Motion ①
-        // 「反馈先于表演」）——瞬现瞬灭会让「筛选已生效/已清除」缺少可视确认。
-        // 进场 PaperOut 快起慢收（纸放下），出场 PaperIn 慢起快收（纸抽走）。
+        // 筛选摘要条淡入 + 纵向展开 / 淡出 + 纵向收拢：小状态走 150ms 快档（「反馈先于
+        // 表演」契约）——瞬现瞬灭会让「筛选已生效/已清除」缺少可视确认。
+        // 进场 Enter 快起慢收（纸放下），出场 Exit 慢起快收（纸抽走）；场景轨 tween。
         AnimatedVisibility(
             visible = filtersActive,
-            enter = fadeIn(slTween(SlMotion.FastMs, SlMotion.PaperOut)) +
-                expandVertically(slTween(SlMotion.FastMs, SlMotion.PaperOut)),
-            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                shrinkVertically(slTween(SlMotion.FastMs, SlMotion.PaperIn)),
+            enter = fadeIn(slScene(SlTempo.Fast, SlEasing.Enter)) +
+                expandVertically(slScene(SlTempo.Fast, SlEasing.Enter)),
+            exit = fadeOut(slScene(SlTempo.Fast, SlEasing.Exit)) +
+                shrinkVertically(slScene(SlTempo.Fast, SlEasing.Exit)),
         ) {
             ActiveFilterBar(state = state, onClearAll = viewModel::clearFilters)
         }

@@ -1,10 +1,6 @@
 package com.simpleledger.app.ui.ledger
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,13 +52,12 @@ import com.simpleledger.app.data.settings.LocalHideAmounts
 import com.simpleledger.app.ui.amountSpeech
 import com.simpleledger.app.ui.icon.SlIcons
 import com.simpleledger.app.ui.icon.slCategoryIcon
+import com.simpleledger.app.ui.slOverlayEnter
+import com.simpleledger.app.ui.slOverlayExit
 import com.simpleledger.app.ui.theme.BarShape
 import com.simpleledger.app.ui.theme.SlButtonShape
-import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.SlipShape
 import com.simpleledger.app.ui.theme.SlType
-import com.simpleledger.app.ui.theme.slStandard
-import com.simpleledger.app.ui.theme.slTween
 import com.simpleledger.app.ui.theme.expenseColor
 import com.simpleledger.app.ui.theme.incomeColor
 import com.simpleledger.app.util.DateTimes
@@ -335,9 +330,10 @@ internal fun EntryDetailPane(
             Spacer(modifier = Modifier.height(24.dp))
         }
 
-        // 贴图放大查看 + 「保存到相册」（批次 B）。进出场与 EntryEditForm 的贴图放大层
-        // 同规格（纸片菜单语言）：进场标准档 PaperOut 淡入 + 从 0.96 居中放大（纸被轻放），
-        // 出场快档 PaperIn 淡出 + 缩回（纸被抽走）。
+        // 贴图放大查看 + 「保存到相册」（批次 B）。进出场用公共覆层规格
+        // （ui/OverlayMotion.kt，与 EntryEditForm 贴图/纸片菜单同源）：进场标准档
+        // Enter 淡入 + 从 0.96 居中放大（纸被轻放），出场快档 Exit 淡出 + 缩回
+        // （纸被抽走）。
         //
         // enlargedImagePath 置 null 只应触发退场：visible 已为 false 而内容仍在播退场动画，
         // 仿 EntryEditHostGate 的 lastValue 保尾值模式，用 lastEnlargedPath 锁住最后一次
@@ -348,10 +344,8 @@ internal fun EntryDetailPane(
         }
         AnimatedVisibility(
             visible = enlargedImagePath != null,
-            enter = fadeIn(slStandard(SlMotion.PaperOut)) +
-                scaleIn(slStandard(SlMotion.PaperOut), 0.96f, TransformOrigin.Center),
-            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                scaleOut(slTween(SlMotion.FastMs, SlMotion.PaperIn), 0.96f, TransformOrigin.Center),
+            enter = slOverlayEnter(TransformOrigin.Center),
+            exit = slOverlayExit(TransformOrigin.Center),
         ) {
             lastEnlargedPath?.let { path ->
                 Box(

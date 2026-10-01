@@ -2,10 +2,6 @@ package com.simpleledger.app.ui.section
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,12 +60,11 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import com.simpleledger.app.ui.components.SlSnackbarHost
 import com.simpleledger.app.ui.components.slTitleRule
 import com.simpleledger.app.ui.icon.SlIcons
+import com.simpleledger.app.ui.slOverlayEnter
+import com.simpleledger.app.ui.slOverlayExit
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlipShape
-import com.simpleledger.app.ui.theme.SlMotion
 import com.simpleledger.app.ui.theme.slAnimateItem
-import com.simpleledger.app.ui.theme.slStandard
-import com.simpleledger.app.ui.theme.slTween
 import com.simpleledger.app.ui.theme.SlButtonShape
 import kotlinx.coroutines.launch
 
@@ -279,9 +274,9 @@ private fun sectionDeleteMessage(impact: SectionDeleteImpact?): String {
  * （与 ConfirmDialog / SlipCard 同一套纸语言），无阴影；「删除分区」用朱砂。
  * 锚定卡片右上、下移 57dp（卡头行高度，让菜单贴着触发手指出现在卡片身上）。
  *
- * 进出场动效（动效规范「纸的物理」）：
- *  · 进场 250ms PaperOut：淡入 + 从 0.96 微放大到 1（纸片被「轻放」到右缘锚点）；
- *  · 出场 150ms PaperIn：淡出 + 缩回 0.96（纸片被「抽走」）；
+ * 进出场动效（公共覆层规格 ui/OverlayMotion.kt）：
+ *  · 进场 250ms Enter：淡入 + 从 0.96 微放大到 1（纸片被「轻放」到右缘锚点）；
+ *  · 出场 150ms Exit：淡出 + 缩回 0.96（纸片被「抽走」）；
  *  · 缩放锚点 TransformOrigin(1f, 0f) = 右上角，与菜单的 TopEnd 对齐方式一致，右缘不漂。
  *
  * 三态生命周期（弹出 → 显示 → 退场中 → 移除）：AnimatedVisibility 的进出场动画
@@ -321,14 +316,9 @@ private fun SectionCardMenu(
     ) {
         AnimatedVisibility(
             visibleState = visibleState,
-            // 进场：快起慢收（手把纸放下，到位即停）
-            // scaleIn 形参序为 (animationSpec, initialScale, transformOrigin)
-            enter = fadeIn(slStandard(SlMotion.PaperOut)) +
-                scaleIn(slStandard(SlMotion.PaperOut), 0.96f, TransformOrigin(1f, 0f)),
-            // 出场：慢起快收（纸被抽走，末端加速消失）
-            // scaleOut 形参序为 (animationSpec, targetScale, transformOrigin)
-            exit = fadeOut(slTween(SlMotion.FastMs, SlMotion.PaperIn)) +
-                scaleOut(slTween(SlMotion.FastMs, SlMotion.PaperIn), 0.96f, TransformOrigin(1f, 0f)),
+            // 进场：快起慢收（手把纸放下，到位即停）；退场：慢起快收（纸被抽走）
+            enter = slOverlayEnter(TransformOrigin(1f, 0f)),
+            exit = slOverlayExit(TransformOrigin(1f, 0f)),
         ) {
             Column(
                 modifier = Modifier
