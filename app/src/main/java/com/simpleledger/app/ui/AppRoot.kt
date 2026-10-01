@@ -348,6 +348,14 @@ private fun AppNavHost(
         }
     }
 
+    // 容器变换对（分区卡 ↔ 分区详情，2026-10-01 修）：页面层**不做位移/缩放**，只做短淡化
+    // ——运动由共享纸头（SlSharedTransition.kt）独家承担。此前该对走通用「纸页对偶」，
+    // 于是「页横移 + 缩放」与「纸头形变」两套运动同时跑：观感上互相打架，
+    // 渲染上要同时合成两层全屏缩放+透明图层（模拟器实测该对 95 分位 800ms/帧）。
+    // M3 容器变换规范：进场页不做空间位移，只在原地淡化，让容器自己长大。
+    val containerEnter: () -> EnterTransition = { fadeIn(slTween(SlMotion.FastMs, SlMotion.Standard)) }
+    val containerExit: () -> ExitTransition = { fadeOut(slTween(SlMotion.FastMs, SlMotion.Standard)) }
+
     // 铺页（记一笔全屏表单）：新纸从下方 24dp 轻铺上来；减少动效下降级为纯淡化
     val formEnter: () -> EnterTransition = {
         if (reduceMotion) {
@@ -380,6 +388,8 @@ private fun AppNavHost(
         when {
             targetState.destination.route in Routes.topLevel -> chapterExit()
             targetState.destination.route == Routes.ENTRY_EDIT -> chapterExit()
+            // 容器变换对：下层纸页不做退让（否则与纸头形变抢戏）——只淡化
+            targetState.destination.route == Routes.SECTION_DETAIL -> containerExit()
             else -> navPushExit()
         }
     }
@@ -387,6 +397,8 @@ private fun AppNavHost(
         when {
             initialState.destination.route in Routes.topLevel -> chapterEnter()
             initialState.destination.route == Routes.ENTRY_EDIT -> chapterEnter()
+            // 容器变换对：本页原地淡入，纸头飞回卡片原位（位移由共享块承担）
+            initialState.destination.route == Routes.SECTION_DETAIL -> containerEnter()
             else -> navPopEnter()
         }
     }
@@ -422,7 +434,13 @@ private fun AppNavHost(
             }
 
             // 分区详情：按天分组账目 + 底部「记一笔」+ 右上「管理」
-            composable(Routes.SECTION_DETAIL) { entry ->
+            composable(
+                Routes.SECTION_DETAIL,
+                // 与分区卡之间的容器变换对：只在原地淡化（见 containerEnter/Exit 注释）；
+                // 详情 → 管理页 / 记一笔 等其它方向仍走 NavHost 默认纸页对偶
+                enterTransition = { containerEnter() },
+                popExitTransition = { containerExit() },
+            ) { entry ->
                 val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
                 CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                     SectionDetailScreen(
