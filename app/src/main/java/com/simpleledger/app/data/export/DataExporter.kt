@@ -90,14 +90,36 @@ class DataExporter(
                         snapshot.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
                     } else {
-                        // 数据库（WAL 模式需要一并打包 wal/shm 才能完整还原）
-                        val dbDir = context.getDatabasePath("simple_ledger.db").parentFile
-                        listOf("", "-wal", "-shm").forEach { suffix ->
-                            val dbFile = File(dbDir, "simple_ledger.db$suffix")
-                            if (dbFile.exists()) {
-                                zip.putNextEntry(ZipEntry("database/simple_ledger.db$suffix"))
-                                dbFile.inputStream().use { it.copyTo(zip) }
-                                zip.closeEntry()
+                        // 全面审查 P2 回退口径加固：旧 SQLite（无 VACUUM INTO）时，
+                        // 原先「db/-wal/-shm 三文件顺序拷贝」窗口内恰有并发写 / 自动
+                        // checkpoint 就会得到主库与 WAL 错位的撕裂备份。现先
+                        // `wal_checkpoint(TRUNCATE)` 把 WAL 全量合并回主库（主库文件自此
+                        // 自洽），**只拷主库单文件**；checkpoint 被并发读者挡住（busy）时
+                        // 才退回旧三文件口径。
+                        val dbDir = context.getDatabasePath(DB_NAME).parentFile
+                        val checkpointed = db?.let { database ->
+                            runCatching {
+                                database.openHelper.writableDatabase
+                                    .query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
+                                        cursor.moveToFirst() && cursor.getInt(0) == 0 // 0 = 非 busy
+                                    }
+                            }.getOrElse { false }
+                        } ?: false
+                        if (checkpointed) {
+                            val main = File(dbDir, DB_NAME)
+                            check(main.exists() && main.length() > 0) { "checkpoint 后主库文件缺失" }
+                            zip.putNextEntry(ZipEntry("database/$DB_NAME"))
+                            main.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        } else {
+                            // 数据库（WAL 模式需要一并打包 wal/shm 才能完整还原）
+                            listOf("", "-wal", "-shm").forEach { suffix ->
+                                val dbFile = File(dbDir, "$DB_NAME$suffix")
+                                if (dbFile.exists()) {
+                                    zip.putNextEntry(ZipEntry("database/$DB_NAME$suffix"))
+                                    dbFile.inputStream().use { it.copyTo(zip) }
+                                    zip.closeEntry()
+                                }
                             }
                         }
                     }

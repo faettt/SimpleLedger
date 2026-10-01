@@ -440,6 +440,16 @@ private fun StatusCard(syncState: SyncState, state: SyncSettingsUiState) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        // 全面审查 P2：分片「全隔离」≈ 口令在其他设备被更换——看似成功实则断流，
+        // 必须明说，不能让用户对着 100% 隔离率猜原因
+        if (state.chunkQuarantineAll) {
+            Text(
+                text = stringResource(R.string.sync_quarantined_all_hint),
+                style = SlType.bodySm.merge(SlStatus.warningSm),
+                color = warnColor(),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         // U-7 照片侧对称：坏照片隔离透出（样式与文案结构照抄分片条——
         // 隔离不挡其余照片同步，「立即同步」重试 / 重置清除）
         if (state.quarantinedPhotos > 0) {

@@ -5,6 +5,7 @@ import com.simpleledger.app.data.local.entity.OpOrigin
 import com.simpleledger.app.data.local.entity.TrashResolved
 import com.simpleledger.app.sync.account.SyncPrefs
 import org.json.JSONObject
+import com.simpleledger.app.util.SlLog
 
 /**
  * 本地写路径埋点（§3.7/§3.8）：把每次增删改**在业务写同一个数据库事务内**追加为不可变操作。
@@ -54,7 +55,7 @@ class OpRecorder(
      */
     private fun notifyAfterWrite() {
         runCatching { afterWrite() }
-            .onFailure { println("[OpRecorder] afterWrite 触发失败（忽略，不影响本地写）: $it") }
+            .onFailure { SlLog.d("OpRecorder", "afterWrite 触发失败（忽略，不影响本地写）: $it") }
     }
 
     /**

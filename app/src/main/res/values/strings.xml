@@ -337,6 +337,7 @@
     <string name="sync_quota_warn">照片流量已接近本月额度</string>
     <!-- U-7：损坏分片隔离透出（状态详情纸片；自带逃生口指引） -->
     <string name="sync_quarantined_chunks">有 %1$d 个云端分片损坏已隔离（其余内容正常同步）。「立即同步」会重试；重置同步可清除记录。</string>
+    <string name="sync_quarantined_all_hint">全部分片都已隔离——这通常意味着口令在其他设备上被更换（重置过同步）。请在其他设备停用同步后，在本机重新配置。</string>
     <!-- U-7 照片侧对称：坏照片隔离透出（文案结构照抄分片条） -->
     <string name="sync_quarantined_photos">有 %1$d 张照片损坏已隔离（其余内容正常同步）。「立即同步」会重试；重置同步可清除记录。</string>
     <string name="sync_test_ok">连接成功</string>

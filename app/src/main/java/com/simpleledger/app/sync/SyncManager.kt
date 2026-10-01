@@ -2,6 +2,8 @@ package com.simpleledger.app.sync
 
 import com.simpleledger.app.data.local.dao.SyncDao
 import com.simpleledger.app.data.local.entity.MemberEntity
+import com.simpleledger.app.data.local.entity.RemoteFileKind
+import com.simpleledger.app.util.SlLog
 import com.simpleledger.app.logic.OpTrimRules
 import com.simpleledger.app.logic.TrashAggregation
 import com.simpleledger.app.sync.account.AccountStore
@@ -168,7 +170,14 @@ class SyncManager(
         val job = scope.launch {
             delay(WRITE_DEBOUNCE_MILLIS)
             writeSyncArmed.set(false)
-            runCatching { engine.syncOnce(SyncTrigger.AFTER_WRITE) }
+            val outcome = runCatching { engine.syncOnce(SyncTrigger.AFTER_WRITE) }.getOrNull()
+            // 全面审查 P2：窗口到点时恰有别的轮在跑（如 30min 周期轮刚开跑）会被单飞
+            // 挡成 skip(IN_FLIGHT)——那轮开始时读不到本窗口的写，若就此作罢，这批写
+            // 要等下个触发（最快回前台，否则 30min）才补传。重新排一个合并窗口，
+            // 与普通排程同一去抖，天然收敛不自旋。
+            if (outcome != null && outcome.skipped && outcome.skipReason == SkipReason.IN_FLIGHT) {
+                scheduleAfterWrite()
+            }
         }
         // 兜底：作用域被取消（进程收尾 / 测试提前结束）时也要把窗口标志归位，
         // 否则写路径从此永久不再排程（取消发生在 delay 之前时 finally 不会执行）。
@@ -199,7 +208,7 @@ class SyncManager(
         if (outcome.success && !outcome.skipped) {
             runCatching {
                 val trimmed = trimOps()
-                if (trimmed > 0) println("[SyncManager] trimOps removed $trimmed old ops")
+                if (trimmed > 0) SlLog.d("SyncManager", "trimOps removed $trimmed old ops")
             }
         }
         return outcome
@@ -347,8 +356,7 @@ class SyncManager(
      */
     private fun failedAt(step: String, t: Throwable): SetupResult.Failed {
         val detail = "$step: ${t.message ?: t.javaClass.name}"
-        println("[SyncManager] setup failed at $detail")
-        t.printStackTrace()
+        SlLog.d("SyncManager", "setup failed at $detail", t)
         return SetupResult.Failed(SyncError.fromName(DavErrors.toSyncErrorName(t)), detail)
     }
 
@@ -447,14 +455,27 @@ class SyncManager(
     fun quarantinedPhotoCount(): Int = store.quarantinedPhotos().size
 
     /**
+     * 全面审查 P2：分片「全隔离」判定——全部已知远端分片都在隔离名单。
+     * 口令在其他设备被更换（resetSync）后，本机会把新密钥下的全部分片判为
+     * 「损坏」逐轮隔离：看似同步成功、实则断流。命中即由状态页提示
+     * 「≈口令已换，需重新配置」，不再让用户对着 100% 失败率猜原因。
+     */
+    suspend fun chunkQuarantineCoversAll(): Boolean {
+        val quarantined = store.quarantinedChunks()
+        if (quarantined.isEmpty()) return false
+        val total = syncDao.remoteFilesByKind(RemoteFileKind.OP_CHUNK).size
+        return total > 0 && quarantined.size >= total
+    }
+
+    /**
      * U-1：Argon2id 派生并记录耗时（验收要求留档）。
-     * 用 println 而非 android.util.Log —— JVM 单测里 Log 会 not mocked，
-     * println 在 Android 落 Logcat、在 JVM 无副作用。
+     * 经 [SlLog] 收敛：debug 构建输出、release 静默。不能直接用 android.util.Log ——
+     * JVM 单测里 Log 会 not mocked；println 在 Android 落 Logcat、在 JVM 无副作用。
      */
     private fun deriveTimed(password: CharArray, kdf: KdfParams): SyncKeys {
         val start = System.currentTimeMillis()
         val keys = crypto.deriveKeys(password, kdf)
-        println("Argon2id derive ${System.currentTimeMillis() - start}ms (m=${kdf.mKiB}KiB t=${kdf.t} p=${kdf.p})")
+        SlLog.d("SyncManager", "Argon2id derive ${System.currentTimeMillis() - start}ms (m=${kdf.mKiB}KiB t=${kdf.t} p=${kdf.p})")
         return keys
     }
 

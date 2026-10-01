@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import com.simpleledger.app.util.SlLog
 
 /**
  * 轻量手工依赖注入容器：单模块应用的务实选择。
@@ -104,7 +105,7 @@ class AppContainer(context: Context) {
                             )
                         }
                     }
-                }.onFailure { println("[AppContainer] SETTING 操作记账失败 key=$key: $it") }
+                }.onFailure { SlLog.d("AppContainer", "SETTING 操作记账失败 key=$key: $it") }
             }
         }
     }

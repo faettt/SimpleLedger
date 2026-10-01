@@ -10,6 +10,7 @@ import com.simpleledger.app.sync.dav.WebDavRemote
 import java.io.File
 import java.security.MessageDigest
 import kotlin.coroutines.cancellation.CancellationException
+import com.simpleledger.app.util.SlLog
 
 /**
  * 照片文件存取端口（生产 = `FilePhotoStore` 包 `ImageStorage.pathForHash`；JVM 测试 = 内存 Map）。
@@ -231,7 +232,7 @@ class PhotoTransfer(
      */
     private fun onPhotoFailure(name: String, t: Throwable) {
         val failures = store.recordPhotoFailure(name)
-        println("[PhotoTransfer] photo $name failed (consecutive=$failures): ${t.message ?: t.javaClass.name}")
+        SlLog.d("PhotoTransfer", "photo $name failed (consecutive=$failures): ${t.message ?: t.javaClass.name}")
         if (failures >= PHOTO_QUARANTINE_THRESHOLD) store.quarantinePhoto(name)
     }
 

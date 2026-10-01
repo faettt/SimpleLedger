@@ -87,6 +87,8 @@ data class SyncSettingsUiState(
     val monthlyDownBytes: Long = 0L,
     /** 当前被隔离的损坏分片数（U-7：0 = 无；「立即同步」重试，重置清零） */
     val quarantinedChunks: Int = 0,
+    /** 全面审查 P2：分片「全隔离」≈ 口令在其他设备被更换，状态页明说而非让用户猜 */
+    val chunkQuarantineAll: Boolean = false,
     /** 当前被隔离的坏照片数（U-7 照片侧对称：0 = 无；「立即同步」重试，重置清零） */
     val quarantinedPhotos: Int = 0,
     /**
@@ -293,6 +295,10 @@ class SyncSettingsViewModel(
                 quarantinedChunks = syncManager.quarantinedChunkCount(),
                 quarantinedPhotos = syncManager.quarantinedPhotoCount(),
             )
+        }
+        viewModelScope.launch {
+            val all = runCatching { syncManager.chunkQuarantineCoversAll() }.getOrDefault(false)
+            _state.update { it.copy(chunkQuarantineAll = all) }
         }
     }
 

@@ -235,14 +235,14 @@ class WriteTriggeredSyncTest {
         override fun clearState() = fake.clearState()
     }
 
-    private class ManagerFixture {
+    private class ManagerFixture(engineWrapper: (RecordingRunner) -> SyncRunner = { it }) {
         val store = FakeSyncStore()
         val account = FakeAccountStore()
         val dao = FakeSyncDao()
         val engine = RecordingRunner()
         val scope = CoroutineScope(Dispatchers.Unconfined)
         val manager = SyncManager(
-            engine = engine,
+            engine = engineWrapper(engine),
             store = store,
             account = account,
             crypto = SyncCrypto(),
@@ -269,6 +269,33 @@ class WriteTriggeredSyncTest {
     /** 注入「insertOp 必抛」：模拟磁盘/IO 错导致的写失败（事务回滚前不得触发同步） */
     private class FailingInsertDao(private val delegate: FakeSyncDao) : SyncDao by delegate {
         override suspend fun insertOp(op: SyncOpEntity): Long = throw IllegalStateException("注入：写操作失败")
+    }
+
+    /** 首轮按预设的 nextOutcome 返回（IN_FLIGHT），其后自动放行 success */
+    private class InFlightThenOkRunner(private val wrapped: RecordingRunner) : SyncRunner by wrapped {
+        override suspend fun syncOnce(trigger: SyncTrigger): SyncOutcome {
+            val outcome = wrapped.syncOnce(trigger)
+            if (outcome.skipReason == SkipReason.IN_FLIGHT) {
+                wrapped.nextOutcome = SyncOutcome(success = true)
+            }
+            return outcome
+        }
+    }
+
+    /**
+     * 全面审查 P2：写后窗口到点时恰有别的轮在跑 → skip(IN_FLIGHT)。
+     * 该轮开始时读不到本窗口的写，就此作罢这批写要等下个触发才补传——
+     * 必须重新排一个窗口（本轮验证：IN_FLIGHT 之后仍会发起第二轮）。
+     */
+    @Test
+    fun afterWriteSkippedInFlightReArmsAnotherWindow() {
+        val f = ManagerFixture(engineWrapper = { InFlightThenOkRunner(it) })
+        f.configure()
+        f.engine.nextOutcome = SyncOutcome.skip(SkipReason.IN_FLIGHT)
+        f.manager.requestSync(SyncTrigger.AFTER_WRITE)
+        // 第一轮 IN_FLIGHT → 重排 → 第二轮放行（两个 3s 窗口，真时间等待）
+        awaitCalls(f.engine, 2)
+        assertTrue(f.engine.nextOutcome.success)
     }
 
     /** 轮询等引擎跑够 [expected] 轮（真时间窗口；超时上限防挂死，失败时报实际轮数） */

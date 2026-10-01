@@ -34,6 +34,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.security.MessageDigest
+import com.simpleledger.app.util.SlLog
 
 /**
  * 同步执行端口（`SyncManager` 的依赖；JVM 单测可注入假件测去抖/单飞编排）。
@@ -199,8 +200,7 @@ class SyncEngine(
         } catch (t: Throwable) {
             // S6 静默收口：任何失败都不外抛，只落角标 + lastError；
             // v1.4.2 补日志（println 口径同 deriveTimed：JVM 单测不炸、Android 落 Logcat）
-            println("[SyncEngine] syncOnce($trigger) failed: ${t.message ?: t.javaClass.name}")
-            t.printStackTrace()
+            SlLog.d("SyncEngine", "syncOnce($trigger) failed: ${t.message ?: t.javaClass.name}", t)
             val error = SyncError.fromName(DavErrors.toSyncErrorName(t))
             store.markSyncError(error.name)
             _state.value = SyncState.Failed(error, System.currentTimeMillis())
@@ -223,7 +223,7 @@ class SyncEngine(
      */
     private fun onChunkCorrupt(name: String, t: Throwable) {
         val failures = store.recordChunkFailure(name)
-        println("[SyncEngine] chunk $name corrupt (consecutive=$failures): ${t.message ?: t.javaClass.name}")
+        SlLog.d("SyncEngine", "chunk $name corrupt (consecutive=$failures): ${t.message ?: t.javaClass.name}")
         if (failures >= CHUNK_QUARANTINE_THRESHOLD) store.quarantineChunk(name)
     }
 

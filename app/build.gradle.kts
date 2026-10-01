@@ -54,10 +54,20 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 有正式密钥则用正式签名；缺失则退回 debug 签名（保证缺密钥也能构建）
+            // 有正式密钥则用正式签名；缺失则退回 debug 签名（保证缺密钥也能构建）。
+            // 回退必须显式可见——debug 签名的 release 装上真机后无法覆盖升级正式版，
+            // 历史上曾静默回退，误发布只能在发版后才发现（全面审查 P2）。
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
             } else {
+                logger.warn(
+                    "======================================================================",
+                )
+                logger.warn("⚠️  未找到 release keystore（keystore.properties），本次 release 产物退回 DEBUG 签名。")
+                logger.warn("⚠️  该 APK 只能本机调试，严禁对外发布：与正式签名不同，用户无法覆盖升级。")
+                logger.warn(
+                    "======================================================================",
+                )
                 signingConfigs.getByName("debug")
             }
         }
@@ -68,6 +78,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // SlLog（日志收敛门面）按 BuildConfig.DEBUG 门控 debug/release 输出
+        buildConfig = true
     }
     lint {
         // LocalContextGetResourceValueCall（Compose lint）在本项目实际风险有限：

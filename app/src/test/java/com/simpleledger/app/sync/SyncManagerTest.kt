@@ -3,6 +3,8 @@ package com.simpleledger.app.sync
 import com.simpleledger.app.data.local.entity.SectionEntity
 import com.simpleledger.app.data.local.entity.ConflictTrashEntity
 import com.simpleledger.app.data.local.entity.MemberEntity
+import com.simpleledger.app.data.local.entity.RemoteFileEntity
+import com.simpleledger.app.data.local.entity.RemoteFileKind
 import com.simpleledger.app.data.local.entity.SyncOpEntity
 import com.simpleledger.app.sync.account.WebDavCred
 import com.simpleledger.app.sync.account.WebDavCredIssue
@@ -497,6 +499,35 @@ class SyncManagerTest {
         val manager: SyncManager,
         val releasedHashes: MutableList<Set<String>>,
     )
+
+    /**
+     * 全面审查 P2：分片「全隔离」≈ 口令在其他设备被更换的征兆判定——
+     * 全部已知远端分片都在隔离名单才命中；部分隔离（个别真损坏）不算。
+     */
+    @Test
+    fun chunkQuarantineCoversAllFlagsPassphraseRotationSymptom() = runBlocking {
+        val fx = fixture()
+        // 无隔离名单：不命中
+        assertFalse(fx.manager.chunkQuarantineCoversAll())
+
+        repeat(3) { i ->
+            fx.dao.upsertRemoteFile(
+                RemoteFileEntity(
+                    remoteName = "op-$i.op",
+                    kind = RemoteFileKind.OP_CHUNK,
+                    etag = null,
+                ),
+            )
+        }
+        // 隔离 2/3：部分损坏，不是全隔离
+        fx.store.quarantineChunk("op-0.op")
+        fx.store.quarantineChunk("op-1.op")
+        assertFalse(fx.manager.chunkQuarantineCoversAll())
+
+        // 第 3 个也进名单 → 全隔离命中
+        fx.store.quarantineChunk("op-2.op")
+        assertTrue(fx.manager.chunkQuarantineCoversAll())
+    }
 
     private fun fixture(exportCount: Int = 0): Fixture {
         val store = FakeSyncStore()
