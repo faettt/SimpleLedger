@@ -1,6 +1,7 @@
 package com.simpleledger.app.ui
 
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -44,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -389,151 +391,159 @@ private fun AppNavHost(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
-        modifier = modifier,
-        // ——— 导航动效（Motion.kt「纸页对偶」装配层）———
-        // 默认 = 纸页对偶（层级页压栈/回栈）：push 顶页从右 32dp 轻推进场
-        // （缩沉 0.94→1、淡入，320ms PaperOut），底页 24dp 退让 + 缩沉 0.94 + 变暗 0.5
-        // （250ms PaperOut，早 70ms 先收）；pop 反向：顶页向右 32dp 抽走
-        // （缩沉 0.94、淡出，250ms PaperIn 加速离场），底页 24dp 归位 + 回升 + 亮起。
-        enterTransition = { navPushEnter() },
-        exitTransition = { navPushExit() },
-        popEnterTransition = { navPopEnter() },
-        popExitTransition = { navPopExit() },
-    ) {
-        // 分区首屏（默认落点）
-        composable(
-            Routes.SECTIONS,
-            enterTransition = { chapterEnter() }, exitTransition = tabExit,
-            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+    SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+            NavHost(
+            navController = navController,
+            startDestination = Routes.SECTIONS, // 分区升首屏（FR-07）
+            modifier = modifier,
+            // ——— 导航动效（Motion.kt「纸页对偶」装配层）———
+            // 默认 = 纸页对偶（层级页压栈/回栈）：push 顶页从右 32dp 轻推进场
+            // （缩沉 0.94→1、淡入，320ms PaperOut），底页 24dp 退让 + 缩沉 0.94 + 变暗 0.5
+            // （250ms PaperOut，早 70ms 先收）；pop 反向：顶页向右 32dp 抽走
+            // （缩沉 0.94、淡出，250ms PaperIn 加速离场），底页 24dp 归位 + 回升 + 亮起。
+            enterTransition = { navPushEnter() },
+            exitTransition = { navPushExit() },
+            popEnterTransition = { navPopEnter() },
+            popExitTransition = { navPopExit() },
         ) {
-            SectionHomeScreen(
-                onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
-                layout = layout,
-            )
-        }
+            // 分区首屏（默认落点）
+            composable(
+                Routes.SECTIONS,
+                enterTransition = { chapterEnter() }, exitTransition = tabExit,
+                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+            ) {
+                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                    SectionHomeScreen(
+                        onOpenSection = { sectionId -> navController.navigate(Routes.sectionDetail(sectionId)) },
+                        layout = layout,
+                    )
+                }
+            }
 
-        // 分区详情：按天分组账目 + 底部「记一笔」+ 右上「管理」
-        composable(Routes.SECTION_DETAIL) { entry ->
-            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
-            SectionDetailScreen(
-                sectionId = sectionId,
-                resultHandle = entry.savedStateHandle,
-                onBack = { navController.popBackStack() },
-                onManage = { id -> navController.navigate(Routes.sectionManage(id)) },
-                onCreateEntry = { id -> navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, id)) },
-                onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
-                layout = layout,
-                dense = dense,
-            )
-        }
+            // 分区详情：按天分组账目 + 底部「记一笔」+ 右上「管理」
+            composable(Routes.SECTION_DETAIL) { entry ->
+                val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
+                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                    SectionDetailScreen(
+                        sectionId = sectionId,
+                        resultHandle = entry.savedStateHandle,
+                        onBack = { navController.popBackStack() },
+                        onManage = { id -> navController.navigate(Routes.sectionManage(id)) },
+                        onCreateEntry = { id -> navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, id)) },
+                        onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
+                        layout = layout,
+                        dense = dense,
+                    )
+                }
+            }
 
-        // 分区管理：编辑分区信息 + 该分区专属分类
-        composable(Routes.SECTION_MANAGE) { entry ->
-            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
-            SectionManageScreen(
-                sectionId = sectionId,
-                onBack = { navController.popBackStack() },
-                layout = layout,
-            )
-        }
+            // 分区管理：编辑分区信息 + 该分区专属分类
+            composable(Routes.SECTION_MANAGE) { entry ->
+                val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull() ?: 0L
+                SectionManageScreen(
+                    sectionId = sectionId,
+                    onBack = { navController.popBackStack() },
+                    layout = layout,
+                )
+            }
 
-        // 全局分类管理（从「我的 → 记账 → 全局分类」进入）
-        composable(Routes.GLOBAL_CATEGORIES) {
-            GlobalCategoriesScreen(
-                onBack = { navController.popBackStack() },
-                layout = layout,
-            )
-        }
+            // 全局分类管理（从「我的 → 记账 → 全局分类」进入）
+            composable(Routes.GLOBAL_CATEGORIES) {
+                GlobalCategoriesScreen(
+                    onBack = { navController.popBackStack() },
+                    layout = layout,
+                )
+            }
 
-        // T-5 同步三入口（从「我的 → 同步」进入）：同步设置 · 成员管理 · 冲突回收站
-        composable(Routes.SYNC_SETTINGS) {
-            SyncSettingsScreen(
-                onBack = { navController.popBackStack() },
-                layout = layout,
-            )
-        }
-        composable(Routes.MEMBER_MANAGE) {
-            MemberManageScreen(
-                onBack = { navController.popBackStack() },
-                layout = layout,
-            )
-        }
-        composable(Routes.CONFLICT_TRASH) {
-            ConflictTrashScreen(
-                onBack = { navController.popBackStack() },
-                layout = layout,
-            )
-        }
+            // T-5 同步三入口（从「我的 → 同步」进入）：同步设置 · 成员管理 · 冲突回收站
+            composable(Routes.SYNC_SETTINGS) {
+                SyncSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    layout = layout,
+                )
+            }
+            composable(Routes.MEMBER_MANAGE) {
+                MemberManageScreen(
+                    onBack = { navController.popBackStack() },
+                    layout = layout,
+                )
+            }
+            composable(Routes.CONFLICT_TRASH) {
+                ConflictTrashScreen(
+                    onBack = { navController.popBackStack() },
+                    layout = layout,
+                )
+            }
 
-        // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
-        composable(
-            Routes.LEDGER,
-            enterTransition = { chapterEnter() }, exitTransition = tabExit,
-            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-        ) { entry ->
-            LedgerScreen(
-                resultHandle = entry.savedStateHandle,
-                onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
-                onCreateEntry = { sectionId ->
-                    navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, sectionId))
-                },
-                onGoToSections = { navController.navigateTopLevel(Routes.SECTIONS) },
-                layout = layout,
-                dense = dense,
-                foldInfo = foldInfo,
-                editingEntryId = editingEntryId,
-                editingSectionId = editingSectionId,
-                onStartEdit = onStartEdit,
-                onStopEdit = onStopEdit,
-            )
-        }
+            // 明细：跨分区总览 + 搜索 / 筛选，「记一笔」先弹分区选择器（Q-13）
+            composable(
+                Routes.LEDGER,
+                enterTransition = { chapterEnter() }, exitTransition = tabExit,
+                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+            ) { entry ->
+                LedgerScreen(
+                    resultHandle = entry.savedStateHandle,
+                    onEditEntry = { id -> navController.navigate(Routes.entryEdit(id)) },
+                    onCreateEntry = { sectionId ->
+                        navController.navigate(Routes.entryEdit(Routes.NEW_ENTRY_ID, sectionId))
+                    },
+                    onGoToSections = { navController.navigateTopLevel(Routes.SECTIONS) },
+                    layout = layout,
+                    dense = dense,
+                    foldInfo = foldInfo,
+                    editingEntryId = editingEntryId,
+                    editingSectionId = editingSectionId,
+                    onStartEdit = onStartEdit,
+                    onStopEdit = onStopEdit,
+                )
+            }
 
-        // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
-        // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这几页，
-        // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
-        composable(
-            Routes.STATS,
-            enterTransition = { chapterEnter() }, exitTransition = tabExit,
-            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-        ) { StatsScreen(layout = layout) }
-        composable(
-            Routes.MINE,
-            enterTransition = { chapterEnter() }, exitTransition = tabExit,
-            popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
-        ) {
-            MineScreen(
-                layout = layout,
-                onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
-                onNavigateSyncSettings = { navController.navigate(Routes.SYNC_SETTINGS) },
-                onNavigateMembers = { navController.navigate(Routes.MEMBER_MANAGE) },
-                onNavigateTrash = { navController.navigate(Routes.CONFLICT_TRASH) },
-            )
-        }
+            // A3：统计页两栏网格 + 管理/我的页限宽，均以 Expanded 为唯一触发条件。
+            // 这里传入的 `layout` 即 AppRoot 计算出的 effectiveLayout，故水平铰链降级同样作用于这几页，
+            // 与 Rail / 明细页保持一致；非折叠设备上 effectiveLayout == 宽度判定结果，回归不变。
+            composable(
+                Routes.STATS,
+                enterTransition = { chapterEnter() }, exitTransition = tabExit,
+                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+            ) { StatsScreen(layout = layout) }
+            composable(
+                Routes.MINE,
+                enterTransition = { chapterEnter() }, exitTransition = tabExit,
+                popEnterTransition = tabPopEnter, popExitTransition = { chapterExit() },
+            ) {
+                MineScreen(
+                    layout = layout,
+                    onNavigateGlobalCategories = { navController.navigate(Routes.GLOBAL_CATEGORIES) },
+                    onNavigateSyncSettings = { navController.navigate(Routes.SYNC_SETTINGS) },
+                    onNavigateMembers = { navController.navigate(Routes.MEMBER_MANAGE) },
+                    onNavigateTrash = { navController.navigate(Routes.CONFLICT_TRASH) },
+                )
+            }
 
-        // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）。
-        // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
-        composable(
-            Routes.ENTRY_EDIT,
-            enterTransition = { formEnter() }, exitTransition = { chapterExit() },
-            popEnterTransition = { chapterEnter() }, popExitTransition = { formExit() },
-        ) { entry ->
-            val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
-                ?: Routes.NEW_ENTRY_ID
-            val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull()
-                ?: Routes.NEW_SECTION
-            EntryEditScreen(
-                entryId = entryId,
-                sectionId = sectionId,
-                onDone = { savedId ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set(RESULT_SAVED_ENTRY_ID, savedId ?: -1L)
-                    navController.popBackStack()
-                },
-            )
+            // 记一笔 / 编辑账目（Compact 全屏）——分区由入口带入，表单内只读（Q-07）。
+            // 进出 = 铺页：新纸从下方 24dp 轻铺上来（PaperOut），抽走时 150ms 快收（PaperIn）
+            composable(
+                Routes.ENTRY_EDIT,
+                enterTransition = { formEnter() }, exitTransition = { chapterExit() },
+                popEnterTransition = { chapterEnter() }, popExitTransition = { formExit() },
+            ) { entry ->
+                val entryId = entry.arguments?.getString(Routes.ARG_ENTRY_ID)?.toLongOrNull()
+                    ?: Routes.NEW_ENTRY_ID
+                val sectionId = entry.arguments?.getString(Routes.ARG_SECTION_ID)?.toLongOrNull()
+                    ?: Routes.NEW_SECTION
+                EntryEditScreen(
+                    entryId = entryId,
+                    sectionId = sectionId,
+                    onDone = { savedId ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(RESULT_SAVED_ENTRY_ID, savedId ?: -1L)
+                        navController.popBackStack()
+                    },
+                )
+            }
+        }
         }
     }
 }

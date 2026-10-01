@@ -36,6 +36,7 @@ import com.simpleledger.app.logic.BudgetCalculator
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.SlStatus
 import com.simpleledger.app.ui.theme.expenseColor
+import com.simpleledger.app.ui.slSharedSectionHeader
 import com.simpleledger.app.ui.theme.warnColor
 import com.simpleledger.app.util.Money
 import com.simpleledger.app.ui.icon.SlIcons
@@ -127,7 +128,12 @@ fun SectionCard(
         contentPadding = PaddingValues(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
     ) {
         Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Container Transform（2026-10-01 采纳）：这行「图标 + 分区名 + 金额」
+            // 在点进详情时飞到详情页眉长大成形，返回原路归位（详见 SlSharedTransition.kt）
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.slSharedSectionHeader("section-header-${total.sectionId}"),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(38.dp)

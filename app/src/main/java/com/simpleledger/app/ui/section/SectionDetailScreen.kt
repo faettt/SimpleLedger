@@ -57,6 +57,7 @@ import com.simpleledger.app.ui.entry.EntryEditHostStyle
 import com.simpleledger.app.ui.ledger.DayHeader
 import com.simpleledger.app.ui.ledger.EntryRow
 import com.simpleledger.app.ui.ledger.RESULT_SAVED_ENTRY_ID
+import com.simpleledger.app.ui.slSharedSectionHeader
 import com.simpleledger.app.ui.theme.SlType
 import com.simpleledger.app.ui.theme.slAnimateItem
 import com.simpleledger.app.ui.theme.SlButtonShape
@@ -207,9 +208,13 @@ fun SectionDetailScreen(
                         )
                     }
                     // v4：标题栏改「图标 + 分区名」（设计 §2.3），emoji 退场
+                    // Container Transform 落点：与 SectionCard 头部行同一共享键，
+                    // 返回时详情页眉飞回卡片原位（详见 SlSharedTransition.kt）
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .slSharedSectionHeader("section-header-$sectionId"),
                     ) {
                         state.section?.let {
                             Icon(
